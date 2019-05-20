@@ -423,11 +423,11 @@ Contains
         else
            ctrl%search = temp(1)
            select case (ctrl%search)
-           case ('NLCG','DCG','Hybrid')
+           case ('NLCG','DCG','Hybrid','LBFGS')
               	! write(0,*) 'Inverse search ',trim(ctrl%search),' selected.'
            case default
-				write(0,*) 'Unknown inverse search. Usage: -I [NLCG | DCG | Hybrid]'
-				stop
+		write(0,*) 'Unknown inverse search. Usage: -I [NLCG | DCG | Hybrid | LBFGS]'
+		stop
            end select
 	       ctrl%rFile_Model = temp(2)
 	       ctrl%rFile_Data = temp(3)
@@ -441,8 +441,8 @@ Contains
             inquire(FILE=ctrl%rFile_invCtrl,EXIST=exists)
             if (.not. exists) then
             	! problem - invalid argument
-				write(0,*) 'Please specify a valid inverse control file or damping parameter'
-				stop
+		write(0,*) 'Please specify a valid inverse control file or damping parameter'
+		stop
             end if
           end if
         end if
@@ -455,8 +455,8 @@ Contains
             inquire(FILE=ctrl%rFile_fwdCtrl,EXIST=exists)
             if (.not. exists) then
             	! problem - invalid argument
-				write(0,*) 'Please specify a valid forward solver control file or misfit tolerance'
-				stop
+		write(0,*) 'Please specify a valid forward solver control file or misfit tolerance'
+		stop
             end if
           end if
         end if
@@ -469,8 +469,8 @@ Contains
             inquire(FILE=ctrl%rFile_dModel,EXIST=exists)
             if (.not. exists) then
             	! problem - invalid argument
-				write(0,*) 'Please specify a valid starting model file'
-				stop
+		write(0,*) 'Please specify a valid starting model file'
+		stop
             end if
         end if
 

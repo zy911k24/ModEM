@@ -351,6 +351,7 @@ Contains
 	   write(0,*) 'Cleaning up data...'
 	endif
 	call deall_dataVectorMTX(allData)
+	call deall_dataFileInfo()
 
 	if (output_level > 3) then
 	   write(0,*) 'Cleaning up EM soln...'

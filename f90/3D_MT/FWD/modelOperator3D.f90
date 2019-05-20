@@ -91,7 +91,7 @@ module modelOperator3D
   !  preconditioner
 
 
-  ! *****************************************************************************
+  ! ***************************************************************************
   !  routines from model_data_update:
   public                             	:: UpdateFreq, UpdateCond
   public                                :: UpdateFreqCond
@@ -269,7 +269,7 @@ Contains
     ! Output boundary conditions
     type(cboundary), intent(inout)	:: BC
 
-    period = (2*PI)/omega ! period is seconds
+    period = (2*PI)/omega ! period in seconds
 
     if (BC%read_E_from_file) then
           
@@ -1489,14 +1489,14 @@ Contains
     implicit none
 
     integer                               :: ix, iy, iz
-    character*20 ModeName
+    character*20                          :: ModeName
 
     !type (cvector):: wE
     !call create_cvector(mGrid,wE,EDGE)
 
     IF(.not.sigma_E%allocated) THEN
- 	WRITE(0,*) 'sigma_E not allocated yet: DivCorrSetUp'
- 	STOP
+        WRITE(0,*) 'sigma_E not allocated yet: DivCorrSetUp'
+        STOP
     ENDIF
 
     IF(.not.db1%allocated) THEN
@@ -1580,11 +1580,11 @@ Contains
           do ix = 2, mGrid%nx
 
              db1%x(ix, iy, iz) = db1%x(ix, iy, iz)*V_N%v(ix, iy, iz)
-	     db1%y(ix, iy, iz) = db1%y(ix, iy, iz)*V_N%v(ix, iy, iz)
-	     db1%z(ix, iy, iz) = db1%z(ix, iy, iz)*V_N%v(ix, iy, iz)
-	     db2%x(ix, iy, iz) = db2%x(ix, iy, iz)*V_N%v(ix, iy, iz)
-	     db2%y(ix, iy, iz) = db2%y(ix, iy, iz)*V_N%v(ix, iy, iz)
-	     db2%z(ix, iy, iz) = db2%z(ix, iy, iz)*V_N%v(ix, iy, iz)
+             db1%y(ix, iy, iz) = db1%y(ix, iy, iz)*V_N%v(ix, iy, iz)
+             db1%z(ix, iy, iz) = db1%z(ix, iy, iz)*V_N%v(ix, iy, iz)
+             db2%x(ix, iy, iz) = db2%x(ix, iy, iz)*V_N%v(ix, iy, iz)
+             db2%y(ix, iy, iz) = db2%y(ix, iy, iz)*V_N%v(ix, iy, iz)
+             db2%z(ix, iy, iz) = db2%z(ix, iy, iz)*V_N%v(ix, iy, iz)
 
           enddo
        enddo
@@ -1614,7 +1614,7 @@ Contains
                   db1%x(ix,iy,iz)*db2%x(ix-1,iy,iz)*d%v(ix-1,iy,iz)-&
                   db1%y(ix,iy,iz)*db2%y(ix,iy-1,iz)*d%v(ix,iy-1,iz)-&
                   db1%z(ix,iy,iz)*db2%z(ix,iy,iz-1)*d%v(ix,iy,iz-1)
-	     d%v(ix, iy, iz) = 1.0/ d%v(ix, iy, iz)
+             d%v(ix, iy, iz) = 1.0/ d%v(ix, iy, iz)
 
           enddo
        enddo
