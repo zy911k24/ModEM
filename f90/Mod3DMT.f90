@@ -49,19 +49,36 @@ program Mod3DMT
       ! set the grid for the numerical computations
 #ifdef MPI
       call setGrid_MPI(grid)
-      if (Read_Efield_from_file) then
-          if (taskid==0) then
-              call read_Efiled_from_file
-              call Interpolate_BC(grid)
-              call Master_job_Distribute_nTx_nPol(nTx_nPol)
-          else
-              call RECV_nTx_nPol
-              call ini_BC_from_file(grid)
-              call RECV_BC_form_Master
-          end if    
+    ! Check if a larg grid file with E field is defined:
+    ! NOTE: right now both grids share the same transmitters.
+    ! This why, reading and setting the large grid and its E solution comes after setting the trasnmitters Dictionary.
+    if (NESTED_BC) then
+      if (taskid==0) then
+            call read_Efield_from_file(solverParams)
+            call Interpolate_BC(grid)
+            call Master_job_Distribute_nTx_nPol(nTx_nPol)
+      else
+            call RECV_nTx_nPol
+            call ini_BC_from_file(grid)
+            call RECV_BC_form_Master
       end if    
+    end if    
 #else
       call setGrid(grid)
+#endif
+
+#ifdef MPI
+    if (BC_FROM_RHS_FILE) then
+        if (taskid==0) then
+            call read_rhsVectorMTX(grid,bAll,cUserDef%rFile_EMrhs)
+        else
+            ! need to logic to fetch the BCs from the master node
+        end if
+    end if
+#else
+    if (BC_FROM_RHS_FILE) then
+        call read_rhsVectorMTX(grid,bAll,cUserDef%rFile_EMrhs)
+    end if
 #endif
 
 #ifdef MPI
@@ -205,6 +222,11 @@ program Mod3DMT
         end select
         call write_modelParam(sigma1,cUserDef%wFile_Model)
 #endif
+
+     case (EXTRACT_BC)
+        ! no need to run the forward solution to extract the boundary
+        ! conditions from the initial electric field
+        call dryRun(sigma0,allData,bAll,eAll)
 
      case (TEST_GRAD)
         ! note that on input, dsigma is the non-smoothed model parameter
