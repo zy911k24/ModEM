@@ -397,6 +397,12 @@ Contains
       if (abs(rmsPrev - rms) < iterControl%fdiffTol) then
           ! update lambda, penalty functional and gradient
           call update_damping_parameter(lambda,mHat,value,grad)
+          ! check that lambda is still at a reasonable value
+          if (lambda < iterControl%lambdaTol) then
+              write(*,'(a55)') 'Unable to get out of a local minimum. Exiting...'
+              write(ioLog,'(a55)') 'Unable to get out of a local minimum. Exiting...'
+              exit
+          end if
           ! update alpha
           gnorm = sqrt(dotProd(grad,grad))
           write(*,'(a34,es12.6)') 'The norm of the last gradient is ',gnorm
@@ -407,31 +413,20 @@ Contains
           write(ioLog,'(a48,es12.6)') 'The value of line search step alpha updated to ',alpha
           ! g = - grad
           call linComb(MinusONE,grad,R_ZERO,grad,g)
-          ! check that lambda is still at a reasonable value
-          if (lambda < iterControl%lambdaTol) then
-          write(*,'(a55)') 'Unable to get out of a local minimum. Exiting...'
-          write(ioLog,'(a55)') 'Unable to get out of a local minimum. Exiting...'
-          ! multiply by C^{1/2} and add m_0
-          call CmSqrtMult(mHat,m_minus_m0)
-          call linComb(ONE,m_minus_m0,ONE,m0,m)
-          d = dHat
-          call deall_modelParam(m_minus_m0)
-          return
+          ! restart
+          write(*,'(a55)') 'Restarting NLCG with the damping parameter updated'
+          call printf('to',lambda,alpha,value,mNorm,rms)
+          write(ioLog,'(a55)') 'Restarting NLCG with the damping parameter updated'
+          call printf('to',lambda,alpha,value,mNorm,rms,logFile)
+          h = g
+          nCG = 0
+          cycle  
       end if
-      ! restart
-      write(*,'(a55)') 'Restarting NLCG with the damping parameter updated'
-      call printf('to',lambda,alpha,value,mNorm,rms)
-      write(ioLog,'(a55)') 'Restarting NLCG with the damping parameter updated'
-      call printf('to',lambda,alpha,value,mNorm,rms,logFile)
-      h = g
-      nCG = 0
-      cycle  
-  end if
 
-        g_dot_g = dotProd(g,g)
-        g_dot_gPrev = dotProd(g,gPrev)
-        gPrev_dot_gPrev = dotProd(gPrev,gPrev)
-        g_dot_h = dotProd(g,h)
+      g_dot_g = dotProd(g,g)
+      g_dot_gPrev = dotProd(g,gPrev)
+      gPrev_dot_gPrev = dotProd(gPrev,gPrev)
+      g_dot_h = dotProd(g,h)
 
 	  ! Polak-Ribiere variant
 	  beta = ( g_dot_g - g_dot_gPrev )/gPrev_dot_gPrev
@@ -441,17 +436,19 @@ Contains
 		! derivative = -g_{i+1}.dot.h_{i+1} to be negative, the condition
 		! g_{i+1}.dot.(g_{i+1}+beta*h_i) > 0 must hold. Alternatively, books
 		! say we can take beta > 0 (didn't work as well)
-	  if ((g_dot_g + beta*g_dot_h > 0).and.(nCG < iterControl%nCGmax)) then
-      	call linComb(ONE,g,beta,h,h)
-      	nCG = nCG + 1
-	  else
-   	    ! restart
-		write(*,'(a45)') 'Restarting NLCG to restore orthogonality'
-		write(ioLog,'(a45)') 'Restarting NLCG to restore orthogonality'
-        h = g
-        nCG = 0
-   	  end if
-
+      !if ((beta.lt.R_ZERO).or.(g_dot_g + beta*g_dot_h .le. R_ZERO)&
+      !    .and.(nCG .ge. iterControl%nCGmax)) then  !PR+
+      if ((g_dot_g + beta*g_dot_h .le. R_ZERO)&
+          .and.(nCG .ge. iterControl%nCGmax)) then  !PR
+          ! restart
+          write(*,'(a45)') 'Restarting NLCG to restore orthogonality'
+          write(ioLog,'(a45)') 'Restarting NLCG to restore orthogonality'
+          nCG = 0
+          beta = R_ZERO
+      else
+          nCG = nCG + 1
+      end if
+      call linComb(ONE,g,beta,h,h)
    end do
 
    ! multiply by C^{1/2} and add m_0

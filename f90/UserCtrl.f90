@@ -202,11 +202,11 @@ Contains
         write(*,*) ' -F  rFile_Model rFile_Data wFile_Data [wFile_EMsoln rFile_fwdCtrl]'
         write(*,*) '  Calculates the predicted data and saves the EM solution'
         write(*,*) '[INVERSE]'
-        write(*,*) ' -I NLCG rFile_Model rFile_Data [lambda eps]'
+        write(*,*) ' -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [lambda eps]'
         write(*,*) '  Here, lambda = the initial damping parameter for inversion'
         write(*,*) '           eps = misfit tolerance for the forward solver'
         write(*,*) 'OR'
-        write(*,*) ' -I NLCG rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
+        write(*,*) ' -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
         write(*,*) '  Optionally, may also supply'
         write(*,*) '      the model covariance configuration file   [rFile_Cov]'
         write(*,*) '      the starting model parameter perturbation [rFile_dModel]'
@@ -386,12 +386,12 @@ Contains
 
       case (INVERSE) ! I
         if (narg < 3) then
-           write(0,*) 'Usage: -I NLCG rFile_Model rFile_Data [lambda eps]'
+           write(0,*) 'Usage: -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [lambda eps]'
            write(0,*)
            write(0,*) 'Here, lambda = the initial damping parameter for inversion'
            write(0,*) '         eps = misfit tolerance for the forward solver'
            write(0,*) 'OR'
-           write(0,*) 'Usage: -I NLCG rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
+           write(0,*) 'Usage: -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
            write(0,*)
            write(0,*) 'Here, rFile_invCtrl = the inversion control file in the format'
            write(0,*)
