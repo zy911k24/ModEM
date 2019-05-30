@@ -57,6 +57,9 @@ public exitSolver
 
 ! solver routines
 public fwdSolve, sensSolve
+#ifdef PETSC
+public fwdSolve_petsc,sensSolve_petsc
+#endif
 
 logical, save, private		:: modelDataInitialized = .false.
 logical, save, private		:: BC_from_file_Initialized = .false.
@@ -92,9 +95,6 @@ subroutine Interpolate_BC(grid)
   end if
   write(15,*) ' End interpolating',BC_from_file(1)%yXMin(10,11)
   
-
-
-        
       
 end subroutine Interpolate_BC
 !**********************************************************************
@@ -200,6 +200,8 @@ end subroutine copyE0fromFile
       modelDataInitialized = .true.
    endif
 
+   ! now calls this all-at-once
+   ! call UpdateFreqCond(txDict(iTx)%omega, sigma)
 !    the following needs work ... want to avoid reinitializing
 !     operator coefficients when conductivity does not change;
 !     need to have a way to reset sigmaNotCurrent to false when
@@ -255,9 +257,6 @@ end subroutine copyE0fromFile
    endif
 
    end subroutine exitSolver
-
-
-
 
 
 !**********************************************************************
@@ -369,6 +368,8 @@ end subroutine copyE0fromFile
    !   boundary conditions are set internally (NOTE: could use transmitter
    !   dictionary to indireclty provide information about boundary
    !    conditions.  Presently we set BC using WS approach.
+   !
+   ! this *should* works with the SP versions as well
 
    integer, intent(in)		:: iTx
    type(solnVector_t), intent(inout)	:: e0
@@ -387,7 +388,7 @@ end subroutine copyE0fromFile
    !  call UpdateFreq(txDict(iTx)%omega)
    !  loop over polarizations
    if (txDict(iTx)%Tx_type=='MT') then
-   	do iMode = 1,e0%nPol
+       do iMode = 1,e0%nPol
 		! compute boundary conditions for polarization iMode
 		!   uses cell conductivity already set by updateCond
 		!call setBound(iTx,e0%Pol_index(iMode),e0%pol(imode),b0%bc)
@@ -398,9 +399,9 @@ end subroutine copyE0fromFile
 				' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
 		call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
 		write (6,*)node_info,'FINISHED solve, nPol',e0%nPol
-   	enddo
+   	   enddo
    else
-    write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run fwdSolve'
+       write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run fwdSolve'
    endif
 
    ! update pointer to the transmitter in solnVector
@@ -433,10 +434,10 @@ end subroutine copyE0fromFile
    	omega = txDict(iTx)%omega
    	period = txDict(iTx)%period
    	do iMode = 1,e%nPol
-      		comb%b(e%Pol_index(iMode))%adj = FWDorADJ
-      		write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info,'Solving the ',FWDorADJ, &
-				' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
-      		call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
+      	comb%b(e%Pol_index(iMode))%adj = FWDorADJ
+      	write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info,'Solving the ',FWDorADJ, &
+		' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
+      	call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
    	enddo
    else
     write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run sensSolve'

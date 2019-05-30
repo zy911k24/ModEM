@@ -202,15 +202,17 @@ Contains
         write(*,*) ' -F  rFile_Model rFile_Data wFile_Data [wFile_EMsoln rFile_fwdCtrl]'
         write(*,*) '  Calculates the predicted data and saves the EM solution'
         write(*,*) '[INVERSE]'
-        write(*,*) ' -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [lambda eps]'
+        write(*,*) ' -I NLCG rFile_Model rFile_Data [lambda eps]'
         write(*,*) '  Here, lambda = the initial damping parameter for inversion'
         write(*,*) '           eps = misfit tolerance for the forward solver'
         write(*,*) 'OR'
-        write(*,*) ' -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
+        write(*,*) ' -I NLCG rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
         write(*,*) '  Optionally, may also supply'
         write(*,*) '      the model covariance configuration file   [rFile_Cov]'
         write(*,*) '      the starting model parameter perturbation [rFile_dModel]'
         write(*,*) '  Runs an inverse search to yield an inverse model at every iteration'
+        write(*,*) '  NOTE: NLCG can be replaced with DCG or LBFGS to '
+        write(*,*) '      select a different inverse algorithm'
         write(*,*) '[COMPUTE_J]'
         write(*,*) ' -J  rFile_Model rFile_Data wFile_Sens [rFile_fwdCtrl]'
         write(*,*) '  Calculates and saves the full J(acobian)'
@@ -386,12 +388,15 @@ Contains
 
       case (INVERSE) ! I
         if (narg < 3) then
-           write(0,*) 'Usage: -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [lambda eps]'
+           write(0,*) 'Usage: -I NLCG rFile_Model rFile_Data [lambda eps]'
            write(0,*)
            write(0,*) 'Here, lambda = the initial damping parameter for inversion'
            write(0,*) '         eps = misfit tolerance for the forward solver'
            write(0,*) 'OR'
-           write(0,*) 'Usage: -I NLCG|DCG|Hybrid|LBFGS rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
+           write(0,*) 'Usage: -I NLCG rFile_Model rFile_Data [rFile_invCtrl rFile_fwdCtrl]'
+           write(0,*)
+           write(*,*) 'NOTE: NLCG can be replaced with DCG or LBFGS to '
+           write(*,*) '      select a different inverse algorithm'
            write(0,*)
            write(0,*) 'Here, rFile_invCtrl = the inversion control file in the format'
            write(0,*)
@@ -403,6 +408,9 @@ Contains
            write(0,*) 'Exit search when rms is less than  : 1.05'
            write(0,*) 'Exit when lambda is less than      : 1.0e-4'
            write(0,*) 'Maximum number of iterations       : 120'
+           write(0,*)
+           write(0,*) 'NOTE: change the maximum number of iterations to '
+           write(0,*) '    a value < 20 if DCG is the inverse algorithm'
            write(0,*)
            write(0,*) '      rFile_fwdCtrl = the forward solver control file in the format'
            write(0,*)
