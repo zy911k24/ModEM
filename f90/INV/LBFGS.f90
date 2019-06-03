@@ -488,7 +488,7 @@ Contains
       ! save dM and dG in our object...
       call update_LBFGSiterCache(saved,dM,dG) 
       call applyPrecond(grad,h,precType,ONE,ONE,saved)
-      call linComb(MinusONE, h, ONE, grad, h) 
+      call linComb(MinusONE, h, R_ZERO, grad, h) 
       ! call update_Hessian(h,saved,grad)
       write(*,*) 'Hessian updated with results from previous ', saved%nCache, ' iteration(s)'
       write(ioLog,*) 'Hessian updated with results from previous ', saved%nCache, ' iteration(s)'

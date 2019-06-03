@@ -355,7 +355,235 @@ subroutine QMR(b,x,QMRiter)
   deallocate(D)
   deallocate(S)
 
-end subroutine qmr ! qmr
+end subroutine QMR ! qmr
+
+! *****************************************************************************
+subroutine TFQMR(b,x,QMRiter,adjt)
+  ! a transpose-free version of Quasi-Minimum Residue Algorithm,
+  ! set up for solving
+  ! A x = b using routines in  mult_Aii.
+  ! solves for the interior (edge) field
+  ! see: 
+  ! Freund, Roland, A transpose-free quasi-minimal residual algorithm for
+  ! non-Hermitian linear systems, SIAM J. Sci. Comp., 14 (1993), 470--482.
+  !
+  ! modified from my matlab version of TFQMR...
+  ! so the naming might sound a little different from conventional ones
+  ! also added the optional adjoint to solve adjoint system A^Tx = b 
+  ! 
+  ! NOTE: like BICG, TFQMR performs two sub line searches within a 
+  !      iteration, but here we only store the relerr for the second sub
+  !      just to be compatitive with QMR
+  ! 
+  ! interface...........
+  ! redefining some of the interfaces for our convenience (locally)
+  ! generic routines for vector operations for edge/ face nodes
+  ! in a staggered grid
+  !
+  ! NOTE: this has not been extensively tested - I believe it feels a 
+  ! little unstable (dispite the name)...
+  ! if you have time reading this, test it!
+  use modeloperator3d, only: A => mult_Aii, M1solve => PC_Lsolve,        &
+     &                                      M2solve => PC_Usolve
+
+  implicit none
+  !  b is right hand side
+  complex (kind=prec), intent(in), dimension(:)    :: b
+  !  solution vector is x ... on input is provided with the initial
+  !  guess, on output is the iterate with smallest residual. 
+  !
+  complex (kind=prec), intent(inout),dimension(:)  :: x
+  type (solverControl_t), intent(inout)            :: QMRiter
+  logical,intent(in),optional                      :: adjt
+
+  ! local variables
+  complex (kind=prec),allocatable,dimension(:)  :: R, RT, V,T
+  complex (kind=prec),allocatable,dimension(:)  :: P,PT,PH,S,ST,SH,AX
+  complex (kind=prec),allocatable,dimension(:)  :: xhalf,xmin
+  real    (kind=prec)                           :: rnorm, bnorm, rnormin, btol
+  complex (kind=prec)                           :: RHO, ALPHA, BETA, OMEGA
+  complex (kind=prec)                           :: RTV,TT,RHO1
+  integer                                       :: iter, xsize, imin
+  integer                                       :: maxiter
+  logical                                       :: adjoint, ilu_adjt, converged
+ 
+  if (present(adjt)) then
+      adjoint = adjt
+      ilu_adjt = adjt
+  else
+      adjoint = .false.
+      ilu_adjt = .false.
+  endif
+  xsize = size(x,1)
+  ! Norm of rhs
+  bnorm = SQRT(dot_product(b, b))
+  if (isnan(bnorm)) then
+      write(0,*) 'Error: b in QMR contains NaNs; exiting...'
+      stop
+  else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
+      write(0,*) 'Warning: b in QMR has all zeros, returning zero solution'
+      x = b 
+      QMRiter%niter=1
+      QMRiter%failed=.false.
+      QMRiter%rerr=0.0
+      return
+  endif
+  ! allocate the local variables
+  allocate(R(xsize))
+  ! now calculate the (original) residual
+  call A(x,adjoint,R)
+  ! R= b - Ax, for inital guess x, that has been input to the routine
+  R = b - R
+  ! Norm of residual
+  rnorm = CDSQRT(dot_product(R, R))
+  btol = QMRiter%tol * bnorm
+  if ( rnorm .le. btol ) then ! the first guess is already good enough
+     ! returning
+      QMRiter%niter=1
+      QMRiter%failed=.false.
+      QMRiter%rerr(1)=real(rnorm/bnorm)
+      deallocate(R)
+      return 
+  else
+      ! allocate the rest here
+      allocate(xhalf(xsize))
+      allocate(xmin(xsize))
+      allocate(AX(xsize))
+      allocate(RT(xsize))
+      allocate(P(xsize))
+      allocate(PT(xsize))
+      allocate(PH(xsize))
+      allocate(S(xsize))
+      allocate(ST(xsize))
+      allocate(SH(xsize))
+      allocate(V(xsize))
+      allocate(T(xsize))
+  end if 
+!================= Now start configuring the iteration ===================!
+  ! the adjoint (shadow) residual
+  rnormin = rnorm
+  QMRiter%rerr(1) = real(rnormin/bnorm)
+  ! write(6,*) 'initial residual', QMRiter%rerr(1)
+  converged = .false.
+  maxiter = QMRiter%maxit 
+  imin = 0
+  RHO = C_ONE
+  OMEGA = C_ONE
+  RT = R
+  xmin = x
+  imin = 1
+!============================== looooops! ================================!
+  do iter= 1, maxiter
+      RHO1 = RHO
+      RHO = dot_product(RT,R)
+      if (RHO .eq. 0.0) then
+          QMRiter%failed = .true.
+          exit
+      end if 
+      if (iter .eq. 1) then
+          P = R
+      else 
+          BETA = (RHO/RHO1)*(ALPHA/OMEGA) 
+          if (BETA .eq. 0.0) then
+              QMRiter%failed = .true.
+              exit
+          end if
+          P= R + BETA * (P - OMEGA * V);
+      end if 
+      ! L
+      call M1solve(P,ilu_adjt,PT)
+      ! U
+      call M2solve(PT,ilu_adjt,PH)
+      ! PH = P
+      call A(PH,adjoint,V)
+      RTV = dot_product(RT,V)
+      if (RTV.eq.0.0) then
+          QMRiter%failed = .true.
+          exit
+      end if
+      ALPHA = RHO / RTV
+      if (ALPHA.eq.0.0) then
+          QMRiter%failed = .true.
+          exit
+      end if
+      xhalf = x + ALPHA*PH ! the first half of iteration
+      call A(xhalf,adjoint,AX)
+      AX = b - AX
+      rnorm = CDSQRT(dot_product(AX,AX))
+      QMRiter%rerr(iter)=real(rnorm/bnorm)
+      ! write(6,*) 'iter # ',iter,' xhalf residual: ', QMRiter%rerr(2*iter-1)
+      if (rnorm.lt.btol) then
+          x = xhalf
+          QMRiter%failed = .false.
+          QMRiter%niter = iter
+          converged = .true.
+          exit
+      end if
+      if (rnorm .lt. rnormin) then
+          rnormin = rnorm
+          xmin = xhalf
+          imin = iter
+      end if
+      S = R - ALPHA*V  !residual for the 0.5 x
+      ! L
+      call M1solve(S,ilu_adjt,ST)
+      ! U
+      call M2solve(ST,ilu_adjt,SH)
+!      SH = S
+      call A(SH,adjoint,T)
+      TT = dot_product(T,T)
+      if (TT.eq.0.0) then
+          QMRiter%failed = .true.
+          exit
+      end if
+      OMEGA = dot_product(T,S)/TT
+      if (OMEGA.eq.0.0) then
+          QMRiter%failed = .true.
+          exit
+      end if
+      x = xhalf + OMEGA * SH  ! the second half of iteration
+      call A(x,adjoint,AX)
+      AX = b - AX
+      rnorm = CDSQRT(dot_product(AX,AX))
+      QMRiter%rerr(iter) = real(rnorm / bnorm)
+      ! write(6,*) 'iter # ',iter,' x residual: ', QMRiter%rerr(2*iter)
+      if (rnorm.lt.btol) then
+          QMRiter%failed = .false.
+          QMRiter%niter = iter
+          converged = .true.
+          exit
+      end if
+      if (rnorm .lt. rnormin) then
+          rnormin = rnorm
+          xmin = x
+          imin = iter
+      end if
+      R = S - OMEGA * T  !residual for the 1.0 x
+  end do
+ 
+  if (.not. converged) then 
+      ! it should be noted that this is the way my matlab version works
+      ! the QMR will return the 'best' (smallest residual) iteration
+      x = xmin;  ! comment this line 
+      QMRiter%niter=QMRiter%maxit
+      QMRiter%rerr(QMRiter%maxit) = QMRiter%rerr(imin)  ! and this line
+      ! to use the last iteration result instead of the 'best'
+  end if
+
+  deallocate(xhalf)
+  deallocate(xmin)
+  deallocate(AX)
+  deallocate(R)
+  deallocate(RT)
+  deallocate(P)
+  deallocate(PT)
+  deallocate(PH)
+  deallocate(S)
+  deallocate(ST)
+  deallocate(SH)
+  deallocate(V)
+  deallocate(T)
+end subroutine TFQMR ! tfqmr 
 
 ! *****************************************************************************
 subroutine BICG(b,x,BICGiter,adjt)
@@ -412,21 +640,6 @@ subroutine BICG(b,x,BICGiter,adjt)
       ilu_adjt = .false.
   endif
   xsize = size(x,1)
-  ! allocate the local variables
-  allocate(xhalf(xsize))
-  allocate(xmin(xsize))
-  allocate(AX(xsize))
-  allocate(R(xsize))
-  allocate(RT(xsize))
-  allocate(P(xsize))
-  allocate(PT(xsize))
-  allocate(PH(xsize))
-  allocate(S(xsize))
-  allocate(ST(xsize))
-  allocate(SH(xsize))
-  allocate(V(xsize))
-  allocate(T(xsize))
-
   ! Norm of rhs
   bnorm = SQRT(dot_product(b, b))
   if (isnan(bnorm)) then
@@ -441,10 +654,11 @@ subroutine BICG(b,x,BICGiter,adjt)
       BICGiter%rerr=0.0
       return
   endif
+  ! allocate the local variables
+  allocate(R(xsize))
   ! now calculate the (original) residual
   call A(x,adjoint,R)
   ! R= b - Ax, for inital guess x, that has been inputted to the routine
-  rnorm = CDSQRT(dot_product(R, R))
   R = b - R
   ! Norm of residual
   rnorm = CDSQRT(dot_product(R, R))
@@ -454,7 +668,22 @@ subroutine BICG(b,x,BICGiter,adjt)
       BICGiter%niter=1
       BICGiter%failed=.false.
       BICGiter%rerr(1)=real(rnorm/bnorm)
-     return 
+      deallocate(R)
+      return 
+  else
+      ! allocate the rest here
+      allocate(xhalf(xsize))
+      allocate(xmin(xsize))
+      allocate(AX(xsize))
+      allocate(RT(xsize))
+      allocate(P(xsize))
+      allocate(PT(xsize))
+      allocate(PH(xsize))
+      allocate(S(xsize))
+      allocate(ST(xsize))
+      allocate(SH(xsize))
+      allocate(V(xsize))
+      allocate(T(xsize))
   end if 
 !================= Now start configuring the iteration ===================!
   ! the adjoint (shadow) residual
