@@ -14,7 +14,7 @@ program Mod3DMT
      !use mtinvsetup
 
 #ifdef MPI
-     Use MPI_main
+     Use Main_MPI
 #endif
 
      implicit none
@@ -30,7 +30,7 @@ program Mod3DMT
      integer                :: ios
 
 #ifdef MPI
-      call  MPI_constructor
+      call  constructor_MPI
       if (taskid==0) then
           call parseArgs('Mod3DMT',cUserDef)  
           ! OR readStartup(rFile_Startup,cUserDef)
@@ -87,7 +87,7 @@ program Mod3DMT
           if (trim(worker_job_task%what_to_do) .eq. 'Job Completed')  then
               call deallGlobalData()
               call cleanUp_MPI()
-              call MPI_destructor
+              call destructor_MPI
               stop
           end if
       end if
@@ -372,7 +372,7 @@ program Mod3DMT
 
 #ifdef MPI
       write(0,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
-      call MPI_destructor
+      call destructor_MPI
 #else
       write(0,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
 #endif

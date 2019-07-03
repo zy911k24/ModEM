@@ -1,6 +1,6 @@
 module LBFGS
 
-! inherits SensComp, DataIO and all modules they use. Also MPI_main and MPI_sub
+! inherits SensComp, DataIO and all modules they use. Also Main_MPI and Sub_MPI
 
 use invcore
 

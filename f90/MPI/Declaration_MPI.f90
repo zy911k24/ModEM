@@ -1,5 +1,5 @@
 
-Module MPI_declaration
+Module Declaration_MPI
 #ifdef MPI
      implicit none
 ! consider building mpi binding and using 'use mpi' instead
@@ -23,7 +23,7 @@ DOUBLE PRECISION    :: previous_time
 integer, allocatable, dimension(:) :: prev_group_sizes
 ! this is used for store the current name of proc/cpu to identify different
 ! platforms, useful to group cpus from different nodes
-character*(80) ::  MPI_current_proc_name
+character*(80) ::  current_proc_name_MPI
 
 !********************************************************************
 ! Parameters required to create an MPI derived data types.
@@ -168,4 +168,4 @@ end subroutine gather_runtime
 
 #endif
 
-end  module MPI_declaration
+end module Declaration_MPI

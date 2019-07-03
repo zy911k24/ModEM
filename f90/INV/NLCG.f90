@@ -1,6 +1,6 @@
 module NLCG
 
-! inherits SensComp, DataIO and all modules they use. Also MPI_main and MPI_sub
+! inherits SensComp, DataIO and all modules they use. Also Main_MPI and Sub_MPI
 
 use invcore
 
@@ -92,12 +92,12 @@ Contains
 
    subroutine read_NLCGiterControl(iterControl,rFile,fileExists)
 
-	type(NLCGiterControl_t), intent(inout)	:: iterControl
-    character(*), intent(in)		        :: rFile
-	logical, intent(out), optional          :: fileExists
-    integer									:: ios
-	logical                             	:: exists
-	character(80)							:: string
+    type(NLCGiterControl_t), intent(inout)  :: iterControl
+    character(*), intent(in)                :: rFile
+    logical, intent(out), optional          :: fileExists
+    integer                                 :: ios
+    logical                                 :: exists
+    character(80)                           :: string
 
     ! Initialize inverse solver configuration
 
@@ -218,31 +218,38 @@ Contains
    !  start with the result of a previous search.
 
    !  d is data; on output it contains the responses for the inverse model
-   type(dataVectorMTX_t), intent(inout)		   :: d
+   type(dataVectorMTX_t), intent(inout)         :: d
    !  lambda is regularization parameter
-   real(kind=prec), intent(inout)  :: lambda
+   real(kind=prec), intent(inout)               :: lambda
    !  m0 is prior model parameter
-   type(modelParam_t), intent(in)		       :: m0
+   type(modelParam_t), intent(in)               :: m0
    !  m is solution parameter ... on input m contains starting guess
-   type(modelParam_t), intent(inout)	       :: m
-   !  flavor is a string that specifies the algorithm to use
-   character(*), intent(in), optional        :: fname
+   type(modelParam_t), intent(inout)            :: m
+   !  fname is a string that specifies the control file
+   character(*), intent(in), optional           :: fname
    !  initial step size in the line search direction in model units
-   real(kind=prec)                           :: startdm
+   real(kind=prec)                              :: startdm
    !  flavor is a string that specifies the algorithm to use
-   character(80)                           :: flavor = 'Cubic'
+   character(80)                                :: flavor = 'Cubic'
 
    !  local variables
-   type(dataVectorMTX_t)			:: dHat, res
-   type(modelParam_t)			:: mHat, m_minus_m0, grad, g, h, gPrev
-   !type(NLCGiterControl_t)			:: iterControl
-   real(kind=prec)		:: value, valuePrev, rms, rmsPrev, alpha, beta, gnorm, mNorm, Nmodel
-   real(kind=prec)      :: grad_dot_h, g_dot_g, g_dot_gPrev, gPrev_dot_gPrev, g_dot_h
-   integer				:: iter, nCG, nLS, nfunc, ios
-   logical              :: ok
-   character(3)         :: iterChar
-   character(100)       :: mFile, mHatFile, gradFile, dataFile, resFile, logFile
-   type(solnVectorMTX_t)      :: eAll
+   type(dataVectorMTX_t)                        :: dHat, res
+   type(modelParam_t)                           :: mHat, m_minus_m0
+   type(modelParam_t)                           :: grad, g, h, gPrev
+   !type(NLCGiterControl_t)			            :: iterControl
+   real(kind=prec)                              :: value, valuePrev, rms
+   real(kind=prec)                              :: rmsPrev, alpha, beta
+   real(kind=prec)                              :: gnorm, mNorm, Nmodel
+   real(kind=prec)                              :: grad_dot_h, g_dot_g
+   real(kind=prec)                              :: g_dot_gPrev,g_dot_h
+   real(kind=prec)                              :: gPrev_dot_gPrev 
+   real(kind=prec)                              :: h_dot_g, h_dot_gPrev
+   integer                                      :: iter, nCG, nLS, nfunc, ios
+   logical                                      :: ok
+   character(3)                                 :: iterChar
+   character(100)                               :: mFile, mHatFile, gradFile
+   character(100)                               :: dataFile, resFile, logFile
+   type(solnVectorMTX_t)                        :: eAll
 
    if (present(fname)) then
       call read_NLCGiterControl(iterControl,fname,ok)
@@ -283,7 +290,6 @@ Contains
    nfunc = 1
 
    write(iterChar,'(i3.3)') 0
-
    ! output (smoothed) initial model and responses for later reference
    call CmSqrtMult(mHat,m_minus_m0)
    call linComb(ONE,m_minus_m0,ONE,m0,m)
@@ -305,14 +311,14 @@ Contains
 
    ! update the initial value of alpha if necessary
    gnorm = sqrt(dotProd(grad,grad))
-   write(*,'(a37,es12.6)') 'The initial norm of the gradient is ',gnorm
-   write(ioLog,'(a37,es12.6)') 'The initial norm of the gradient is ',gnorm
+   write(*,'(a42,es12.5)') '    GRAD: initial norm of the gradient is',gnorm
+   write(ioLog,'(a42,es12.5)') '     GRAD: initial norm of the gradient is',gnorm
    if (gnorm < TOL6) then
       call errStop('Problem with your gradient computations: first gradient is zero')
    else !if (alpha * gnorm > startdm) then
       alpha = startdm / gnorm
-      write(*,'(a39,es12.6)') 'The initial value of alpha updated to ',alpha
-      write(ioLog,'(a39,es12.6)') 'The initial value of alpha updated to ',alpha
+      write(*,'(a39,es12.5)') 'The initial value of alpha updated to ',alpha
+      write(ioLog,'(a39,es12.5)') 'The initial value of alpha updated to ',alpha
    end if
 
    ! initialize CG: g = - grad; h = g
@@ -321,17 +327,16 @@ Contains
    g = grad
    call linComb(MinusONE,grad,R_ZERO,grad,g)
    h = g
-
    do
       !  test for convergence ...
       if((rms.lt.iterControl%rmsTol).or.(iter.ge.iterControl%maxIter)) then
          exit
       end if
 
-	  iter = iter + 1
+      iter = iter + 1
 
 	  ! save the values of the functional and the directional derivative
-		rmsPrev = rms
+	  rmsPrev = rms
 	  valuePrev = value
 	  grad_dot_h = dotProd(grad,h)
 
@@ -371,25 +376,25 @@ Contains
 
       ! write out the intermediate model solution and responses
       call CmSqrtMult(mHat,m_minus_m0)
-   	  call linComb(ONE,m_minus_m0,ONE,m0,m)
-   	  write(iterChar,'(i3.3)') iter
-   	  if (output_level > 1) then
-   	    mFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.rho'
+      call linComb(ONE,m_minus_m0,ONE,m0,m)
+      write(iterChar,'(i3.3)') iter
+      if (output_level > 1) then
+        mFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.rho'
         call write_modelParam(m,trim(mFile))
       end if
-   	  if (output_level > 2) then
-   	    mHatFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.prm'
+      if (output_level > 2) then
+        mHatFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.prm'
         call write_modelParam(mHat,trim(mHatFile))
       end if
-   	  if (output_level > 2) then
-   	    dataFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.dat'
+      if (output_level > 2) then
+        dataFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.dat'
         call write_dataVectorMTX(dHat,trim(dataFile))
       end if
       ! compute residual for output: res = d-dHat; do not normalize by errors
-   	  if (output_level > 2) then
+      if (output_level > 2) then
         res = d
         call linComb(ONE,d,MinusONE,dHat,res)
-   	    resFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.res'
+        resFile = trim(iterControl%fname)//'_NLCG_'//iterChar//'.res'
         call write_dataVectorMTX(res,trim(resFile))
       end if
 
@@ -405,12 +410,12 @@ Contains
           end if
           ! update alpha
           gnorm = sqrt(dotProd(grad,grad))
-          write(*,'(a34,es12.6)') 'The norm of the last gradient is ',gnorm
-          write(ioLog,'(a34,es12.6)') 'The norm of the last gradient is ',gnorm
+          write(*,'(a34,es12.5)') 'The norm of the last gradient is ',gnorm
+          write(ioLog,'(a34,es12.5)') 'The norm of the last gradient is ',gnorm
           !alpha = min(iterControl%alpha_1,startdm/gnorm)
           alpha = min(ONE,startdm)/gnorm
-          write(*,'(a48,es12.6)') 'The value of line search step alpha updated to ',alpha
-          write(ioLog,'(a48,es12.6)') 'The value of line search step alpha updated to ',alpha
+          write(*,'(a48,es12.5)') 'The value of line search step alpha updated to ',alpha
+          write(ioLog,'(a48,es12.5)') 'The value of line search step alpha updated to ',alpha
           ! g = - grad
           call linComb(MinusONE,grad,R_ZERO,grad,g)
           ! restart
