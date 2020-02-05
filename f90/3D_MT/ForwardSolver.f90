@@ -230,15 +230,8 @@ end subroutine copyE0fromFile
 
    ! local variables
    logical			:: initForSens
-   character(10)    :: txType
 
    initForSens = present(comb)
-
-   if(present(e0)) then
-      if(e0%allocated) then
-        txType = txDict(e0%tx)%tx_type
-      endif
-   endif
 
    if(present(e0)) then
       call deall_solnVector(e0)
