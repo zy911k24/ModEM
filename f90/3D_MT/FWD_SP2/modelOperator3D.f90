@@ -282,7 +282,9 @@ Contains
          SigEdge = sigVec
          SigNode = sigVec2
          SigEdge(EDGEb) = 0.0 !force the boundary to be zeros...
-         SigNode(NODEb) = 0.0 !force the boundary to be zeros...
+         ! note: we don't really want to do this for the nodes as we will be
+         ! using 1./SigNode as scaling factor
+         ! SigNode(NODEb) = 0.0 !force the boundary to be zeros...
          ! modify the system equation here,
          ! as the GD should be updated whenever the omega or the conductivity
          ! is updated
