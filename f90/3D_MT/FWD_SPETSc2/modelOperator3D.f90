@@ -155,7 +155,11 @@ Contains
       real (kind=prec), intent (in)             :: inOmega
 
       call updateOmegaMuSig(inOmega)
+#ifdef PETSC
+      ! don't need to setup this as we will use preconditioner in PETSc
+#else
       call PC_setup()
+#endif
       ! don't really need this with modified system equation
       ! or do we?
       ! call DivCorSetup()
@@ -198,7 +202,9 @@ Contains
        SigEdge = sigVec
        SigNode = sigVec2
        SigEdge(EDGEb) = 0.0 !force the boundary to be zeros...
-       SigNode(NODEb) = 0.0 !force the boundary to be zeros...
+       ! note: we don't really want to do this for the nodes as we will be
+       ! using 1./SigNode as scaling factor
+       ! SigNode(NODEb) = 0.0 !force the boundary to be zeros...
        ! modify the system equation here,
        ! as the GD should be updated whenever the omega or the conductivity
        ! is updated
@@ -225,7 +231,11 @@ Contains
       real (kind=prec), intent (in)       :: inOmega
 
       call updateOmegaMuSig(inOmega,CondParam)
+#ifdef PETSC
+      ! don't need to setup this as we will use preconditioner in PETSc
+#else
       call PC_setup()
+#endif
       ! don't really need this with modified system equation
       ! or do we?
       ! call DivCorSetup()
@@ -274,8 +284,6 @@ Contains
          SigEdge = sigVec
          SigNode = sigVec2
          SigEdge(EDGEb) = 0.0 !force the boundary to be zeros...
-         ! note: we don't really want to do this for the nodes as we will be
-         ! using 1./SigNode as scaling factor
          ! SigNode(NODEb) = 0.0 !force the boundary to be zeros...
          ! modify the system equation here,
          ! as the GD should be updated whenever the omega or the conductivity
