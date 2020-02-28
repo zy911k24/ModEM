@@ -173,7 +173,7 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
      call MPI_COMM_SIZE(comm_local, size_local, ierr)
      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 !    for debug
-     write(6,100) rank_world, rank_local, igroup, size_local
+     ! write(6,100) rank_world, rank_local, igroup, size_local
 100  format("Global rank: ",i4," local rank: ",i4,                      &
     &          " size of group #"  i4, " is ",i4)
      call reset_MPI_leader_group(comm_world, group_world, Ngroup,   &
@@ -273,6 +273,9 @@ Subroutine set_group_sizes(comm_current,nTx,nPol,group_sizes,walltime)
                  def = 1 ! go to default settings
              else
                  def = 2 ! dynamic balancing
+                 ! for debug
+!                 write(6,*) 'effective cpus =', &
+!    &                     log(2.0+group_sizes(2:nG+1))/log(3.0)
                  workload = sum(cputime)/sum(log(2.0+group_sizes(2:nG+1))/log(3.0))
              endif
          end if
@@ -301,12 +304,18 @@ Subroutine set_group_sizes(comm_current,nTx,nPol,group_sizes,walltime)
              endif !asize
          elseif (def.eq.2) then ! dynamic balancing the workers
              group_sizes = 0
+             ! root always has its own group
              group_sizes(1) = 1
+             ! for debug
+             ! write(6,*) 'walltime = ', walltime(2:nG+1)
+             ! write(6,*) 'cputime = ', cputime
+             ! write(6,*) 'workload= ', workload
              do i = 1,nG
                  ratio = cputime(i)/workload
-                 ! write(6,*) 'ratio =', ratio
+                 ! for debug
+                 ! write(6,*) 'group ', idx(i), 'ratio =', ratio
                  ratio = 3.0**ratio - 2.0
-                 ! write(6,*) 'ncpu =', ratio
+                 ! write(6,*) 'group ', idx(i), 'ncpu =', ratio
                  group_sizes(idx(i)+1) = nint(ratio)
                  if (group_sizes(idx(i)+1).le.0) then
                      ! assign at least one cpu
@@ -1308,8 +1317,8 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out,eAll_in)
 1500 continue                                   
      end do
 
-     if (trim(job_name).eq. 'JmultT' .or. trim(job_name).eq.'Jmult') then
-         ! only regroup after the gradient calculation
+     if (trim(job_name).eq. 'JmultT') then
+         ! only regroup after the ADJ calculation
          ! avoid the extra overheads
          call Master_Job_Regroup(nTx,nPol_MPI,ierr)
      endif
@@ -1359,7 +1368,6 @@ Subroutine Worker_Job (sigma,d)
      nTx=d%nTx
      recv_loop=0
      previous_message=''
-     time_passed = -1.0
      write(node_info,'(a5,i3.3,a4)') 'node[',taskid,']:  '
 
      do  ! the major loop
@@ -1394,7 +1402,10 @@ Subroutine Worker_Job (sigma,d)
          ! '; several TX = ',worker_job_task%several_Tx,']'
 
          if (trim(worker_job_task%what_to_do) .eq. 'FORWARD') then
-             previous_time = MPI_Wtime()
+             ! reset the timer
+             now = MPI_Wtime()
+             previous_time = now
+
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
              if (rank_local .eq. 0) then ! leader here
@@ -1436,9 +1447,9 @@ Subroutine Worker_Job (sigma,d)
                  call fwdSolve(per_index,e0,b0,comm_local) 
 #else
                  write(6,*) 'idle NODE #', rank_world, ' hanging around'
-                 write(6,*) 'WARNING: more than enough CPUs detected.'
-                 write(6,*) 'Please consider decreasing the number of CPUs'
-                 write(6,*) 'or recompile with PETSC flag'
+                 write(6,*) '  WARNING: more than enough CPU(s) detected.'
+                 write(6,*) '  Please consider decrease the number of CPUs'
+                 write(6,*) '  or recompile with PETSC flag'
 #endif
              end if
              if (rank_local .eq. 0) then ! leader here
@@ -1459,11 +1470,17 @@ Subroutine Worker_Job (sigma,d)
              ! so long!
              call MPI_BARRIER(comm_local, ierr)
              now = MPI_Wtime()
-             time_passed = now - previous_time
+             ! if (rank_local.eq.0) then !leader 
+             !     write(6,*) 'group #', rank_leader, ' previous =',        &
+             !         previous_time, 'now = ', now
+             ! endif
+             time_passed = time_passed + now - previous_time
              previous_time = now
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'COMPUTE_J') then
-             previous_time = MPI_Wtime() !record the time
+             ! reset the timer
+             now = MPI_Wtime()
+             previous_time = now
 
              per_index=worker_job_task%per_index
              stn_index=worker_job_task%stn_index
@@ -1596,9 +1613,9 @@ Subroutine Worker_Job (sigma,d)
                      call sensSolve(per_index,TRN,e,comb,comm_local)
 #else
                      write(6,*) 'idle NODE #', rank_world, ' hanging around'
-                     write(6,*) 'WARNING: more than enough CPUs detected.'
-                     write(6,*) 'Please consider decrease the number of CPUs'
-                     write(6,*) 'or recompile with PETSC flag'
+                     write(6,*) '  WARNING: more than enough CPU(s) detected.'
+                     write(6,*) '  Please consider decrease the number of CPUs'
+                     write(6,*) '  or recompile with PETSC flag'
 #endif
                  enddo  ! iFunc
              end if 
@@ -1628,11 +1645,18 @@ Subroutine Worker_Job (sigma,d)
              ! Das vidania
              call MPI_BARRIER(comm_local, ierr)
              now = MPI_Wtime()
-             time_passed = now - previous_time
+             ! if (rank_local.eq.0) then !leader 
+             !     write(6,*) 'group #', rank_leader, ' previous =',        &
+             !         previous_time, 'now = ', now
+             ! endif
+             time_passed = time_passed + now - previous_time
              previous_time = now
              
          elseif (trim(worker_job_task%what_to_do) .eq. 'JmultT') then
-             previous_time = MPI_Wtime()
+             ! reset the timer
+             now = MPI_Wtime()
+             previous_time = now
+
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
 
@@ -1692,11 +1716,12 @@ Subroutine Worker_Job (sigma,d)
                  call sensSolve(per_index,TRN,e,comb,comm_local)
 #else
                  write(6,*) 'idle NODE #', rank_world, ' hanging around'
-                 write(6,*) 'WARNING: more than enough CPUs detected.'
-                 write(6,*) 'Please consider decrease the number of CPUs'
-                 write(6,*) 'or recompile with PETSC flag'
+                 write(6,*) '  WARNING: more than enough CPU(s) detected.'
+                 write(6,*) '  Please consider decrease the number of CPUs'
+                 write(6,*) '  or recompile with PETSC flag'
 #endif
              endif
+             call reset_e_soln(e)
              if (rank_local.eq.0) then !leader 
                  ! Send Info. about the current worker.
                  call create_worker_job_task_place_holder
@@ -1709,17 +1734,22 @@ Subroutine Worker_Job (sigma,d)
                  call MPI_SEND(e_para_vec, Nbytes, MPI_PACKED, 0,         &
     &                FROM_WORKER, comm_leader, ierr)
              endif
-             call reset_e_soln(e)
              !deallocate(e_para_vec,worker_job_package)
              ! hasta la vista!
              call MPI_BARRIER(comm_local, ierr)
              now = MPI_Wtime()
-             time_passed = now - previous_time
+             ! if (rank_local.eq.0) then !leader 
+             !     write(6,*) 'group #', rank_leader, ' previous =',        &
+             !         previous_time, 'now = ', now
+             ! endif
+             time_passed = time_passed + now - previous_time
              previous_time = now
                     
          elseif (trim(worker_job_task%what_to_do) .eq. 'Jmult') then
+             ! reset the timer
+             now = MPI_Wtime()
+             previous_time = now
 
-             previous_time = MPI_Wtime()
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
              worker_job_task%taskid=rank_leader
@@ -1737,6 +1767,8 @@ Subroutine Worker_Job (sigma,d)
     &                   ierr)
                      end do
                  end if
+                 write(6,'(a12,a18,i5,a12)') node_info,                  &
+    &                ' Start Receiving    ' , orginal_nPol, ' from Master'
                  do ipol=1,orginal_nPol 
                      which_pol=ipol
                      call create_e_param_place_holder(e0)
@@ -1744,6 +1776,8 @@ Subroutine Worker_Job (sigma,d)
     &                    FROM_MASTER,comm_leader, STATUS, ierr)
                      call Unpack_e_para_vec(e0)
                  end do
+                 write(6,'(a12,a18,i5,a12)') node_info,                  &
+    &                ' Finished Receiving ' , orginal_nPol, ' from Master'
                  call Pmult(e0,sigma,delSigma,comb)
              endif
              if (rank_local.eq.0) then
@@ -1774,11 +1808,12 @@ Subroutine Worker_Job (sigma,d)
                  call sensSolve(per_index,FWD,e,comb,comm_local)
 #else
                  write(6,*) 'idle NODE #', rank_world, ' hanging around'
-                 write(6,*) '    WARNING: more than enough CPU(s) detected.'
-                 write(6,*) '    Please consider decrease the number of CPUs'
-                 write(6,*) '    or recompile with PETSC flag'
+                 write(6,*) '  WARNING: more than enough CPU(s) detected.'
+                 write(6,*) '  Please consider decrease the number of CPUs'
+                 write(6,*) '  or recompile with PETSC flag'
 #endif
              endif
+             call reset_e_soln(e)
              if (rank_local.eq.0) then !leader 
                  ! Send Info. about the current worker.
                  call create_worker_job_task_place_holder
@@ -1792,11 +1827,14 @@ Subroutine Worker_Job (sigma,d)
                  call MPI_SEND(e_para_vec, Nbytes, MPI_PACKED, 0,         &
     &               FROM_WORKER, comm_leader, ierr)
              endif
-             call reset_e_soln(e)
              ! Aba yo!
              call MPI_BARRIER(comm_local, ierr)
              now = MPI_Wtime()
-             time_passed = now - previous_time
+             ! if (rank_local.eq.0) then !leader 
+             !     write(6,*) 'group #', rank_leader, ' previous =',        &
+             !         previous_time, 'now = ', now
+             ! endif
+             time_passed = time_passed + now - previous_time
              previous_time = now
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'Distribute nTx')&
@@ -1975,6 +2013,7 @@ Subroutine Worker_Job (sigma,d)
     &                 FROM_WORKER, comm_local, ierr)
              end if
          elseif (trim(worker_job_task%what_to_do) .eq. 'REGROUP') then
+             ! calculate the time between two regroup events
              if (rank_local.eq.0) then !passing the command to workers
                  if (size_local.gt.1) then !passing the command to workers
                      do des_index=1, size_local-1
@@ -1985,6 +2024,10 @@ Subroutine Worker_Job (sigma,d)
                  end if 
                  call gather_runtime(comm_leader,time_passed,time_buff,ierr)
              else if (rank_local.eq.-1) then ! initial run
+                 ! reset the timer, for the first run
+                 now = MPI_Wtime()
+                 previous_time = now
+                 time_passed = -1.0
                  call gather_runtime(comm_leader,time_passed,time_buff,ierr)
              endif
              ! strangely, the which_per and which_pol stores the maximum
@@ -1994,10 +2037,14 @@ Subroutine Worker_Job (sigma,d)
              allocate(group_sizes(which_per*which_pol+1))
              call set_group_sizes(comm_world,which_per,which_pol,group_sizes)
              call split_MPI_groups(which_per,which_pol,group_sizes)
-             if ((rank_local.eq.-1).or.(rank_local.eq.0)) then 
+             ! now reset the timer
+             time_passed = 0.0
+             if (associated(time_buff)) then 
                  deallocate(time_buff) 
              endif
-             deallocate(group_sizes) 
+             if (allocated(group_sizes)) then 
+                 deallocate(group_sizes) 
+             endif
          elseif (trim(worker_job_task%what_to_do) .eq. 'STOP' ) then
 
              if (rank_local.eq.0) then 
