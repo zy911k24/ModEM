@@ -51,6 +51,8 @@ module modelOperator3D
                                          !  as the Air part should be zero?
                                          !  int.-int.
    !   divergence correction operators
+   !   these are (should) not allocated in modified system of equations.
+   type(spMatCSR_Real)         ::  Gai   ! grad: all nodes -> inner edges 
    type(spMatCSR_Real)         ::  VDiv  ! div : edges->nodes (interior only)
    type(spMatCSR_Real)         ::  VDsG  !   operator for div correction
    type(spMatCSR_Real)         ::  VDs   !     divergence of current operator
@@ -109,7 +111,7 @@ Contains
       omega = 0.0
       !  specific model operators
       call CurlCurlSetup()
-      ! don't really need this with modified system equation
+      ! uncomment the following line to do divergence correction in CCGD 
       ! call DivCorInit()
 
    end subroutine ModelDataInit
@@ -123,7 +125,7 @@ Contains
       call deall_spMatCSR(G)
       call CurlCurlCleanup()
       call deall_PC()
-      ! don't really need this with modified system equation
+      ! uncomment the following line to do divergence correction in CCGD 
       ! call deall_DivCor()
 
       !    interior and edge indicies
@@ -156,8 +158,7 @@ Contains
 
       call updateOmegaMuSig(inOmega)
       call PC_setup()
-      ! don't really need this with modified system equation
-      ! or do we?
+      ! uncomment the following line to do divergence correction in CCGD 
       ! call DivCorSetup()
 
    end subroutine UpdateFreq  ! UpdateFreq
@@ -226,8 +227,7 @@ Contains
 
       call updateOmegaMuSig(inOmega,CondParam)
       call PC_setup()
-      ! don't really need this with modified system equation
-      ! or do we?
+      ! uncomment the following line to do divergence correction in CCGD 
       ! call DivCorSetup()
 
       ! TEMPORARY; REQUIRED FOR BOUNDARY CONDITIONS
@@ -692,7 +692,7 @@ Contains
          allNodes(i) = i
       enddo
       call DIAGxRMAT(d,G,Temp)
-      call subMatrix_Real(Temp,EDGEi,allNodes,G)
+      call subMatrix_Real(Temp,EDGEi,allNodes,Gai)
       call deall_spMatCSR(Temp)
       deallocate(allNodes)
       deallocate(d)
@@ -726,11 +726,12 @@ Contains
       call RMATxDIAG(VDiv,d,VDs)
       ! Construct VDsG   ...  symmetric operator for divergence correction
       !      solver
-      allocate(allNodes(G%nRow))
-      do i=1,G%nRow
+      allocate(allNodes(Gai%nRow))
+      do i=1,Gai%nRow
          allNodes(i) = i
       enddo
-      call subMatrix_Real(G,allNodes,NODEi,Temp)
+      ! take only inner nodes here
+      call subMatrix_Real(Gai,allNodes,NODEi,Temp)
       call RMATxRMAT(VDs,Temp,VDsG)
       ! Setup preconditioner
       call Dilu_Real(VDsG,VDsG_L,VDsG_U)
@@ -744,6 +745,7 @@ Contains
 !*****************************************************************************
    subroutine deall_DivCor()
    !   implement the sparse matrix multiply for curl-curl operator
+      call deall_spMatCSR(Gai)
       call deall_spMatCSR(VDiv)
       call deall_spMatCSR(VDs)
       call deall_spMatCSR(VDsG)
@@ -775,11 +777,12 @@ Contains
    end subroutine
 !*****************************************************************************
    subroutine DivC(inE,outPhi)
-   !   implement multiplication by DivC
+   !  implement multiplication by DivC mapping from inner edges -> all nodes
+   !  mapping 
       implicit none
       complex(kind=prec),intent(in)    :: inE(:)
       complex(kind=prec),intent(inout)    :: outPhi(:)
-        call RMATxCVEC(VDs,inE,outPhi)
+      call RMATxCVEC(VDs,inE,outPhi)
       return
    end subroutine
 !*****************************************************************************
@@ -788,7 +791,7 @@ Contains
       implicit none
       complex(kind=prec),intent(in)    :: inPhi(:)
       complex(kind=prec),intent(inout)    :: outE(:)
-        call RMATxCVEC(G,inPhi,outE)
+      call RMATxCVEC(Gai,inPhi,outE)
       return
    end subroutine
 
@@ -799,7 +802,7 @@ Contains
       complex(kind=prec),intent(in)       :: inE(:)
       complex(kind=prec),intent(inout)    :: outPhi(:)
       type(spMatCSR_Real)                 :: D
-      call RMATtrans(G,D)
+      call RMATtrans(Gai,D)
       call RMATxCVEC(D,inE,outPhi)
       call deall_spMatCSR(D)
       return

@@ -159,6 +159,14 @@ Contains
     allocate(temp(Ne))
     ! at this point e should be all zeros if there's no initial guess
     call getCVector(eSol,e)
+    ! uncomment the following 6 lines to try divergence correction in CCGD
+    ! make sure you want to do this, first!
+    ! if(bRHS%nonZero_Source) then ! source (TRN)
+    !    !   this is for *all* nodes
+    !    Nni = size(NODEi,1)
+    !    Nn  = size(NODEb,1) + Nni
+    !    allocate(phi0(Nn))
+    ! endif
     ! Using boundary condition and sources from rHS data structure
     ! construct vector b (defined only on interior nodes) for rHS of
     ! reduced (interior nodes only) linear system of equations
@@ -193,6 +201,8 @@ Contains
        endif
        iOmegaMuInv = ISIGN/cmplx(0.0,omega*MU_0,prec)
        b = s(EDGEi) ! taking only the interior edges
+       ! uncomment the following line, to do divergence correction
+       ! call Div(b,phi0)
        b = b * iOmegaMuInv / Vedge(EDGEi)
        call RMATxCVEC(GDii,b,stemp)
        stemp = Vedge(EDGEi)*stemp
@@ -230,7 +240,12 @@ Contains
              ! normal source
              call getVector(bRHS%s, s)
           endif
-          temp = Vedge*s
+          iOmegaMuInv = ISIGN/cmplx(0.0,omega*MU_0,prec)
+          b = s(EDGEi) ! taking only the interior edges
+          b = b * iOmegaMuInv/Vedge(EDGEi)
+          call RMATxCVEC(GDii,b,stemp)
+          stemp = Vedge(EDGEi)*stemp
+          temp = s(EDGEi) + stemp
           if(bRHS%nonzero_BC) then
              b = temp(EDGEi) - b
           else
@@ -246,11 +261,6 @@ Contains
     !
     ! e = current best solution (only on interior edges)
     ! b = rHS
-    !
-    ! at present we don't really have the option to skip
-    ! the divergence correction.  Not sure how/if this should
-    ! be done.
-
     ! resetting
     nIterTotal = 0
     nDivCor = 0
@@ -277,10 +287,10 @@ Contains
     ei = e(EDGEi)
     !  idea to test: for non-zero source START with divergence
     !   correction
-!    if(bRHS%nonzero_Source) then
-!       nDivCor = 1
-!       Call SdivCorr(ei,phi0)
-!    endif
+    ! if(bRHS%nonzero_Source) then
+    !   nDivCor = 1
+    !   Call SdivCorr(ei,phi0)
+    ! endif
     loop: do while ((.not.converged).and.(.not.failed))
        Call BICG(b, ei, KSSiter)
        ! Call QMR(b, ei, KSSiter) 
@@ -302,12 +312,13 @@ Contains
        nIterTotal = nIterTotal + KSSiter%niter
        nDivCor = nDivCor+1
        if( nDivCor < MaxDivCor) then
-          ! do divergence correction
-!          if(bRHS%nonzero_Source) then
-!             Call SdivCorr(ei,phi0)
-!          else
-!             Call SdivCorr(ei)
-!          endif
+          ! uncomment the following lines to try divergence correction after
+          ! solving the system matrix...
+          ! if(bRHS%nonzero_Source) then
+          !    Call SdivCorr(ei,phi0)     
+          ! else
+          !    Call SdivCorr(ei)
+          ! endif
        else
           ! max number of divergence corrections exceeded; convergence failed
           failed = .true.
@@ -353,6 +364,10 @@ Contains
     deallocate(ei)
     deallocate(temp)
     deallocate(stemp)
+    ! uncomment the following lines for divergence correction
+    ! if(bRHS%nonzero_Source) then
+    !     deallocate(phi0)
+    ! end if
     Call deall(tvec)
     deallocate(KSSiter%rerr)
 
@@ -435,12 +450,14 @@ subroutine SdivCorr(inE,phi0)
   end if
   ! compute gradient of phiSol (Divergence correction for inE)
   phiAll(NODEi) = phiSol
+  ! all nodes -> inner edges
   call Grad(phiAll,cE)
 
   ! subtract Divergence correction from inE
   inE = inE - cE
 
   ! divergence of the corrected output electrical field
+  ! inner Edges -> inner Nodes
   Call DivC(inE,phiRHS)
 
   !  If source term is present, subtract from divergence of currents
@@ -454,7 +471,7 @@ subroutine SdivCorr(inE,phi0)
 
   ! output level defined in basic file_units module
   ! write(6,*) divJ(1,nDivCor), divJ(2,nDivCor)
-  if (output_level > 3) then
+  if (output_level > 2) then
      write(*,'(a12,a47,g15.7)') node_info, 'divergence of currents before correction: ', divJ(1, nDivCor)
      write(*,'(a12,a47,g15.7)') node_info, 'divergence of currents  after correction: ', divJ(2, nDivCor)
   end if

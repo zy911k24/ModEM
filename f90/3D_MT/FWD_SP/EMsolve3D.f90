@@ -196,7 +196,7 @@ Contains
           endif ! otherwise the eSol should be all zeros
           return
        endif
-       !  note that Div is formed from all edges to all nodes
+       !  note that Div is formed from inner edges to all nodes
        b = s(EDGEi) ! taking only the interior edges
        call Div(b,phi0)
     else ! trans = .false.
@@ -252,10 +252,6 @@ Contains
     ! e = current best solution (only on interior edges)
     ! b = rHS
     !
-    ! at present we don't really have the option to skip
-    ! the divergence correction.  Not sure how/if this should
-    ! be done.
-
     ! resetting
     nIterTotal = 0
     nDivCor = 0
