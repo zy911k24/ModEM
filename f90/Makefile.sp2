@@ -47,7 +47,7 @@ include Makefile.local
 OBJDIR = ./objs/3D_MT/GFortReleaseMPI_SP2
 F90 = mpif90
 FFLAGS = -O3 -mavx2 -ffree-line-length-none 
-# FFLAGS = -g -fbacktrace -ffpe-trap=zero -ffree-line-length-none 
+# FFLAGS = -g -fbacktrace -fbounds-check -ffpe-trap=zero -ffree-line-length-none 
 MPIFLAGS = -cpp -DMPI
 MODULE = -J $(OBJDIR)
 LIBS = -llapack -lblas

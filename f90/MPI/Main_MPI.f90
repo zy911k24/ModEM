@@ -64,7 +64,7 @@ Subroutine Constructor_MPI
       ! by default every thread is in its own group, so everyone is in this
       ! communicator, at the beginning of the MPI program
       comm_leader= comm_world
-      rank_leader= taskid
+      rank_leader= rank_world
       size_leader= size_world
       ! group identifier for all leaders
       group_leader = MPI_GROUP_NULL
@@ -1394,11 +1394,14 @@ Subroutine Worker_Job (sigma,d)
          call Unpack_worker_job_task
 
          !Receive message including what to do and other info. required (i.e per_index_stn_index, ...,etc)
-
          write(6,'(a12,a12,a30,a16,i5)') node_info,' MPI TASK [',         &
     &        trim(worker_job_task%what_to_do),'] received from ',        &
     &        STATUS(MPI_SOURCE)
-         !write(6,*) node_info,' MPI INFO [keep soln = ',(worker_job_task%keep_E_soln), &
+         ! for debug
+         ! write(6,*) 'source = ', MPI_SOURCE
+         ! write(6,*) 'tag = ', MPI_TAG
+         ! write(6,*) 'err = ', MPI_ERROR
+         ! write(6,*) node_info,' MPI INFO [keep soln = ',(worker_job_task%keep_E_soln), &
          ! '; several TX = ',worker_job_task%several_Tx,']'
 
          if (trim(worker_job_task%what_to_do) .eq. 'FORWARD') then
@@ -1418,9 +1421,9 @@ Subroutine Worker_Job (sigma,d)
                      call create_worker_job_task_place_holder
                      call Pack_worker_job_task
                      do des_index=1, size_local-1
-                         call MPI_SEND(worker_job_package,Nbytes,        &
-    &                   MPI_PACKED, des_index,  FROM_MASTER, comm_local, &
-    &                    ierr)
+                         call MPI_SEND(worker_job_package,Nbytes,           &
+    &                      MPI_PACKED, des_index,  FROM_MASTER, comm_local, &
+    &                      ierr)
                      end do
 #ifdef PETSC
                      call fwdSolve(per_index,e0,b0,comm_local) 
@@ -2194,10 +2197,11 @@ subroutine RECV_cUserDef(cUserDef)
      character(20)                          :: which_proc
 
      call create_userdef_control_place_holder
-     call MPI_RECV(userdef_control_package, Nbytes, MPI_PACKED , 0 ,     &
+     call MPI_RECV(userdef_control_package, Nbytes, MPI_PACKED, MASTER,   &
     &     FROM_MASTER,comm_world,STATUS, ierr)
+     
      call unpack_userdef_control (cUserDef)
-     if (taskid==1 ) then
+     if (taskid==1 ) then !first worker
          which_proc='Worker'
          call check_userdef_control_MPI (which_proc,cUserDef)
      end if

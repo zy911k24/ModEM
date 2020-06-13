@@ -167,8 +167,9 @@ Contains
        call ModelParamToEdge(CondParam,sigTemp)
        call getVector(sigTemp,sigVec)
        call deall(sigTemp)
-       omega = 1.0 ! setup an (arbitary) working omega
+       omega = ONE ! setup an (arbitary) working omega
        VomegaMuSig = MU_0*omega*sigVec(EDGEi)*Vedge(EDGEi)
+       deallocate(sigVec)
       ! TEMPORARY; REQUIRED FOR BOUNDARY CONDITIONS
       !  set static array for cell conductivities
       !  this stores conductivity values in a module structure

@@ -26,44 +26,32 @@ module UserCtrl
 	! Options: FORWARD, COMPUTE_J, MULT_BY_J, MULT_BY_J_T,
 	!          INVERSE, TEST_COV, READ_WRITE
 	character(80)       :: job
-
 	! File to set up inversion controls
 	character(80)       :: rFile_invCtrl
-
 	! File to set up forward solver controls
 	character(80)       :: rFile_fwdCtrl
-
 	! Output file name for MPI nodes status info
 	character(80)       :: wFile_MPI
-
 	! Input files
 	character(80)       :: rFile_Grid, rFile_Model, rFile_Data
 	character(80)       :: rFile_dModel
 	character(80)       :: rFile_EMsoln, rFile_EMrhs, rFile_Prior
-
 	! Output files
 	character(80)       :: wFile_Grid, wFile_Model, wFile_Data
 	character(80)       :: wFile_dModel
 	character(80)       :: wFile_EMsoln, wFile_EMrhs, wFile_Sens
-
 	! Specify covariance configuration
 	character(80)       :: rFile_Cov
-
 	! Choose the inverse search algorithm
 	character(80)       :: search
-
 	! Choose the sort of test / procedure variant you wish to perform
 	character(80)       :: option
-
 	! Specify damping parameter for the inversion
 	real(8)             :: lambda
-
 	! Misfit tolerance for the forward solver
 	real(8)             :: eps
-
 	! Specify the magnitude for random perturbations
 	real(8)             :: delta
-
 	! Indicate how much output you want
 	integer             :: output_level
 
@@ -100,11 +88,11 @@ Contains
   	ctrl%wFile_EMsoln = 'n'
   	ctrl%rFile_Prior = 'n'
   	ctrl%wFile_Sens = 'n'
-  	ctrl%lambda = 10.
-  	ctrl%eps = 1.0e-7
   	ctrl%rFile_Cov = 'n'
   	ctrl%search = 'NLCG'
   	ctrl%option = 'J'
+  	ctrl%lambda = 10.
+  	ctrl%eps = 1.0e-7
   	ctrl%delta = 0.05
   	ctrl%output_level = 3
 

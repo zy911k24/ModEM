@@ -764,13 +764,8 @@ contains
 
        if (b%allocated) then
           if (associated(b%grid, target=grid) .and. (b%tx == iTx)) then
-             if (b%b(b%tx)%allocated) then
              ! do nothing
-                 return
-             else
-             ! if b%b is not allocated - you still have to start from scratch
-                 call deall_rhsVector(b)
-             endif
+             return
           else
              call deall_rhsVector(b)
           end if

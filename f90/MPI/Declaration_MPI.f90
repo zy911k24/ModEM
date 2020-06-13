@@ -9,7 +9,7 @@ include 'mpif.h'
 !********************************************************************
 Integer        :: taskid,total_number_of_Proc,number_of_workers
 Integer        :: MASTER, FROM_MASTER, FROM_WORKER,TAG,ierr,dest
-INTEGER        :: STATUS(5)
+INTEGER        :: STATUS(MPI_STATUS_SIZE)
 parameter         (MASTER=0,FROM_MASTER=1,FROM_WORKER=2,Tag=1)
 !********************************************************************
 ! additional parameters needed by two-layered parallelization

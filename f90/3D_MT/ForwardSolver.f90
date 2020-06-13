@@ -152,16 +152,16 @@ end subroutine copyE0fromFile
    !   NOTE: e and comb are optional calling arguments;
    !     both should be present if one is
 
-   integer, intent(in)				:: iTx
+   integer, intent(in)				            :: iTx
    type(modelParam_t),intent(in), target		:: sigma
-   type(grid_t), intent(in), target         :: grid
+   type(grid_t), intent(in), target             :: grid
    !  following structures are initialized
    !	solution vector for forward problem
    type(solnVector_t), intent(inout)			:: e0
    !	solution vector for sensitivity
    type(solnVector_t), intent(inout), optional	:: e
    !	forcing for sensitivity
-   type(rhsVector_t), intent(inout), optional		:: comb
+   type(rhsVector_t), intent(inout), optional   :: comb
 
    !  local variables
    integer		:: IER,k
@@ -196,7 +196,6 @@ end subroutine copyE0fromFile
       call ModelOperatorSetup()
       modelDataInitialized = .true.
    endif
-
    ! now calls this all-at-once
    ! call UpdateFreqCond(txDict(iTx)%omega, sigma)
 !    the following needs work ... want to avoid reinitializing
@@ -215,7 +214,6 @@ end subroutine copyE0fromFile
    ! This needs to be called before solving for a different frequency
    !!!!!!!  BUT AFTER UPDATECOND !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    call UpdateFreq(txDict(iTx)%omega)
-
    end subroutine initSolver
 
    !**********************************************************************
@@ -342,6 +340,7 @@ end subroutine copyE0fromFile
                 ! store the BC in b0 and set up the forward problem - use fake indexing in MPI
                 b0%b(j)%adj = 'FWD'
                 b0%b(j)%bc = BC
+                call deall_cboundary(BC)
 
             case default
                 write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to compute RHS'

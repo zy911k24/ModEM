@@ -171,13 +171,11 @@ Contains
 
        implicit none
        type(modelParam_t), intent(in)      :: CondParam      ! input conductivity
+       ! local 
        type(rvector)                           :: sigTemp
        type(rscalar)                           :: sigTemp2
-       real(kind=prec), pointer, dimension(:)  :: sigVec
-       real(kind=prec), pointer, dimension(:)  :: sigVec2
-       real(kind=prec), allocatable, dimension(:)  :: SigEdge
-       real(kind=prec), allocatable, dimension(:)  :: SigNode
-       integer                                 :: Ne,Nn
+       real(kind=prec), pointer, dimension(:)  :: SigEdge
+       real(kind=prec), pointer, dimension(:)  :: SigNode
 
        ! COPIED OVER FROM MATRIX FREE VERSION FOR CONSISTENCY. CURRENTLY NOT USED
        ! BUT NECESSARY FOR REUSE OF THE SAME FORWARD SOLVER MODULE
@@ -185,22 +183,16 @@ Contains
        call create(mGrid,sigTemp2,CORNER)
        call ModelParamToEdge(CondParam,sigTemp)
        call ModelParamToNode(CondParam,sigTemp2)
-       if(associated(sigVec)) then
-           nullify(sigVec)
+       if(associated(SigEdge)) then
+           nullify(SigEdge)
        endif
-       if(associated(sigVec2)) then
-           nullify(sigVec2)
+       if(associated(SigNode)) then
+           nullify(SigNode)
        endif
-       call getVector(sigTemp,sigVec)
-       call getScalar(sigTemp2,sigVec2)
+       call getVector(sigTemp,SigEdge)
+       call getScalar(sigTemp2,SigNode)
        call deall(sigTemp)
        call deall(sigTemp2)
-       Ne = size(EDGEi)+size(EDGEb)
-       Nn = size(NODEi)+size(NODEb)
-       allocate(SigEdge(Ne))
-       allocate(SigNode(Nn))
-       SigEdge = sigVec
-       SigNode = sigVec2
        SigEdge(EDGEb) = 0.0 !force the boundary to be zeros...
        ! note: we don't really want to do this for the nodes as we will be
        ! using 1./SigNode as scaling factor
@@ -210,10 +202,10 @@ Contains
        ! is updated
        ! could find a better place for this
        call GradDivSetup2(SigEdge,SigNode)
-       omega = 1.0 ! setup an (arbitary) working omega
-       VomegaMuSig = MU_0*Omega*sigVec(EDGEi)*Vedge(EDGEi)
-       deallocate(sigVec)
-       deallocate(sigVec2)
+       omega = ONE ! setup an (arbitary) working omega
+       VomegaMuSig = MU_0*Omega*SigEdge(EDGEi)*Vedge(EDGEi)
+       deallocate(SigEdge)
+       deallocate(SigNode)
       ! TEMPORARY; REQUIRED FOR BOUNDARY CONDITIONS
       !  set static array for cell conductivities
       !  this stores conductivity values in a module structure
@@ -256,33 +248,24 @@ Contains
       type(modelParam_t), intent(in),optional :: m
       type(rvector)                           :: sigTemp
       type(rscalar)                           :: sigTemp2
-      real(kind=prec), pointer, dimension(:)  :: sigVec
-      real(kind=prec), pointer, dimension(:)  :: sigVec2
-      real(kind=prec), allocatable, dimension(:)  :: SigEdge
-      real(kind=prec), allocatable, dimension(:)  :: SigNode
-      integer                                 :: Ne,Nn
+      real(kind=prec), pointer, dimension(:)  :: SigEdge
+      real(kind=prec), pointer, dimension(:)  :: SigNode
 
       if(present(m)) then
          call create(mGrid,sigTemp,EDGE)
          call create(mGrid,sigTemp2,CORNER)
          call ModelParamToEdge(m,sigTemp)
          call ModelParamToNode(m,sigTemp2)
-         if(associated(sigVec)) then
-             nullify(sigVec)
+         if(associated(SigEdge)) then
+             nullify(SigEdge)
          endif
-         if(associated(sigVec2)) then
-             nullify(sigVec2)
+         if(associated(SigNode)) then
+             nullify(SigNode)
          endif
-         call getVector(sigTemp,sigVec)
-         call getScalar(sigTemp2,sigVec2)
+         call getVector(sigTemp,SigEdge)
+         call getScalar(sigTemp2,SigNode)
          call deall(sigTemp)
          call deall(sigTemp2)
-         Ne = size(EDGEi)+size(EDGEb)
-         Nn = size(NODEi)+size(NODEb)
-         allocate(SigEdge(Ne))
-         allocate(SigNode(Nn))
-         SigEdge = sigVec
-         SigNode = sigVec2
          SigEdge(EDGEb) = 0.0 !force the boundary to be zeros...
          ! SigNode(NODEb) = 0.0 !force the boundary to be zeros...
          ! modify the system equation here,
@@ -290,9 +273,9 @@ Contains
          ! is updated
          ! could find a better place for this
          call GradDivSetup2(SigEdge,SigNode)
-         VomegaMuSig = MU_0*inOmega*sigVec(EDGEi)*Vedge(EDGEi)
-         deallocate(sigVec)
-         deallocate(sigVec2)
+         VomegaMuSig = MU_0*inOmega*SigEdge(EDGEi)*Vedge(EDGEi)
+         deallocate(SigEdge)
+         deallocate(SigNode)
          omega = inOmega
       else
          if(omega.gt.0) then
