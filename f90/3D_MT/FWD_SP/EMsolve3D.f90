@@ -120,7 +120,7 @@ Contains
     complex(kind=prec)          :: iOmegaMuInv
     ! e(lectric field) s(ource) b(rhs) phi0(div(s))
     complex(kind=prec), pointer, dimension (:) :: e,s,b
-    complex(kind=prec), allocatable, dimension (:) :: ei,phi0,phii
+    complex(kind=prec), allocatable, dimension (:) :: ei,si,phi0,phii
     complex(kind=prec), allocatable, dimension (:) :: temp,etemp
     character(80)                                  :: cfile
     !  band-aid cvector ...
@@ -144,6 +144,9 @@ Contains
     !   since these will be private after debugging
         Nei = size(EDGEi,1)
         Ne = size(EDGEb,1)+Nei
+        if (output_level > 3) then
+            write(*,'(a36,i8,a4,i8)') 'FWDsolve3D  model grid #edges: Nei=',Nei,' Ne=',Ne
+        end if
     end if
     ! allocate/initialize local data structures
     ! cboundary is a quite complex type...
@@ -162,6 +165,10 @@ Contains
         !   this is for *all* cells
         Nni = size(NODEi,1)
         Nn  = size(NODEb,1) + Nni
+        if (output_level > 3) then
+            write(*,'(a36,i8,a4,i8)') 'FWDsolve3D source grid #nodes: Nni=',Nni,' Nn=',Nn
+        end if
+        allocate(si(Nei))
         allocate(phi0(Nn))
     endif
     ! Using boundary condition and sources from rHS data structure
@@ -229,7 +236,8 @@ Contains
              ! normal source
              call getVector(bRHS%s, s)
           endif
-          call Div(s,phi0)
+          si = s(EDGEi)
+          call Div(si,phi0)
           temp = Vedge*s
           if(bRHS%nonzero_BC) then
              b = temp(EDGEi) - b
@@ -355,6 +363,7 @@ Contains
     deallocate(ei)
     deallocate(temp)
     if(bRHS%nonzero_Source) then
+        deallocate(si)
         deallocate(phi0)
     end if
     Call deall(tvec)

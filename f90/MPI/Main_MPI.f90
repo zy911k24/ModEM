@@ -2221,9 +2221,16 @@ subroutine setGrid_MPI(newgrid)
    !  Might also have to run exitSolver at this point, if we are updating
    !   the grid during an inversion; that restarts the ForwardSolver module.
 
-     type(grid_t), intent(in)     :: newgrid
-  
-     grid = newgrid
+   type(grid_t), intent(in)     :: newgrid
+
+   grid = newgrid
+
+   if (.not. grid%allocated) then
+    call errStop('grid is not allocated in setGrid_MPI; exiting')
+   else if ((grid%Nx <= 0) .or. (grid%Ny <= 0) .or. (grid%Nz <= 0)) then
+    write(0,*) 'Grid information: Nx=',grid%Nx,' Ny=',grid%Ny,' Nz=',grid%Nz
+    call errStop('grid is not set up properly in setGrid_MPI; exiting')
+   end if
 
 end subroutine setGrid_MPI
 

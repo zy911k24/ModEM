@@ -247,9 +247,9 @@ Contains
           stemp = Vedge(EDGEi)*stemp
           temp = s(EDGEi) + stemp
           if(bRHS%nonzero_BC) then
-             b = temp(EDGEi) - b
+             b = temp - b
           else
-             b = temp(EDGEi)
+             b = temp
           endif
        else
        !   no source
