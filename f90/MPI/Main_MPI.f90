@@ -229,7 +229,7 @@ Subroutine set_group_sizes(comm_current,nTx,nPol,group_sizes,walltime)
 ! def = 1 - default settings, use same number of procs per task
 ! def = 2 - dynamic settings, tend to use more procs for harder (higher
 !           walltime) tasks 
-! def = 0 - debug setting - use all workers in one taks (tasks are solved 
+! def = 0 - debug setting - use all workers in one tasks (tasks are solved 
 !           one by one) 
      implicit none
      integer, intent(in)                     :: nTx,nPol,comm_current

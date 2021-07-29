@@ -64,7 +64,7 @@ if [ $3 = "spherical" ]; then
 	elif [ $2 == "release" ]; then
 		sed -i .bak 's/Mod3DMT /Mod3DMTs_SP2 /g' $1
 	else
-		sed -i .bak 's/Mod3DMT /Mod3DJTs_SP2_MPI /g' $1
+		sed -i .bak 's/Mod3DMT /Mod3DMTs_SP2_MPI /g' $1
 	fi
 	rm $1.bak
     echo 1>&2 Spherical version of the makefile ready to use.

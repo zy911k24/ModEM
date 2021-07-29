@@ -584,8 +584,12 @@ end subroutine SdivCorr ! SdivCorr
         deallocate(DivCorRelErr)
      endif
      !   then allocate all arrays
-     allocate(EMrelErr(MaxIterTotal))
+     write(6,*) 'div correction total =', MaxDivCor
+     write(6,*) 'iteration total =', MaxIterTotal
+     write(6,*) 'div correction iter =', MaxIterDivCor
+     write(6,*) 'still, there is no point to try it here'
      allocate(divJ(2,MaxDivCor))
+     allocate(EMrelErr(MaxIterTotal))
      allocate(DivCorRelErr(MaxIterDivCor,MaxDivCor))
 
   end subroutine setEMsolveControl

@@ -306,9 +306,9 @@ Contains
           stemp = temp(EDGEi) + stemp * Vedge(EDGEi)
           ! now add the V_E A_IB b term
           if(bRHS%nonzero_BC) then
-             b = temp(EDGEi) - b
+             b = stemp - b
           else
-             b = temp(EDGEi)
+             b = stemp
           endif
        else
        !   no source
@@ -435,11 +435,39 @@ Contains
 ! needs work to convert the spModelOperator module into a new module
 ! using VEC and MAT
 ! 
-! note that I am merging the normal SP2 version and the SPETSc2 version
-! hence this is becoming a mess, if you have time reading this, test it
-! and send the feedback to me (donghao@cugb.edu.cn)
+! I have merged the normal SP2 version and the SPETSc2 version
+! the petsc version should work just fine (I think)
+! if you have encountered any problems, please let me know:
+! - send the feedback to donghao@cugb.edu.cn
 ! 
 ! If bRHS%adj = 'TRN' solves transposed problem  A^T x = b
+! below is Anna's comment copied from the MF equivalent subroutine
+!
+! Note [AK 2018-05-10]:
+! Any physical source has already been pre-multiplied by
+!       [- ISIGN i\omega\mu_0]
+! to yield
+!       [- ISIGN i\omega\mu_0 j]
+! on input to this routine. Note that this also holds for the secondary field
+! formulation, where
+!       j = dsigma * e,
+! as well as for the tidal forcing, where
+!       j = sigma (v x B).
+! However, we still want to pre-compute the source RHS outside of this
+! routine, for "generality".
+! Specifically, Jmult supplies an interior source on the RHS that is
+! not physical and is not pre-multiplied by that factor (except in Pmult).
+! So it's cleaner to pass on the complete interior forcing in bRHS.
+! For divergence correction, we divide by [+ ISIGN i\omega\mu_0] to get
+!       i[- Div(j)].
+! The plus sign is needed because we're taking the divergence of
+!       curl(curl(E)) + ISIGN i\omega\mu_0 sigma E = f - curl(curl(b))
+! Terms 1 and 4 vanishes, leaving:
+!       Div(sigma E) - Div(f)/(+ ISIGN i\omega\mu_0) =  0.
+! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0;
+! but the divergence correction may be applied also for non-physical sources,
+! such  as in Jmult ('FWD') and JmultT ('TRN').
+
   subroutine FWDSolve3Dp(bRHS,omega,eSol,comm_local)
 !----------------------------------------------------------------------
      ! redefine some of the interfaces (locally) for our convenience
@@ -502,7 +530,7 @@ Contains
      complex(kind=prec)                             :: iOmegaMuInv
      ! e(lectric field) s(ource) b(rhs) phi0(div(s))
      complex(kind=prec), pointer, dimension (:)     :: e,s,b
-     complex(kind=prec), allocatable, dimension (:) :: ei,phi0,phii
+     complex(kind=prec), allocatable, dimension (:) :: ei,si,phi0,phii
      complex(kind=prec), allocatable, dimension (:) :: temp,stemp
      
      character(80)                                  :: cfile
@@ -578,9 +606,9 @@ Contains
          allocate(s(Ne))
          allocate(si(Nei))
          allocate(b(Nei))
+         allocate(temp(Ne))
          allocate(stemp(Nei))
          ! for debug
-         ! allocate(temp(Ne))
          ! cboundary is a quite complex type...
          ! *essentially it should be e(EDGEb)
          ! for now we don't have an interface to deal with cboundary
@@ -877,6 +905,7 @@ Contains
          call PCSetType(pc_sub,psubtype,ierr)
          call PCFactorSetLevels(pc_sub,1,ierr) ! use ILU(1) here
          call KSPSetType(ksp_sub(i),KSPPREONLY,ierr)
+         ! this following lines are for MUMPS (use with caution)
  !        call PCFactorSetMatSolverType(pc_sub,MATSOLVERMUMPS,ierr)
  !        call PCFactorSetUpMatSolverType(pc_sub,ierr)
          !call KSPSetTolerances(ksp_sub(i),ptol,PETSC_DEFAULT_REAL, &
@@ -920,7 +949,7 @@ Contains
                      ! note that the relative residual is "preconditioned"
                      ! (i.e. after applying the ILU preconditioner)
                      ! which is different from what you are experiencing 
-                     ! in the SP/MF verstion
+                     ! in the SP/SP2/MF verstion
                      write(6,*) 'iter: ',nIterTotal,' residual: ',       &
     &                     EMrelErr(nIterTotal)
                  endif
