@@ -68,6 +68,12 @@ Subroutine Constructor_MPI
       size_leader= size_world
       ! group identifier for all leaders
       group_leader = MPI_GROUP_NULL
+      ! number of GPUs
+#ifdef CUDA
+      size_gpu = 1
+#else
+      size_gpu = 0
+#endif
       ! tic-toc
       previous_time = MPI_Wtime()
 End Subroutine Constructor_MPI
@@ -1435,7 +1441,15 @@ Subroutine Worker_Job (sigma,d)
 #endif
                  else ! you are on your own, bro!
 #ifdef PETSC
-                     call fwdSolve(per_index,e0,b0,comm_local) 
+                     ! see if we have a GPU to spare
+                     if (rank_leader.ge.(size_leader - size_gpu)) then
+                         ! assign the GPU(s) to the last leaders
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m groups will get a GPU
+                         call fwdSolve(per_index,e0,b0,comm_local,use_cuda) 
+                     else
+                         call fwdSolve(per_index,e0,b0,comm_local) 
+                     endif
 #else
                      call fwdSolve(per_index,e0,b0) 
 #endif
@@ -1582,7 +1596,16 @@ Subroutine Worker_Job (sigma,d)
 #endif
                      else ! you are on your own, tovarishch
 #ifdef PETSC
+                     ! see if we have a GPU to spare
+                     if (rank_leader.ge.(size_leader - size_gpu)) then
+                         ! assign the GPU(s) to the last leaders
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m groups will get a GPU
+                         call sensSolve(per_index,TRN,e,comb,comm_local, &
+    &                       use_cuda)
+                     else
                          call sensSolve(per_index,TRN,e,comb,comm_local)
+                     endif
 #else
                          call sensSolve(per_index,TRN,e,comb)
 #endif
@@ -1704,7 +1727,16 @@ Subroutine Worker_Job (sigma,d)
 #endif
                  else ! you are on your own, mi amigo!
 #ifdef PETSC
-                     call sensSolve(per_index,TRN,e,comb,comm_local)
+                     ! see if we have a GPU to spare
+                     if (rank_leader.ge.(size_leader - size_gpu)) then
+                         ! assign the GPU(s) to the last leaders
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m groups will get a GPU
+                         call sensSolve(per_index,TRN,e,comb,comm_local,  &
+    &                       use_cuda)
+                     else
+                         call sensSolve(per_index,TRN,e,comb,comm_local)
+                     endif
 #else
                      call sensSolve(per_index,TRN,e,comb)
 #endif
@@ -1796,7 +1828,16 @@ Subroutine Worker_Job (sigma,d)
 #endif
                  else ! you are on your own, aibo!
 #ifdef PETSC
-                     call sensSolve(per_index,FWD,e,comb,comm_local)
+                     ! see if we have a GPU to spare
+                     if (rank_leader.ge.(size_leader - size_gpu)) then
+                         ! assign the GPU(s) to the last leaders
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m groups will get a GPU
+                         call sensSolve(per_index,FWD,e,comb,comm_local,  &
+    &                       use_cuda)
+                     else
+                         call sensSolve(per_index,TRN,e,comb,comm_local)
+                     endif
 #else
                      call sensSolve(per_index,FWD,e,comb)
 #endif

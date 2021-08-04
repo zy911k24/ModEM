@@ -119,7 +119,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0; 
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3D(bRHS,omega,eSol,comm_local)
+  subroutine FWDsolve3D(bRHS,omega,eSol,comm_local,use_cuda)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -136,6 +136,7 @@ Contains
     real(kind=prec), intent(in)   :: omega
     ! dummy parameter for compatibiliy
     integer, intent(in),optional  :: comm_local 
+    logical, intent(in),optional  :: use_cuda
     ! OUTPUTS:
     ! eSol must be allocated before calling this routine
     type (cvector), intent(inout) :: eSol
@@ -584,10 +585,6 @@ end subroutine SdivCorr ! SdivCorr
         deallocate(DivCorRelErr)
      endif
      !   then allocate all arrays
-     write(6,*) 'div correction total =', MaxDivCor
-     write(6,*) 'iteration total =', MaxIterTotal
-     write(6,*) 'div correction iter =', MaxIterDivCor
-     write(6,*) 'still, there is no point to try it here'
      allocate(divJ(2,MaxDivCor))
      allocate(EMrelErr(MaxIterTotal))
      allocate(DivCorRelErr(MaxIterDivCor,MaxDivCor))

@@ -2,11 +2,11 @@
 # Generated using: ./fmkmf.pl [OPTIONS] Mod3DMT.f90 > Makefile
 # with command line options
 # -p .:INV:MPI:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:3D_MT:3D_MT/DICT:3D_MT/modelParam:3D_MT/FWD:3D_MT/FWD/Mod2d:3D_MT/ioMod
-# -f90 ifort (compiler)
-# -opt -O3 -w  -xSSE4.2 -std03 -i8 -I/opt/intel/lib (compiler optimisation)
-# -lp /opt/intel/mkl/lib (linking options: path to libraries)
-# -l -lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core  -lpthread -openmp -parallel (linking options)
-# -o ./objs/3D_MT/IFortReleaseMPI (output directory for object files)
+# -f90 gfortran (compiler)
+# -opt -O3 -ffree-line-length-none (compiler optimisation)
+# -lp /usr/lib64 (linking options: path to libraries)
+# -l -llapack -lblas (linking options)
+# -o ./objs/3D_MT/GFortReleaseMPI (output directory for object files)
 
 #  Uncomment these lines to make program for Solaris OS (legacy)
 # F90 = f90
@@ -45,12 +45,11 @@
 # ------------------Macro-Defs---------------------
 include Makefile.local
 OBJDIR = ./objs/3D_MT/GFortReleaseMPI
-F90 = mpif90
-FFLAGS = -O3 -mavx2 -ffree-line-length-none 
-# FFLAGS = -g -fbacktrace -ffpe-trap=zero -ffree-line-length-none 
-MPIFLAGS = -cpp -DMPI 
+F90 =  mpif90
+FFLAGS = -O3 -ffree-line-length-none
+MPIFLAGS = -x f95-cpp-input -DMPI
 MODULE = -J $(OBJDIR)
-LIBS_PATH = -L /usr/lib
+LIBS_PATH = -L/usr/lib
 LIBS = -llapack -lblas
 
 # -------------------End-macro-Defs---------------------------
@@ -110,7 +109,7 @@ $(OBJDIR)/ModelSpace.o:3D_MT/modelParam/ModelSpace.f90 $(OBJDIR)/GridCalc.o $(OB
 $(OBJDIR)/SensMatrix.o:SENS/SensMatrix.f90 $(OBJDIR)/math_constants.o $(OBJDIR)/file_units.o $(OBJDIR)/utilities.o $(OBJDIR)/DataSpace.o $(OBJDIR)/ModelSpace.o 
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) SENS/SensMatrix.f90 -o $(OBJDIR)/SensMatrix.o
 
-$(OBJDIR)/EMfieldInterp.o:3D_MT/EMfieldInterp.f90 $(OBJDIR)/utilities.o $(OBJDIR)/sg_sparse_vector.o $(OBJDIR)/ModelSpace.o 
+$(OBJDIR)/EMfieldInterp.o:3D_MT/EMfieldInterp.f90 $(OBJDIR)/utilities.o $(OBJDIR)/sg_sparse_vector.o $(OBJDIR)/ModelSpace.o $(OBJDIR)/GridCalc.o 
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) 3D_MT/EMfieldInterp.f90 -o $(OBJDIR)/EMfieldInterp.o
 
 $(OBJDIR)/sg_boundary.o:FIELDS/FiniteDiff3D/sg_boundary.f90 $(OBJDIR)/math_constants.o $(OBJDIR)/GridDef.o $(OBJDIR)/sg_vector.o $(OBJDIR)/sg_sparse_vector.o 
@@ -213,7 +212,7 @@ $(OBJDIR)/Mod3DMT.o:Mod3DMT.f90 $(OBJDIR)/SensComp.o $(OBJDIR)/SymmetryTest.o $(
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) Mod3DMT.f90 -o $(OBJDIR)/Mod3DMT.o
 
 # Type " make clean " to get rid of all object and module files 
-clean: 
+clean:: 
 	cd $(OBJDIR); \
 	rm -f *~ *.o *.obj *.mod *.d *.s00 *.dbg *.stackdump \
 	`find . -mindepth 1 -name "*~"` 

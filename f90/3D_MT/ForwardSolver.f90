@@ -350,7 +350,7 @@ end subroutine copyE0fromFile
   end subroutine fwdSetup
 
    !**********************************************************************
-   subroutine fwdSolve(iTx,e0,b0,comm_local)
+   subroutine fwdSolve(iTx,e0,b0,comm_local,use_cuda)
 
    !  driver for 3d forward solver; sets up for transmitter iTx, returns
    !   solution in e0 ; rhs vector (b0) is generated locally--i.e.
@@ -366,6 +366,7 @@ end subroutine copyE0fromFile
    ! NOTE: this is only needed for two layer parallelization
    ! normal (none-petsc) programmes have no need of this
    integer, intent(in), optional        :: comm_local
+   logical, intent(in), optional        :: use_cuda
 
    ! local variables
    real(kind=prec)	:: omega
@@ -390,7 +391,12 @@ end subroutine copyE0fromFile
 		write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, 'Solving the ','FWD', &
 				' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
         if (present(comm_local)) then
-            call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), comm_local)
+            if (present(use_cuda)) then
+                call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), comm_local, &
+    &               use_cuda)
+            else
+                call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), comm_local)
+            end if
         else
             call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
         end if
@@ -406,7 +412,7 @@ end subroutine copyE0fromFile
    end subroutine fwdSolve
 
    !**********************************************************************
-   subroutine sensSolve(iTx,FWDorADJ,e,comb,comm_local)
+   subroutine sensSolve(iTx,FWDorADJ,e,comb,comm_local,use_cuda)
    !   Uses forcing input from comb, which must be set before calling
    !    solves forward or adjoint problem, depending on comb%ADJ
    !  NOTE that this routine DOES NOT call UpdateFreq routine to complete
@@ -423,6 +429,7 @@ end subroutine copyE0fromFile
    ! NOTE: this is only needed for two layer parallelization
    ! normal (none-petsc) programmes have no need of this
    integer, intent(in), optional        :: comm_local
+   logical, intent(in), optional        :: use_cuda
 
    ! local variables
    integer      			:: IER,iMode
@@ -439,8 +446,13 @@ end subroutine copyE0fromFile
       	write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info,'Solving the ',FWDorADJ, &
 		' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
         if (present(comm_local)) then
-            call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,           &
+            if (present(use_cuda)) then
+                call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
+     &           e%pol(imode), comm_local, use_cuda)
+            else
+                call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
      &           e%pol(imode), comm_local)
+            end if
         else
             call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
         end if

@@ -18,6 +18,11 @@ integer        :: comm_world, comm_leader, comm_local
 integer        :: rank_world, rank_leader, rank_local
 integer        :: size_world, size_leader, size_local
 integer        :: group_world, group_leader
+!********************************************************************
+! additional parameters needed by CUDA acceleration
+!********************************************************************
+integer        :: size_gpu 
+logical        :: use_cuda = .TRUE.
 ! this is used to store the timer of each mpi sub-process
 DOUBLE PRECISION    :: previous_time
 integer, allocatable, dimension(:) :: prev_group_sizes
@@ -115,7 +120,6 @@ integer index
 index=1
 
         call MPI_Pack(worker_job_task%what_to_do,80, MPI_CHARACTER, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
-
         call MPI_Pack(worker_job_task%per_index ,1 , 		MPI_INTEGER  , worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(worker_job_task%Stn_index ,1 ,	 	MPI_INTEGER  , worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(worker_job_task%pol_index ,1 , 		MPI_INTEGER  , worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
@@ -125,7 +129,7 @@ index=1
 
         call MPI_Pack(worker_job_task%keep_E_soln,1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(worker_job_task%several_Tx,1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
-        call MPI_Pack(worker_job_task%create_your_own_e0,1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
+        call MPI_Pack(worker_job_task%create_your_own_e0, 1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
 
 end subroutine Pack_worker_job_task
 

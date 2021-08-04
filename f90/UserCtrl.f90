@@ -64,6 +64,9 @@ module UserCtrl
 	! Specify the magnitude for random perturbations
 	real(8)             :: delta
 
+    ! Specify the Covariance Type used in 3D (reserved for future use)
+    integer             :: CovType
+
 	! Indicate how much output you want
 	integer             :: output_level
 
@@ -106,6 +109,8 @@ Contains
   	ctrl%lambda = 10.
   	ctrl%eps = 1.0e-7
   	ctrl%delta = 0.05
+    ! 1 for AR, 2 for L1, 3 for L2
+    ctrl%CovType = 1
   	ctrl%output_level = 3
 
     ! Using process ID in MPI output file name has the advantage that

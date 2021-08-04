@@ -21,6 +21,7 @@ module EMsolve3D
   interface FWDSolve3D
      MODULE PROCEDURE FWDSolve3Ds
      MODULE PROCEDURE FWDSolve3Dp
+     MODULE PROCEDURE FWDSolve3Dc
   end interface
   private       :: SdivCorr
 
@@ -495,7 +496,7 @@ Contains
      integer, dimension(:), pointer     :: isizes,isubs
      integer, dimension(3)              :: iedges
      integer                            :: ni, nj, na
-     integer                            :: pblock_size, block_size
+     integer                            :: block_size
      integer                            :: rank_local,size_local
      integer                            :: ierr
      integer                            :: Nsub,Ntotal,istart,iend,csize
@@ -544,7 +545,6 @@ Contains
      write(6,*) 'NONE OF THE COMPLEX OPERATIONS WILL PROCEED, ABORTING'
      STOP
 #endif
-
      ! now initialize solver diagnostic variables
      nIterTotal = 0
      nDivCor = 0
@@ -555,6 +555,7 @@ Contains
      iOmegaMuInv = C_ONE/cmplx(0.0,1.0d0*ISIGN*omega*MU_0,kind=prec)
      call MPI_COMM_RANK(comm_local,rank_local,ierr)
      call MPI_COMM_SIZE(comm_local,size_local,ierr)
+
      ! PETSc initialization 
      PETSC_COMM_WORLD = comm_local
      call PetscInitialize(PETSC_NULL_CHARACTER,ierr)
@@ -597,9 +598,10 @@ Contains
          ! leader does all the works to allocate/initialize 
          ! local data structures
          if (output_level > 3) then
-             write(6,*) 'iedges =', iedges
-             write(6,*) 'isizes =', isizes
-             write(6,*) 'isubs =', isubs
+             ! for debug
+             write(6,*) 'system iedges =', iedges
+             write(6,*) 'system isizes =', isizes
+             write(6,*) 'system isubs =', isubs
          endif 
          allocate(e(Ne))
          allocate(ei(Nei))
@@ -745,7 +747,6 @@ Contains
              call MPI_SEND(Alocal%col,nj, MPI_INTEGER,i-1,2, comm_local,ierr)
              call MPI_SEND(Alocal%val,nj, MPI_DOUBLE_COMPLEX,i-1,2,         &
     &             comm_local, ierr)
-             block_size=Alocal%nRow
              call deall_spMatCSR(Alocal) ! and release the temp sp matrix
          end do
          ! now deal with the local rows in leader
@@ -753,7 +754,7 @@ Contains
          block_size=Alocal%nRow
          call MatCreateMPIAIJWithArrays(comm_local,block_size,block_size, &
     &         Nei, Nei, Alocal%row,Alocal%col,Alocal%val,Amat,ierr)
-         call deall_spMatCSR(Aii) ! release the temp sp matrix
+         call deall_spMatCSR(Aii) ! release the temp sparse matrix
      else !workers
          ! get the info from leader
          call MPI_RECV(ni,1, MPI_INTEGER,0,1, comm_local,            &
@@ -887,8 +888,11 @@ Contains
          end if
      end do
      iend = istart+Nsub-1
-     ! write(6,*) 'number of sub blocks =', Nsub, rank_local
-     ! write(6,*) 'from #', istart, 'to #', iend, rank_local
+     if (output_level > 3) then
+     ! for debug
+         write(6,*) 'number of sub blocks =', Nsub, rank_local
+         write(6,*) 'from #', istart, 'to #', iend, rank_local
+     end if
      call PCBJacobiSetTotalBlocks(pc_local,Ntotal,            &
     &     isubs,ierr)
      call PCBJacobiSetLocalBlocks(pc_local, Nsub,             &
@@ -915,6 +919,7 @@ Contains
      call KSPSetup(ksp_local,ierr)
      call KSPSetTolerances(ksp_local,KSSiter%tol,PETSC_DEFAULT_REAL, &
     &     PETSC_DEFAULT_REAL,KSSiter%maxit,ierr)
+     ! this is not yet supported by BCGS
      ! call KSPSetNormType(ksp_local, KSP_NORM_UNPRECONDITIONED, ierr)
      call KSPSetResidualHistory(ksp_local,KSSiter%rerr,KSSiter%maxit,    &
     &                PETSC_TRUE,ierr)
@@ -1011,6 +1016,10 @@ Contains
          deallocate(temp)
          deallocate(stemp)
          call deall(tmpvec)
+     else
+         deallocate(ilocal)
+         deallocate(jlocal)
+         deallocate(vlocal)
      end if
      if (allocated(ksp_sub)) then
          deallocate(ksp_sub)
@@ -1026,6 +1035,510 @@ Contains
 
   end subroutine FWDSolve3Dp
 
+!**********************************************************************
+! subroutine to Solve the forward EM problem with PETSc and CUDA
+! renamed as FWDSolve3Dc(uda)
+! 
+! this does essentially the same as the FWDSlve3Dp - only made stand-alone as
+! I need to debug the CUDA solvers
+! this is a test method that uses the CUDA lib, if you encounter any problems
+! send the feedback to donghao@cugb.edu.cn
+
+  subroutine FWDSolve3Dc(bRHS,omega,eSol,comm_local,use_cuda)
+!----------------------------------------------------------------------
+     ! redefine some of the interfaces (locally) for our convenience
+     use sg_vector !, only: copy => copy_cvector, &
+     use vectranslate     ! translate back and forth between Cvec and vec
+     use solver
+     use spoptools
+     ! generic routines for vector operations on the edge/face nodes
+     ! in a staggered grid
+     ! in cvec copy, remember the order is copy(new, old) i.e new = old
+!----------------------------------------------------------------------
+!                   dependencies related to Petsc
+!----------------------------------------------------------------------
+#include <petsc/finclude/petscvec.h>
+#include <petsc/finclude/petscmat.h>
+#include <petsc/finclude/petscksp.h>
+#include <petsc/finclude/petscpc.h>
+#include <petsc/finclude/petscviewer.h>
+     use petscksp
+     implicit none
+!----------------------------------------------------------------------
+!                   Variables related to Petsc
+!----------------------------------------------------------------------
+     integer, dimension(:), allocatable :: idx
+     integer, dimension(:), pointer     :: isizes,isubs
+     integer, dimension(3)              :: iedges
+     integer                            :: ni, nj, na
+     integer                            :: block_size
+     integer                            :: rank_local,size_local
+     integer                            :: ierr
+     integer                            :: Nsub,Ntotal,istart,iend,csize
+     real(kind=prec)                    :: ptol=1e-2
+     real                               :: normu
+     type(spMatCSR_Cmplx)               :: Aii
+     Vec                                :: xvec,bvec
+     Mat                                :: Amat
+     KSP                                :: ksp_local
+     KSP,allocatable,dimension(:)       :: ksp_sub
+     KSPType                            :: stype
+     PC                                 :: pc_local,pc_sub
+     PCType                             :: ptype,psubtype
+     PetscViewer                        :: pviewer
+     !  INPUTS:
+     type (RHS_t), intent(in)           :: bRHS
+     real(kind=prec), intent(in)        :: omega
+     integer, intent(in)                :: comm_local
+     logical, intent(in)                :: use_cuda
+     !  OUTPUTS:
+     !  eSol must be allocated before calling this routine
+     type (cvector), intent(inout)      :: eSol
+!----------------------------------------------------------------------
+     ! LOCAL VARIABLES
+     logical                                        :: converged,trans
+     integer                                        :: iter, fid
+     integer                                        :: Ne,Nei,Neb
+     integer                                        :: Nn,Nni,Nnb,i
+     complex(kind=prec)                             :: iOmegaMuInv
+     ! e(lectric field) s(ource) b(rhs) phi0(div(s))
+     complex(kind=prec), pointer, dimension (:)     :: e,s,b
+     complex(kind=prec), allocatable, dimension (:) :: ei,si,phi0,phii
+     complex(kind=prec), allocatable, dimension (:) :: temp,stemp
+     
+     character(80)                                  :: cfile
+     ! band-aid cvector ...
+     type (cvector)                                 :: tmpvec
+     ! diagnostic structure for Krylov Subspace Solvers(KSS)
+     type (solverControl_t)                         :: KSSiter
+     ! initialize solver diagnostic variables
+#ifndef PETSC_USE_COMPLEX
+     write(6,*) 'PETSC IS NOT CONFIGURED WITH COMPLEX NUMBERS'
+     write(6,*) 'NONE OF THE COMPLEX OPERATIONS WILL PROCEED, ABORTING'
+     STOP
+#endif
+     nIterTotal = 0
+     nDivCor = 0
+     EMrelErr = R_ZERO
+     divJ = R_ZERO
+     DivCorRelErr = R_ZERO
+     failed = .false.
+     iOmegaMuInv = C_ONE/cmplx(0.0,1.0d0*ISIGN*omega*MU_0,kind=prec)
+     call MPI_COMM_RANK(comm_local,rank_local,ierr)
+     call MPI_COMM_SIZE(comm_local,size_local,ierr)
+     if (size_local.gt.1) then !
+         write(6,*) 'SORRY, MULTI-CPU INTERACTION WITH GPU IS NOT SUPPORTED'
+         write(6,*) 'ABORTING...'
+         STOP
+     end if
+     ! for debug
+     if (output_level > 3) then
+         if (use_cuda) then 
+             write(6,*) 'GPU ACC STARTS...'
+         else
+             write(6,*) 'FALL BACK TO CPU...'
+         end if
+     end if
+     ! PETSc initialization 
+     PETSC_COMM_WORLD = comm_local
+     call PetscInitialize(PETSC_NULL_CHARACTER,ierr)
+     !------------------------------------------------------------------------
+     !     check the input variables
+     !------------------------------------------------------------------------
+     trans = (bRHS%adj .eq. TRN)
+     if (.not.eSol%allocated) then
+         write(0,*) 'eSol in EMsolve not allocated yet'
+         stop
+     end if 
+     ! determine the edge numbers of the mesh
+     ! need to write a interface for these
+     ! since these will be private after debugging
+     Nei = size(EDGEi,1)
+     Neb = size(EDGEb,1)
+     Ne = Nei+Neb
+     !   and the node numbers
+     Nni = size(NODEi,1)
+     Nnb = size(NODEb,1)
+     Nn = Nni+Nnb
+     iedges(1) = eSol%Nx*(eSol%Ny-1)*(eSol%Nz-1)
+     iedges(2) = eSol%Ny*(eSol%Nx-1)*(eSol%Nz-1)
+     iedges(3) = eSol%Nz*(eSol%Nx-1)*(eSol%Ny-1)
+     ! still use the old subroutine - even if we only have one 
+     ! local worker 
+     ! calculate the sizes of each local row matrix
+     ! as well as the size of block preconditioners
+     call calc_dist(size_local,iedges,isizes,isubs)
+     ! allocate/initialize 
+     ! local data structures
+     if (output_level > 3) then
+        ! for debug
+         write(6,*) 'system iedges =', iedges
+         write(6,*) 'system isizes =', isizes
+         write(6,*) 'system isubs =', isubs
+     endif
+     allocate(e(Ne))
+     allocate(ei(Nei))
+     allocate(s(Ne))
+     allocate(si(Nei))
+     allocate(b(Nei))
+     allocate(temp(Ne))
+     allocate(stemp(Nei))
+     ! for debug
+     ! cboundary is a quite complex type...
+     ! *essentially it should be e(EDGEb)
+     ! for now we don't have an interface to deal with cboundary
+     ! so just use cvectors to deliver the value...
+     call create_cvector(bRHS%grid, tmpvec, eSol%gridtype)
+     ! at this point e should be all zeros if there's no initial guess
+     call getCVector(eSol,e)
+     ! Using boundary condition and sources from rHS data structure
+     ! construct vector b (defined only on interior nodes) for rHS of
+     ! reduced (interior nodes only) linear system of equations
+     if (trans) then ! TRN, trans=.true.
+         !  In this case boundary conditions do not enter into forcing
+         !  for reduced (interior node) linear system; solution on
+         !  boundary is determined after solving for interior nodes
+         if (bRHS%nonZero_Source) then
+             if (bRHS%sparse_Source) then
+                 ! sparse source
+                 ! not sure how to do it efficiently with normal array
+                 ! for now it is just a walkaround, probably not going to
+                 ! be used by most
+                 call add_scvector(C_ONE,bRHS%sSparse,tmpvec)
+                 call getVector(tmpvec,s)
+             else
+                 ! normal source
+                 call getVector(bRHS%s,s)
+             endif
+         else
+             ! doesn't need to tamper with this part for sparse matrix
+             ! let it go with cvectors...
+             call zero(eSol)
+             write(0,*) 'Warning: no sources for adjoint problem'
+             write(0,*) 'Solution is identically zero'
+             if (bRHS%nonzero_BC) then
+                 ! just copy input BC into boundary nodes of solution 
+                 ! and return
+                 Call setBC(bRHS%bc, eSol)
+             endif ! otherwise the eSol should be all zeros
+             return
+         endif
+         si = s(EDGEi) ! taking only the interior edges
+         ! note that Div is formed from inner edges to all nodes
+         ! divide by iOmegaMu and Volume weight to get the source term j
+         si = si * iOmegaMuInv / Vedge(EDGEi)
+         ! calculate the modification term V_E GD_II j
+         call RMATxCVEC(GDii,si,stemp)
+         ! now i\omega\mu_0 V_E j + V_E GD_II j
+         b = s(EDGEi) + stemp * Vedge(EDGEi)
+     else ! trans = .false.
+         ! In the usual forward model case BC does enter into forcing
+         ! First compute contribution of BC term to RHS of reduced 
+         ! interior node system of equations : - A_IB*b
+         if (bRHS%nonzero_BC) then
+             !   copy from rHS structure into zeroed complex edge vector
+             !   note that bRHS%bc is a cboundary type
+             Call setBC(bRHS%bc, tmpvec) ! setBC -> copy_bcvector
+             !   get info form BC
+             call getVector(tmpvec,s)
+             !   but only the boundary parts
+             e(EDGEb) = s(EDGEb)
+             !   Then multiply by curl_curl operator (use Mult_Aib ...
+             !   Note that Mult_Aib already multiplies by volume weights
+             !   required to symetrize problem, so the result is V*A_IB*b)
+             !   essentially b = A(i,b)*e(b)
+             Call Mult_Aib(e(EDGEb), trans, b)
+         endif
+        ! Add internal sources if appropriate: 
+        ! Note that these must be multiplied explictly by volume weights
+        !     [V_E^{-1} C_II^T V_F] C_II e + i\omega\mu_0\sigma e
+        !   = - i\omega\mu_0  j - V_E^{-1} G_IA \Lambda D_AI j
+        !     - [V_E^{-1} C_II^T V_F] C_IB b
+        ! here we multiply by V_E throughout to obtain a symmetric system:
+        !      V_E A_II e = - i\omega\mu_0 V_E j - V_E GD_II j - V_E A_IB b
+        ! where
+        !      A_II = V_E^{-1} C_II^T V_F C_II + i\omega\mu_0 \sigma,
+        ! while
+        !      A_IB = V_E^{-1} C_II^T V_F C_IB,
+        ! and
+        !      GD_II = V_E{-1} G_IA \Lambda D_AI.
+         if (bRHS%nonzero_Source) then
+             if (bRHS%sparse_Source) then
+                 ! sparse source
+                 call zero(tmpvec)
+                 call add_scvector(C_ONE,bRHS%sSparse,tmpvec)
+                 call getVector(tmpvec,s)
+             else
+                 ! normal source
+                 call getVector(bRHS%s, s)
+             endif
+             ! At this point, s = - ISIGN * i\omega\mu_0 j
+             ! Now Div(s) - will later divide by i_omega_mu to get the 
+             ! general divergence correction (j)
+             temp = s*Vedge
+             ! now temp = - ISIGN * i\omega\mu_0 V_E j
+             ! divide by iOmegaMu to get the source (j)
+             si = s(EDGEi) * iOmegaMuInv
+             ! calculate the modification term GD_II j
+             call RMATxCVEC(GDii,si,stemp)
+             ! i\omega\mu_0 V_E j + V_E GD_II j
+             stemp = temp(EDGEi) + stemp * Vedge(EDGEi)
+             ! now add the V_E A_IB b term
+             if(bRHS%nonzero_BC) then
+                 b = stemp - b
+             else
+                 b = stemp
+             endif
+         else! there is no source
+             b = -b
+         endif
+     endif ! trans 
+     !-------------------------------------------------------------------------
+     !    now beginning PETSc translation session
+     !-------------------------------------------------------------------------
+     ! firstly constructs the system matrix Aii
+     ! this will not be necesary if we build a module to contruct 
+     ! the petsc version of operators at some stage
+     call CSR_R2Cdiag(AAii,VOmegaMuSig,Aii)
+     call deall_spMatCSR(AAii) ! release the CCGD matrix
+     ! Aii (Nei x Nei)
+     block_size=Aii%nRow
+     call MatCreateMPIAIJWithArrays(comm_local,block_size,block_size, &
+    &         Nei, Nei, Aii%row-1,Aii%col-1,Aii%val,Amat,ierr)
+     call deall_spMatCSR(Aii) ! release the temp sparse matrix
+     ! convert to cuSPARSE format
+     ! just need this to fall back to CPUs
+     if (use_cuda) then 
+         call MatSetType(Amat,MATMPIAIJCUSPARSE,ierr)
+     end if
+     call MatSetFromOptions(Amat,ierr)
+     call MatAssemblyBegin(Amat,MAT_FINAL_ASSEMBLY,ierr)
+     call MatAssemblyEnd(Amat,MAT_FINAL_ASSEMBLY,ierr)
+     !-------------------------------------------------------------------------
+     !    PETSc vectors
+     !-------------------------------------------------------------------------
+     ! these part should be thread safe
+     ! create from matrix size -
+     ! will create GPU vecs if use_cuda is supplied
+     call MatCreateVecs(Amat,bvec,PETSC_NULL_VEC,ierr)
+     call VecSetFromOptions(bvec,ierr)
+     call VecSet(bvec,C_ZERO,ierr)
+     call VecDuplicate(bvec,xvec,ierr)
+     call VecSet(xvec,C_ZERO,ierr)
+     !------------------------------------------------------------------------!
+     ! Outer part of KSS loop ... alternates between Calls to KSS solver
+     ! and Calls to divcor  ... this will be part of EMsolve
+     ! these part should be thread safe
+     !
+     ! e = current best solution (only on interior edges)
+     ! b = rHS
+     !
+     ! at present we don't really have the option to skip
+     ! the divergence correction.  Not sure how/if this should
+     ! be done.
+     ! resetting
+     nIterTotal = 0
+     nDivCor = 0
+     call reset_time(timer)
+     ! Initialize iteration control/diagnostic structure for KSS
+     if (trans) then
+         KSSiter%tol = tolEMadj
+     else
+         if (bRHS%nonzero_BC) then
+             KSSiter%tol = tolEMfwd
+         else
+             KSSiter%tol = tolEMadj
+         end if
+     end if
+     KSSiter%niter = 0
+     KSSiter%maxIt = IterPerDivCor
+     allocate(KSSiter%rerr(IterPerDivCor))
+     KSSiter%rerr = 0.0
+     converged = .false.
+     failed = .false.
+     ! just take the interior elements
+     ! construct the x and b as petsc VEC
+     ei = e(EDGEi)
+     call VecSetValues(bvec, Nei, (/(i,i=0,Nei-1)/), b, INSERT_VALUES, &
+    &    ierr)
+     call VecSetValues(xvec, Nei, (/(i,i=0,Nei-1)/), ei,               &
+    &           INSERT_VALUES,ierr)
+     call VecAssemblyBegin(xvec,ierr)
+     call VecAssemblyBegin(bvec,ierr)
+     call VecAssemblyEnd(xvec,ierr)        
+     call VecAssemblyEnd(bvec,ierr)
+     !------------------------------------------------------------------------
+     ! idea to test: for non-zero source START with divergence
+     !               correction
+     ! if (bRHS%nonzero_Source) then
+     !     nDivCor = 1
+     !     Call SdivCorr(ei,phi0)
+     ! endif
+     !-------------------------------------------------------------------------
+     !     initialize KSP solver
+     !-------------------------------------------------------------------------
+     call KSPCreate(comm_local,ksp_local,ierr)
+     call KSPSetOperators(ksp_local,Amat,Amat,ierr)
+     !-------------------------------------------------------------------------
+     !     configure PC preconditioner
+     !-------------------------------------------------------------------------
+     stype = KSPBCGS
+     ! stype = KSPPREONLY
+     ! stype = KSPTFQMR
+     ptype = PCBJACOBI
+     psubtype = PCILU
+     ! psubtype = PCSOR
+     call KSPGetPC(ksp_local,pc_local,ierr)
+     call PCSetType(pc_local,ptype,ierr)
+     call KSPSetType(ksp_local,stype,ierr)
+     Ntotal = size(isubs)
+     csize = 0
+     Nsub = 0
+     istart = 1
+     do i=1,Ntotal
+         csize = csize + isubs(i)
+         if (csize.le.sum(isizes(1:rank_local))) then ! go on
+             istart = istart + 1
+         elseif (csize.le.sum(isizes(1:rank_local+1))) then 
+             ! count sub-blocks in the local block
+             Nsub = Nsub + 1
+         else 
+             exit
+         end if
+     end do
+     iend = istart+Nsub-1
+     call PCBJacobiSetTotalBlocks(pc_local,Ntotal,            &
+    &     isubs,ierr)
+     call PCBJacobiSetLocalBlocks(pc_local, Nsub,             &
+    &    isubs(istart:iend),ierr)
+     ! set up the block jacobi structure
+     call KSPSetup(ksp_local,ierr)
+     ! allocate sub ksps
+     allocate(ksp_sub(Nsub))
+     call PCBJacobiGetSubKSP(pc_local,Nsub,istart,        &
+    &     ksp_sub,ierr)
+     do i=1,Nsub
+         call KSPGetPC(ksp_sub(i),pc_sub,ierr)
+         !ILU preconditioner
+         call PCSetType(pc_sub,psubtype,ierr)
+         call PCFactorSetLevels(pc_sub,1,ierr) ! use ILU(1) here
+         call KSPSetType(ksp_sub(i),KSPPREONLY,ierr)
+         ! this following lines are for MUMPS (use with caution)
+ !        call PCFactorSetMatSolverType(pc_sub,MATSOLVERMUMPS,ierr)
+ !        call PCFactorSetUpMatSolverType(pc_sub,ierr)
+         !call KSPSetTolerances(ksp_sub(i),ptol,PETSC_DEFAULT_REAL, &
+    !&     PETSC_DEFAULT_REAL,KSSiter%maxit,ierr)
+     end do
+     call KSPSetFromOptions(ksp_local,ierr)
+     call KSPSetup(ksp_local,ierr)
+     call KSPSetTolerances(ksp_local,KSSiter%tol,PETSC_DEFAULT_REAL, &
+    &     PETSC_DEFAULT_REAL,KSSiter%maxit,ierr)
+     ! this is not yet supported by BCGS
+     ! call KSPSetNormType(ksp_local, KSP_NORM_UNPRECONDITIONED, ierr)
+     call KSPSetResidualHistory(ksp_local,KSSiter%rerr,KSSiter%maxit,    &
+    &                PETSC_TRUE,ierr)
+     call KSPSetInitialGuessNonzero(ksp_local, PETSC_TRUE,ierr)
+!------------------------------------------------------------------------------
+!     iteration starts
+!------------------------------------------------------------------------------
+     loop: do while ((.not.converged).and.(.not.failed))
+         call KSPsolve(ksp_local,bvec,xvec,ierr)
+         call KSPGetIterationNumber(ksp_local,KSSiter%niter,ierr)
+         ! algorithm is converged when the relative error is less than 
+         ! tolerance
+         ! (in which case KSSiter%niter will be less than KSSiter%maxIt)
+         converged = KSSiter%niter .lt. KSSiter%maxIt
+         ! there are two ways of failing: 
+         !    1) the specific KSS did not work or
+         !    2) total number of divergence corrections exceeded
+         failed = failed .or. KSSiter%failed
+         ! update diagnostics output from KSS
+         do iter = 1,KSSiter%niter
+             EMrelErr(nIterTotal+iter) = KSSiter%rerr(iter)
+         end do
+         if (KSSiter%niter.eq.0) then ! in case a initial guess is good enough
+             KSSiter%niter = 1
+             EMrelErr(KSSiter%niter) = KSSiter%rerr(1)
+         endif
+         nIterTotal = nIterTotal + KSSiter%niter
+         nDivCor = nDivCor+1
+         if (nDivCor < MaxDivCor) then
+             if (rank_local.eq.0) then ! leader
+                 if (output_level > 2) then
+                     ! note that the relative residual is "preconditioned"
+                     ! (i.e. after applying the ILU preconditioner)
+                     ! which is different from what you are experiencing 
+                     ! in the SP/SP2/MF verstion
+                     write(6,*) 'iter: ',nIterTotal,' residual: ',       &
+    &                     EMrelErr(nIterTotal)
+                 endif
+             endif
+         else
+             ! max number of divergence corrections exceeded; 
+             ! convergence failed
+             failed = .true.
+         endif
+     end do loop
+
+     if (output_level > 2) then
+         write (*,'(a12,a20,i8,g15.7)') node_info,'finished solving:',& 
+    &         nIterTotal, EMrelErr(nIterTotal)
+         write (*,'(a12,a22,f12.6)')  node_info,' time taken (mins) ',&
+    &         elapsed_time(timer)/60.0
+     end if
+     
+     call VecGetValues(xvec,Nei,(/(i,i=0,Nei-1)/),ei,ierr)
+     e(EDGEi) = ei
+     ! After solving symetrized system, need to do different things for
+     ! transposed, standard cases
+     if (trans) then ! trans = .true.
+         ! compute solution on boundary nodes: first  A_IB^T eSol
+         call Mult_Aib(ei ,trans, s)
+         ! Multiply solution on interior nodes by volume weights
+         ! but after filling the solution on boundary
+         e = Vedge*e
+         ! then b - A_IB^T eSol, where b is input boundary values (if any)
+         if(bRHS%nonzero_BC) then
+             e(EDGEb) = e(EDGEb) - s(EDGEb)
+         else
+             e(EDGEb) = -s(EDGEb)
+         endif
+     else ! trans = .false.
+         ! just copy input BC into boundary nodes of solution
+         if(.not.bRHS%nonzero_BC) then
+             e(EDGEb) = 0
+         endif
+     endif
+     call setVector(e,eSol)
+     if (output_level > 3) then
+         if (use_cuda) then 
+         ! for debug
+             write(6,*) 'GPU ACC FINISHES...'
+         else
+             write(6,*) 'PETSC ROUTINE FINISHES...'
+         end if
+     end if
+     call MPI_BARRIER(comm_local,ierr)
+     ! deallocate local temporary arrays
+     deallocate(b)
+     deallocate(s)
+     deallocate(si)
+     deallocate(e)
+     deallocate(ei)
+     deallocate(temp)
+     deallocate(stemp)
+     call deall(tmpvec)
+     if (allocated(ksp_sub)) then
+         deallocate(ksp_sub)
+     endif
+     deallocate(KSSiter%rerr)
+     call VecDestroy(xvec,ierr)
+     call VecDestroy(bvec,ierr)
+     call KSPDestroy(ksp_local,ierr)
+     call MatDestroy(Amat,ierr)
+     call PetscFinalize(ierr)
+
+  end subroutine FWDSolve3Dc
 !**********************************************************************
 ! solver_divcorrr contains the subroutine that would solve the divergence
 ! correction. Solves the divergene correction using pre-conditioned

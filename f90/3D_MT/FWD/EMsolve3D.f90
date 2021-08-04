@@ -108,7 +108,7 @@ Contains
 ! the divergence correction may be applied also for non-physical sources, such as
 ! in Jmult ('FWD') and JmultT ('TRN').
     
-  subroutine FWDsolve3D(bRHS,omega,eSol,comm_local)
+  subroutine FWDsolve3D(bRHS,omega,eSol,comm_local,use_cuda)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -123,6 +123,7 @@ Contains
     real(kind=prec), intent(in)	:: omega
     !dummy parameter for compatibility
     integer, intent(in),optional    :: comm_local
+    logical, intent(in),optional    :: use_cuda
     !  OUTPUTS:
     !     eSol must be allocated before calling this routine
     type (cvector), intent(inout)	:: eSol
