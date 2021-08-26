@@ -1078,7 +1078,7 @@ Contains
      real(kind=prec)                    :: ptol=1e-2
      real                               :: normu
      type(spMatCSR_Cmplx)               :: Aii
-     Vec                                :: xvec,bvec
+     Vec                                :: xvec,bvec,iwuvec
      Mat                                :: Amat
      KSP                                :: ksp_local
      KSP,allocatable,dimension(:)       :: ksp_sub
@@ -1299,20 +1299,25 @@ Contains
      ! firstly constructs the system matrix Aii
      ! this will not be necesary if we build a module to contruct 
      ! the petsc version of operators at some stage
-     call CSR_R2Cdiag(AAii,VOmegaMuSig,Aii)
-     call deall_spMatCSR(AAii) ! release the CCGD matrix
-     ! Aii (Nei x Nei)
-     block_size=Aii%nRow
-     call MatCreateMPIAIJWithArrays(comm_local,block_size,block_size, &
-    &         Nei, Nei, Aii%row-1,Aii%col-1,Aii%val,Amat,ierr)
-     call deall_spMatCSR(Aii) ! release the temp sparse matrix
-     ! convert to cuSPARSE format
-     ! just need this to fall back to CPUs
+     ! call CSR_R2Cdiag(AAii,VOmegaMuSig,Aii)
+     ! call deall_spMatCSR(AAii) ! release the CCGD matrix
+     ! note we did not use Aii here 
+     ! AAii (Nei x Nei)
+     call MatCreate(comm_local,Amat, ierr)
+     block_size=AAii%nRow
+     call MatSetSizes(Amat, block_size, block_size, Nei, Nei, ierr)
+     ! set as cuSPARSE format
      if (use_cuda) then 
          call MatSetType(Amat,MATMPIAIJCUSPARSE,ierr)
+     else
+     ! just need this to fall back to CPUs
+         call MatSetType(Amat,MATMPIAIJ,ierr)
      end if
      call MatSetFromOptions(Amat,ierr)
+     call MatMPIAIJSetPreallocationCSR(Amat, AAii%row-1,AAii%col-1,   &
+    &      AAii%val+C_ZERO, ierr)
      call MatAssemblyBegin(Amat,MAT_FINAL_ASSEMBLY,ierr)
+     call deall_spMatCSR(Aii) ! release the temp sparse matrix
      call MatAssemblyEnd(Amat,MAT_FINAL_ASSEMBLY,ierr)
      !-------------------------------------------------------------------------
      !    PETSc vectors
@@ -1325,6 +1330,8 @@ Contains
      call VecSet(bvec,C_ZERO,ierr)
      call VecDuplicate(bvec,xvec,ierr)
      call VecSet(xvec,C_ZERO,ierr)
+     call VecDuplicate(bvec,iwuvec,ierr)
+     call VecSet(iwuvec,C_ZERO,ierr)
      !------------------------------------------------------------------------!
      ! Outer part of KSS loop ... alternates between Calls to KSS solver
      ! and Calls to divcor  ... this will be part of EMsolve
@@ -1357,16 +1364,21 @@ Contains
      converged = .false.
      failed = .false.
      ! just take the interior elements
-     ! construct the x and b as petsc VEC
+     ! construct the x, b and i/omega/mu/sigma as petsc VEC
      ei = e(EDGEi)
      call VecSetValues(bvec, Nei, (/(i,i=0,Nei-1)/), b, INSERT_VALUES, &
     &    ierr)
      call VecSetValues(xvec, Nei, (/(i,i=0,Nei-1)/), ei,               &
     &           INSERT_VALUES,ierr)
+     call VecSetValues(iwuvec, Nei, (/(i,i=0,Nei-1)/),                 &
+    &    ISIGN*CMPLX(0.0,1.0,8)*VOmegaMuSig, INSERT_VALUES,ierr)
      call VecAssemblyBegin(xvec,ierr)
      call VecAssemblyBegin(bvec,ierr)
+     call VecAssemblyBegin(iwuvec,ierr)
      call VecAssemblyEnd(xvec,ierr)        
      call VecAssemblyEnd(bvec,ierr)
+     call VecAssemblyEnd(iwuvec,ierr)
+     call MatDiagonalSet(Amat,iwuvec,ADD_VALUES,ierr)
      !------------------------------------------------------------------------
      ! idea to test: for non-zero source START with divergence
      !               correction
@@ -1534,6 +1546,7 @@ Contains
      deallocate(KSSiter%rerr)
      call VecDestroy(xvec,ierr)
      call VecDestroy(bvec,ierr)
+     call VecDestroy(iwuvec,ierr)
      call KSPDestroy(ksp_local,ierr)
      call MatDestroy(Amat,ierr)
      call PetscFinalize(ierr)

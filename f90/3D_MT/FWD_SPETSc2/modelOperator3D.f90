@@ -558,7 +558,7 @@ Contains
       allocate(d(n))
       d = VomegaMuSig(ix)
       call CSR_R2Cdiag(CCxx,d,Axx)
-      call ilu0_Cmplx(Axx,Lblk(1),Ublk(1))
+      call Dilu_Cmplx_AS(Axx,Lblk(1),Ublk(1))
       deallocate(d)
 
       ! test
@@ -584,7 +584,7 @@ Contains
       allocate(d(n))
       d = VomegaMuSig(iy)
       call CSR_R2Cdiag(CCxx,d,Axx)
-      call ilu0_cmplx(Axx,Lblk(2),Ublk(2))
+      call Dilu_Cmplx_AS(Axx,Lblk(2),Ublk(2))
       deallocate(d)
 
       call SubMatrix_Real(AAii,iz,iz,CCxx)
@@ -592,7 +592,7 @@ Contains
       allocate(d(n))
       d = VomegaMuSig(iz)
       call CSR_R2Cdiag(CCxx,d,Axx)
-      call ilu0_Cmplx(Axx,Lblk(3),Ublk(3))
+      call Dilu_Cmplx_AS(Axx,Lblk(3),Ublk(3))
       deallocate(d)
 
    !  could merge into a single LT and UT matrix, or solve systems
