@@ -32,9 +32,9 @@ logical, save, public   :: BC_FROM_E0_FILE = .false.
 !=======================================================================
 
 !! Used for interpolating the BC from a larger grid.
-  type(grid_t),save,public               	 ::	 Larg_Grid   
+  type(grid_t),save,public                   ::  Larg_Grid   
   type(solnVectorMTX_t),save,public          ::  eAll_larg
-  integer              ,save,public          ::   nTx_nPol
+  integer              ,save,public          ::  nTx_nPol
   logical              ,save,public          ::  nestedEM_initialized
 
 !=======================================================================
@@ -350,7 +350,7 @@ end subroutine copyE0fromFile
   end subroutine fwdSetup
 
    !**********************************************************************
-   subroutine fwdSolve(iTx,e0,b0,comm_local,use_cuda)
+   subroutine fwdSolve(iTx,e0,b0,device_id,comm_local)
 
    !  driver for 3d forward solver; sets up for transmitter iTx, returns
    !   solution in e0 ; rhs vector (b0) is generated locally--i.e.
@@ -365,8 +365,8 @@ end subroutine copyE0fromFile
    type(rhsVector_t), intent(in)        :: b0
    ! NOTE: this is only needed for two layer parallelization
    ! normal (none-petsc) programmes have no need of this
+   integer, intent(in), optional        :: device_id
    integer, intent(in), optional        :: comm_local
-   logical, intent(in), optional        :: use_cuda
 
    ! local variables
    real(kind=prec)	:: omega
@@ -382,26 +382,29 @@ end subroutine copyE0fromFile
    !  loop over polarizations
    if (txDict(iTx)%Tx_type=='MT') then
        do iMode = 1,e0%nPol
-		! compute boundary conditions for polarization iMode
-		!   uses cell conductivity already set by updateCond
-		!call setBound(iTx,e0%Pol_index(iMode),e0%pol(imode),b0%bc)
-		! NOTE that in the MPI parallelization, e0 may only contain a single mode;
-		! mode number is determined by Pol_index, NOT by its order index in e0
-		! ... but b0 uses the same fake indexing as e0
-		write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, 'Solving the ','FWD', &
-				' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
-        if (present(comm_local)) then
-            if (present(use_cuda)) then
-                call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), comm_local, &
-    &               use_cuda)
-            else
-                call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), comm_local)
-            end if
-        else
-            call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
-        end if
-		write (6,*)node_info,'FINISHED solve, nPol',e0%nPol
-   	   enddo
+       ! compute boundary conditions for polarization iMode
+       !   uses cell conductivity already set by updateCond
+       ! call setBound(iTx,e0%Pol_index(iMode),e0%pol(imode),b0%bc)
+       ! NOTE that in the MPI parallelization, e0 may only contain a single mode
+       ! mode number is determined by Pol_index, NOT by its order index in e0
+       ! ... but b0 uses the same fake indexing as e0
+         write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, &
+                 'Solving the ','FWD', ' problem for period ',iTx,   &
+                 ': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
+         if (present(device_id)) then
+             if (present(comm_local)) then
+                 call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id, &
+    &               comm_local)
+             else
+                 call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id)
+             end if
+         else
+             call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
+         end if
+         ! write (6,*) node_info,' finished solving, nPol', e0%nPol
+         write (*,'(a12,a24,i4)') node_info, &
+                 'finished solving, nPol' , e0%nPol
+       enddo
    else
        write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run fwdSolve'
    endif
@@ -412,7 +415,7 @@ end subroutine copyE0fromFile
    end subroutine fwdSolve
 
    !**********************************************************************
-   subroutine sensSolve(iTx,FWDorADJ,e,comb,comm_local,use_cuda)
+   subroutine sensSolve(iTx,FWDorADJ,e,comb,device_id,comm_local)
    !   Uses forcing input from comb, which must be set before calling
    !    solves forward or adjoint problem, depending on comb%ADJ
    !  NOTE that this routine DOES NOT call UpdateFreq routine to complete
@@ -428,8 +431,8 @@ end subroutine copyE0fromFile
    type(rhsVector_t), intent(inout)		:: comb
    ! NOTE: this is only needed for two layer parallelization
    ! normal (none-petsc) programmes have no need of this
+   integer, intent(in), optional        :: device_id
    integer, intent(in), optional        :: comm_local
-   logical, intent(in), optional        :: use_cuda
 
    ! local variables
    integer      			:: IER,iMode
@@ -441,24 +444,25 @@ end subroutine copyE0fromFile
    if (txDict(iTx)%Tx_type=='MT') then 
    	omega = txDict(iTx)%omega
    	period = txDict(iTx)%period
-   	do iMode = 1,e%nPol
+      do iMode = 1,e%nPol
       	comb%b(e%Pol_index(iMode))%adj = FWDorADJ
-      	write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info,'Solving the ',FWDorADJ, &
-		' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
-        if (present(comm_local)) then
-            if (present(use_cuda)) then
+      	write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, &
+     &          'Solving the ',FWDorADJ, ' problem for period ',iTx,&
+     &          ': ',(2*PI)/omega,' secs  mode # ',e%Pol_index(iMode)
+        if (present(device_id)) then
+            if (present(comm_local)) then
                 call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
-     &           e%pol(imode), comm_local, use_cuda)
+     &           e%pol(imode), device_id, comm_local)
             else
                 call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
-     &           e%pol(imode), comm_local)
+     &           e%pol(imode), device_id)
             end if
         else
             call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
         end if
-   	enddo
+      enddo
    else
-    write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run sensSolve'
+       write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run sensSolve'
    endif
 
    ! update pointer to the transmitter in solnVector

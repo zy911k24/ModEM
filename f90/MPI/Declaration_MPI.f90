@@ -21,14 +21,17 @@ integer        :: group_world, group_leader
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
-integer        :: size_gpu 
-logical        :: use_cuda = .TRUE.
+integer        :: size_gpu = 0 
+! modify with caution
+! if you want to use more than one cpus to feed one gpu
+integer        :: cpus_per_gpu = 3 ! hard coded here 
+integer        :: device_id = -1
 ! this is used to store the timer of each mpi sub-process
 DOUBLE PRECISION    :: previous_time
 integer, allocatable, dimension(:) :: prev_group_sizes
 ! this is used for store the current name of proc/cpu to identify different
-! platforms, useful to group cpus from different nodes
-character*(80) ::  current_proc_name_MPI
+! platforms, useful to group cpus from different nodes (hosts)
+character*(40) ::  current_proc_name_MPI
 
 !********************************************************************
 ! Parameters required to create an MPI derived data types.
@@ -90,6 +93,22 @@ type :: define_worker_job
 type(define_worker_job), save :: worker_job_task
 !********************************************************************
 
+#ifdef CUDA
+
+interface
+
+   ! kernelc_getDevNum
+   integer(c_int) function kernelc_getDevNum() & 
+    &              bind (C, name="kernelc_getDevNum" )
+     ! interface to get the number of GPU devices - 
+     ! only useful if you have any!   
+     use iso_c_binding
+     implicit none
+   end function kernelc_getDevNum
+    
+end interface
+
+#endif
 
 Contains
 

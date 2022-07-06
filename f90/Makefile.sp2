@@ -46,7 +46,7 @@
 include Makefile.local
 OBJDIR = ./objs/3D_MT/GFortReleaseMPI_SP2
 F90 =  mpif90
-FFLAGS = -O3 -ffree-line-length-none -fallow-argument-mismatch
+FFLAGS = -O3 -ffree-line-length-none -mavx
 MPIFLAGS = -x f95-cpp-input -DMPI
 MODULE = -J $(OBJDIR)
 LIBS_PATH = -L/usr/lib -L/usr/local/opt/lapack/lib

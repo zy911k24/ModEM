@@ -70,7 +70,15 @@ Subroutine Constructor_MPI
       group_leader = MPI_GROUP_NULL
       ! number of GPUs
 #ifdef CUDA
-      size_gpu = 1
+      ! override the gpu setting 
+      ! this is kind of awkward as even for a "gpu-aware" mpi, the program
+      ! will NOT be able to tell the gpu number
+      ! here we have to call the nvidia-ml analysis lib to get the number of
+      ! devices
+      size_gpu = kernelc_getDevNum()
+      if ((output_level > 3).and. (taskid .eq. 0)) then
+          write(6,*) 'number of GPU devices = ', size_gpu
+      end if
 #else
       size_gpu = 0
 #endif
@@ -102,7 +110,7 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
      integer, intent(inout) :: group_sizes(nTx*nPol+1) !maximum group needed
      ! Local
      integer ::  Ngroup, Ntask, igroup
-     integer ::  total_nTx_nPol
+     integer ::  total_nTx_nPol, resultlen
      integer, allocatable, dimension(:) :: leaders
 
 ! comment from Naser
@@ -121,6 +129,10 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
      if (comm_local .ne. MPI_COMM_NULL) then
          call MPI_COMM_FREE(comm_local,ierr)
      end if 
+     call MPI_GET_PROCESSOR_NAME(current_proc_name_MPI, resultlen, ierr)
+     if ((output_level > 3)) then
+         write(6,*) '# current host name is: ', current_proc_name_MPI
+     end if
      ! start splitting here
      total_nTx_nPol = nTx*nPol ! total number of independent tasks
      if (number_of_workers .ge. total_nTx_nPol ) then
@@ -174,6 +186,8 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
          igroup = igroup -1
      end if
 !    start spliting here
+!    for generality, I have to refrain to use the Open-MPI only type
+!    like OMPI_COMM_TYPE_NUMA 
      call MPI_COMM_SPLIT(comm_world,igroup,rank_world,comm_local,ierr)
      call MPI_COMM_RANK(comm_local, rank_local, ierr)
      call MPI_COMM_SIZE(comm_local, size_local, ierr)
@@ -235,6 +249,8 @@ Subroutine set_group_sizes(comm_current,nTx,nPol,group_sizes,walltime)
 ! def = 1 - default settings, use same number of procs per task
 ! def = 2 - dynamic settings, tend to use more procs for harder (higher
 !           walltime) tasks 
+! def = 3 - topology-based settings, maps procs from a certain physical node 
+!           in a group
 ! def = 0 - debug setting - use all workers in one tasks (tasks are solved 
 !           one by one) 
      implicit none
@@ -354,6 +370,16 @@ Subroutine set_group_sizes(comm_current,nTx,nPol,group_sizes,walltime)
                      endif
                  enddo
              endif
+         elseif (def.eq.3) then ! group according to topography
+             ! this is useful for "production" setups with
+             ! hybrid CPU-GPU calculations
+             if ((output_level > 3)) then
+                 write(6,*) 'determine the system topology'
+             end if
+             ! reset the group_sizes array
+             group_sizes = 0
+             group_sizes(1) = 1
+             group_sizes(2) = number_of_workers
          elseif (def.eq.0) then !debugging, put everyone in one group
              ! "sequentially" solve all tasks one by one, but use all workers 
              ! for each task
@@ -422,8 +448,8 @@ Subroutine Master_Job_Regroup(nTx,nPol,ierr)
      deallocate(time_buff)
 
 end subroutine Master_Job_Regroup
-!----------------------------------------------------------------------------
 
+!----------------------------------------------------------------------------
 !##########################  Master_Job_FORWARD ############################
 
 Subroutine Master_Job_fwdPred(sigma,d1,eAll)
@@ -1175,68 +1201,82 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out,eAll_in)
      type(solnVectorMTX_t), intent(in), optional         :: eAll_in
      type(solnVectorMTX_t), intent(inout), optional      :: eAll_out     
      !Local
-     Integer        :: iper,ipol,ipol1
+     Integer        :: iper,ipol,ipol1,ijob,total_jobs
+     Integer        :: hcounter, tcounter
      Integer        :: per_index,pol_index,des_index
      logical        :: keep_soln,savedSolns
 
      savedSolns = present(eAll_in)
-     dest=0
+     who=0
 
      call get_nPol_MPI(eAll_out%solns(1)) 
      ! initial regroup
      if (rank_local.eq.-1) then ! first run!
          call Master_Job_Regroup(nTx,nPol_MPI,ierr)
      endif
-     per_index=0
      worker_job_task%what_to_do=trim(job_name) 
-     do iper=1,nTx !loop through all transmitters 
-         per_index=per_index+1
+     call count_number_of_messages_to_RECV(eAll_out)
+     total_jobs = answers_to_receive
+     ! counter from head
+     hcounter = 0
+     ! counter from tail
+     tcounter = 0
+     who = 0
+     do ijob=1,total_jobs !loop through all jobs
+         ! loop through all jobs, until we run out of worker groups
+         who=who+1
+         if (who.ge.(size_leader - size_gpu)) then
+             ! this group should have a gpu
+             ! count from tail
+             tcounter = tcounter+1
+             ! from tail
+             call find_next_job(nTx,total_jobs,tcounter,.false.,eAll_out,&
+    &            per_index, pol_index)
+         else
+             ! count from head
+             hcounter = hcounter+1
+             ! from head
+             call find_next_job(nTx,total_jobs,hcounter,.true.,eAll_out, &
+    &            per_index, pol_index)
+         end if
          worker_job_task%per_index = per_index
-         pol_index=0
-         call get_nPol_MPI(eAll_out%solns(per_index)) 
-         do ipol=1,nPol_MPI ! loop through all pols
-             pol_index=pol_index+1
-             worker_job_task%pol_index= pol_index
-             ! count the total tasks
-             dest=dest+1
-             call create_worker_job_task_place_holder
-             call Pack_worker_job_task
-             call MPI_SEND(worker_job_package,Nbytes, MPI_PACKED,dest,   &
-    &             FROM_MASTER, comm_leader, ierr)
-             if (trim(job_name).eq. 'JmultT' .or. trim(job_name).eq.     &
-    &             'Jmult') then
+         worker_job_task%pol_index = pol_index
+         call create_worker_job_task_place_holder
+         call Pack_worker_job_task
+         call MPI_SEND(worker_job_package,Nbytes, MPI_PACKED,who,&
+    &        FROM_MASTER, comm_leader, ierr)
+         if (trim(job_name).eq. 'JmultT' .or. trim(job_name).eq.     &
+    &        'Jmult') then
              ! In case of JmultT and Jmult the compleate eAll solution 
              ! (the background solution) must be sent to each node.
              ! In the 3D MT case there are two polarisations.
              ! In the 3D CSEM case there are one polarisation (for now).
              ! In the 2D MT case there are one polarisation.
-                 which_per=per_index
-                 do ipol1=1,nPol_MPI
-                     which_pol=ipol1
-                     call create_e_param_place_holder(eAll_in%solns(which_per))
-                     call Pack_e_para_vec(eAll_in%solns(which_per))
-                     call MPI_SEND(e_para_vec, Nbytes, MPI_PACKED, dest,  &
-    &                 FROM_MASTER, comm_leader, ierr) 
-                 end do   
-             end if  
-             write(ioMPI,'(a10,a16,i5,a8,i5,a11,i5)')trim(job_name),     &
-    &             ': Send Per. # ',per_index , ' : Pol #', pol_index,    &
-    &             ' to node # ',dest
-             if (dest .ge. (size_leader-1)) then
-                 ! break, we are done distributing the first batch
-                 ! now wait for the first group to finish his task
+             which_per=per_index
+             do ipol1=1,nPol_MPI
+                 which_pol=ipol1
+                 call create_e_param_place_holder(eAll_in%solns(which_per))
+                 call Pack_e_para_vec(eAll_in%solns(which_per))
+                 call MPI_SEND(e_para_vec, Nbytes, MPI_PACKED, who,  &
+    &             FROM_MASTER, comm_leader, ierr) 
+             end do   
+         end if  
+         write(ioMPI,'(a10,a16,i5,a8,i5,a11,i5)')trim(job_name),     &
+    &         ': Send Per. # ',per_index , ' : Pol #', pol_index,    &
+    &         ' to node # ',dest
+         if (who .ge. (size_leader-1)) then
+             ! break, we are done distributing the first batch
+             ! now wait for the first group to report back
                  goto 10
-             end if
-         end do    
+         end if
      end do
                    
 10   continue
 
-     call count_number_of_meaasges_to_RECV(eAll_out)
      !answers_to_receive = nTx*nPol_MPI
      received_answers = 0
      do while (received_answers .lt. answers_to_receive)
-     ! wait until all tasks are finished
+     ! now loop until all tasks are finished
          call create_worker_job_task_place_holder
          call MPI_RECV(worker_job_package, Nbytes, MPI_PACKED ,          &
     &         MPI_ANY_SOURCE, FROM_WORKER,comm_leader,STATUS, ierr)
@@ -1271,27 +1311,48 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out,eAll_in)
 
          ! Check if we send all transmitters and polarizations, if not 
          ! then send the next transmitter to the worker who is free now....
-         ! This part is very important if we have less workers than
+         ! This part is very important if we have less worker groups than
          ! transmitters. 
 
-         if (Per_index .ge.  nTx .and. pol_index .ge. nPol_MPI) then 
-             goto 1500 ! continue, finished task 
+         if (received_answers .ge. answers_to_receive) then 
+             goto 1500 ! continue, just wait all the tasks to end 
          else
-             pol_index=pol_index+1 
-             if ( pol_index .gt. nPol_MPI ) then
-                 Per_index=Per_index+1
-                 pol_index=1   
+             ! for debug 
+             ! write(6,*) 'total jobs sent from head', hcounter
+             ! write(6,*) 'total jobs sent from tail', tcounter
+             if ((hcounter+tcounter).ge.total_jobs) then
+                 ! we have sent enough jobs, now just wait
+                 goto 1500 
+             end if
+             ! send new jobs to folks 
+             if (who.ge.(size_leader-size_gpu)) then
+                 ! count from tail
+                 tcounter = tcounter+1
+                 call find_next_job(nTx,total_jobs,tcounter,.false.,eAll_out,&
+    &              per_index, pol_index)
+#ifdef CUDA
+             elseif (who.ge.(size_leader-size_gpu*cpus_per_gpu)) then
+                 ! count from head
+                 hcounter = hcounter+1
+                 call find_next_job(nTx,total_jobs,hcounter,.true.,eAll_out, &
+    &              per_index, pol_index)
+             else
+                 ! do nothing - testing if this will save us some time  
+                 ! the idea is using CPUs at this stage may take longer time
+                 ! than waiting for a GPU to deal with it
+                 goto 1500 ! continue, just wait other tasks to end 
+#else
+             else
+                 ! count from head
+                 hcounter = hcounter+1
+                 call find_next_job(nTx,total_jobs,hcounter,.true.,eAll_out, &
+    &              per_index, pol_index)
+#endif
              end if
          end if
-
-         write(6,*)'Per_index ',Per_index,'pol_index ',pol_index,      &
+         write(6,*) 'Per_index ',Per_index,'pol_index ',pol_index,      &
     &         'Going to send'
           
-         if (Per_index .gt. nTx ) then 
-             ! seems not necesary here
-             goto 1500 ! continue 
-         end if
-
          worker_job_task%per_index= per_index
          worker_job_task%pol_index= pol_index
          worker_job_task%what_to_do=trim(job_name) 
@@ -1339,6 +1400,54 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out,eAll_in)
 
 end subroutine Master_job_Distribute_Taskes
 
+!###################   find next job -- from back or front   ###################
+    Subroutine find_next_job(nTx,total_jobs,counter,fromhead, eAll_out, &
+     &    per_index,pol_index)
+     implicit none
+     Integer, intent(in)                      :: nTx
+     Integer, intent(in)                      :: total_jobs 
+     Integer, intent(in)                      :: counter
+     Logical, intent(in)                      :: fromhead
+     type(solnVectorMTX_t), intent(in)        :: eAll_out     
+     Integer, intent(out)                     :: per_index,pol_index
+     !Local
+     Integer                                  :: iper, ipol, jobs
+     ! a very silly (literally) subroutine to find the next job 
+     ! normally it should be nTx*nPol jobs
+     ! but it is possible (in principle) that we don't have 2 pols at one per
+     ! note this is not thread-safe - should only be called by the master 
+     jobs = 0
+     if (fromhead) then
+         ! count from start
+         head: do iper=1,nTx !loop through all transmitters 
+             call get_nPol_MPI(eAll_out%solns(iper)) 
+             do ipol=1,nPol_MPI ! loop through all pols
+                 ! count the total tasks
+                 jobs=jobs+1
+                 if (jobs.ge.counter) then
+                     per_index=iper
+                     pol_index=ipol
+                     exit head
+                 end if
+             end do
+         end do head
+     else
+         ! count from back
+         tail: do iper=nTx,1,-1 !loop through all transmitters 
+             call get_nPol_MPI(eAll_out%solns(iper)) 
+             do ipol=nPol_MPI,1,-1 ! loop through all pols
+                 ! count the total tasks
+                 jobs=jobs+1
+                 if (jobs.ge.counter) then
+                     per_index=iper
+                     pol_index=ipol
+                     exit tail
+                 end if
+             end do
+         end do tail
+     end if
+    end subroutine find_next_job
+
 !###################   Worker_Job: High Level Subroutine   ###################
 Subroutine Worker_Job (sigma,d)
      implicit none
@@ -1356,7 +1465,8 @@ Subroutine Worker_Job (sigma,d)
      Integer                                :: iper,ipol,i,des_index
      Integer                                :: per_index,per_index_pre 
      Integer                                :: pol_index, stn_index
-     Integer                                :: eAll_vec_size
+     Integer                                :: eAll_vec_size 
+     Integer                                :: cpu_only_ranks
      Integer,allocatable,dimension(:)       :: group_sizes
      character(20)                          :: which_proc
      character(80)                          :: paramType,previous_message
@@ -1379,10 +1489,15 @@ Subroutine Worker_Job (sigma,d)
      do  ! the major loop
          recv_loop=recv_loop+1
          call create_worker_job_task_place_holder
+         ! reset the timer
+         now = MPI_Wtime()
+         previous_time = now
          if (rank_local .eq. 0) then ! this is a group leader
              ! wait for commands from master
              write(6,'(a12,a35)') node_info,                              &
     &        ' Waiting for a message from Master'
+             write(6,'(a12, a22, f12.6)') node_info,        &
+                     ' time elapsed (sec): ', time_passed
              call MPI_RECV(worker_job_package, Nbytes, MPI_PACKED ,0,     &
     &           FROM_MASTER,comm_leader,STATUS, ierr)
          elseif (rank_local .gt. 0) then ! this is a group worker
@@ -1407,14 +1522,11 @@ Subroutine Worker_Job (sigma,d)
          ! write(6,*) 'source = ', MPI_SOURCE
          ! write(6,*) 'tag = ', MPI_TAG
          ! write(6,*) 'err = ', MPI_ERROR
-         ! write(6,*) node_info,' MPI INFO [keep soln = ',(worker_job_task%keep_E_soln), &
-         ! '; several TX = ',worker_job_task%several_Tx,']'
+         ! write(6,*) node_info,' MPI INFO [keep soln = ',               &
+         !            (worker_job_task%keep_E_soln), &
+         !            '; several TX = ',worker_job_task%several_Tx,']'
 
          if (trim(worker_job_task%what_to_do) .eq. 'FORWARD') then
-             ! reset the timer
-             now = MPI_Wtime()
-             previous_time = now
-
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
              if (rank_local .eq. 0) then ! leader here
@@ -1432,26 +1544,37 @@ Subroutine Worker_Job (sigma,d)
     &                      ierr)
                      end do
 #ifdef PETSC
-                     call fwdSolve(per_index,e0,b0,comm_local) 
+                     call fwdSolve(per_index,e0,b0,device_id,comm_local) 
 #else
                      ! note - it is possible to use other external solvers
                      ! here instead of the PETSc one, hence I left one 
                      ! unused switch here
-                     call fwdSolve(per_index,e0,b0) 
-#endif
+                     call fwdSolve(per_index,e0,b0,device_id) 
+#endif 
                  else ! you are on your own, bro!
-#ifdef PETSC
-                     ! see if we have a GPU to spare
-                     if (rank_leader.ge.(size_leader - size_gpu)) then
-                         ! assign the GPU(s) to the last leaders
-                         ! i.e. if we have n groups and m gpus
-                         ! the last m groups will get a GPU
-                         call fwdSolve(per_index,e0,b0,comm_local,use_cuda) 
+                     ! see if we have at least one GPU to spare
+                     if (size_gpu*cpus_per_gpu.gt.(size_leader-1)) then
+                         ! reset the ranks
+                         cpu_only_ranks = 1
                      else
-                         call fwdSolve(per_index,e0,b0,comm_local) 
+                         cpu_only_ranks = size_leader-size_gpu*cpus_per_gpu
+                     end if
+                     if (rank_leader.ge.cpu_only_ranks) then
+                         ! assign the GPU(s) to the last leaders
+                         ! currently use cpus_per_gpu cpus for one GPU 
+                         ! (hard coded here)
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m*cpus_per_gpu groups will get a GPU
+                         device_id = mod((rank_leader - cpu_only_ranks),&
+     &                       size_gpu)
+                     else
+                         ! no gpu left, use CPU to calculate
+                         device_id = -1
                      endif
+#ifdef PETSC
+                     call fwdSolve(per_index,e0,b0,device_id,comm_local) 
 #else
-                     call fwdSolve(per_index,e0,b0) 
+                     call fwdSolve(per_index,e0,b0,device_id) 
 #endif
                  end if
              elseif (rank_local .gt. 0) then !worker here
@@ -1461,7 +1584,7 @@ Subroutine Worker_Job (sigma,d)
                  call set_e_soln(pol_index,e0)
                  call zero_rhsVector(b0)
 #ifdef PETSC
-                 call fwdSolve(per_index,e0,b0,comm_local) 
+                 call fwdSolve(per_index,e0,b0,device_id,comm_local) 
 #else
                  write(6,*) 'idle NODE #', rank_world, ' hanging around'
                  write(6,*) '  WARNING: more than enough CPU(s) detected.'
@@ -1491,13 +1614,10 @@ Subroutine Worker_Job (sigma,d)
              !     write(6,*) 'group #', rank_leader, ' previous =',        &
              !         previous_time, 'now = ', now
              ! endif
-             time_passed = time_passed + now - previous_time
+             time_passed =  now - previous_time
              previous_time = now
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'COMPUTE_J') then
-             ! reset the timer
-             now = MPI_Wtime()
-             previous_time = now
 
              per_index=worker_job_task%per_index
              stn_index=worker_job_task%stn_index
@@ -1587,27 +1707,38 @@ Subroutine Worker_Job (sigma,d)
                      call add_sparseVrhsV(C_ONE,L(iFunc),comb)
                      if (size_local .gt. 1) then
 #ifdef PETSC
-                         call sensSolve(per_index,TRN,e,comb,comm_local)
+                         call sensSolve(per_index,TRN,e,comb,device_id, &
+    &                          comm_local)
 #else
                      ! note - it is possible to use other external solvers
                      ! here instead of the PETSc one, hence I left one 
                      ! unused switch here
-                         call sensSolve(per_index,TRN,e,comb)
+                         call sensSolve(per_index,TRN,e,comb,device_id)
 #endif
                      else ! you are on your own, tovarishch
-#ifdef PETSC
-                     ! see if we have a GPU to spare
-                     if (rank_leader.ge.(size_leader - size_gpu)) then
+                     ! see if we have at least one GPU to spare
+                         if (size_gpu*cpus_per_gpu.gt.(size_leader-1)) then
+                             ! reset the ranks
+                             cpu_only_ranks = 1
+                         else
+                             cpu_only_ranks = size_leader-size_gpu*cpus_per_gpu
+                         end if
+                         if (rank_leader.ge.cpu_only_ranks) then
                          ! assign the GPU(s) to the last leaders
+                         ! currently use cpus_per_gpu cpus for one GPU 
+                         ! (hard coded here)
                          ! i.e. if we have n groups and m gpus
-                         ! the last m groups will get a GPU
-                         call sensSolve(per_index,TRN,e,comb,comm_local, &
-    &                       use_cuda)
-                     else
-                         call sensSolve(per_index,TRN,e,comb,comm_local)
-                     endif
+                         ! the last m*cpus_per_gpu groups will get a GPU
+                             device_id = mod((rank_leader - cpu_only_ranks),&
+     &                       size_gpu)
+                         else
+                             device_id = -1
+                         endif
+#ifdef PETSC
+                         call sensSolve(per_index,TRN,e,comb,device_id, &
+    &                       comm_local)
 #else
-                         call sensSolve(per_index,TRN,e,comb)
+                         call sensSolve(per_index,TRN,e,comb,device_id)
 #endif
                      end if
                      ! multiply by P^T and add the rows of Q
@@ -1628,7 +1759,7 @@ Subroutine Worker_Job (sigma,d)
                  deallocate(Qimag,STAT=istat)
                  ! call Jrows(per_index,dt_index,stn_index,sigma,e0,
                  ! Jreal,Jimag)        
-             else
+             else ! worker here
                  ! create some dummy parameters of e and comb
                  iTx = 1
                  call create_solnVector(grid,iTx,e)
@@ -1636,7 +1767,8 @@ Subroutine Worker_Job (sigma,d)
                  call create_rhsVector(grid,iTx,comb)
                  do iFunc = 1,nFunc
 #ifdef PETSC
-                     call sensSolve(per_index,TRN,e,comb,comm_local)
+                     call sensSolve(per_index,TRN,e,comb,device_id, &
+    &                        comm_local)
 #else
                      write(6,*) 'idle NODE #', rank_world, ' hanging around'
                      write(6,*) '  WARNING: more than enough CPU(s) detected.'
@@ -1675,13 +1807,10 @@ Subroutine Worker_Job (sigma,d)
              !     write(6,*) 'group #', rank_leader, ' previous =',        &
              !         previous_time, 'now = ', now
              ! endif
-             time_passed = time_passed + now - previous_time
+             time_passed = now - previous_time
              previous_time = now
              
          elseif (trim(worker_job_task%what_to_do) .eq. 'JmultT') then
-             ! reset the timer
-             now = MPI_Wtime()
-             previous_time = now
 
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
@@ -1718,27 +1847,37 @@ Subroutine Worker_Job (sigma,d)
                  call set_e_soln(pol_index,e)
                  if (size_local.gt.1) then
 #ifdef PETSC
-                     call sensSolve(per_index,TRN,e,comb,comm_local)
+                     call sensSolve(per_index,TRN,e,comb,device_id,comm_local)
 #else
                      ! note - it is possible to use other external solvers
                      ! here instead of the PETSc one, hence I left one 
                      ! unused switch here
-                     call sensSolve(per_index,TRN,e,comb)
+                     call sensSolve(per_index,TRN,e,comb,device_id)
 #endif
                  else ! you are on your own, mi amigo!
-#ifdef PETSC
-                     ! see if we have a GPU to spare
-                     if (rank_leader.ge.(size_leader - size_gpu)) then
-                         ! assign the GPU(s) to the last leaders
-                         ! i.e. if we have n groups and m gpus
-                         ! the last m groups will get a GPU
-                         call sensSolve(per_index,TRN,e,comb,comm_local,  &
-    &                       use_cuda)
+                     ! see if we have at least one GPU to spare
+                     if (size_gpu*cpus_per_gpu.gt.(size_leader-1)) then
+                         ! reset the ranks
+                         cpu_only_ranks = 1
                      else
-                         call sensSolve(per_index,TRN,e,comb,comm_local)
+                         cpu_only_ranks = size_leader-size_gpu*cpus_per_gpu
+                     end if
+                     if (rank_leader.ge.cpu_only_ranks) then
+                         ! assign the GPU(s) to the last leaders
+                         ! currently use cpus_per_gpu cpus for one GPU 
+                         ! (hard coded here)
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m*cpus_per_gpu groups will get a GPU
+                         device_id = mod((rank_leader - cpu_only_ranks),&
+     &                   size_gpu)
+                     else
+                         device_id = -1
                      endif
+#ifdef PETSC
+                     call sensSolve(per_index,TRN,e,comb,device_id,  &
+    &                    comm_local)
 #else
-                     call sensSolve(per_index,TRN,e,comb)
+                     call sensSolve(per_index,TRN,e,comb,device_id)
 #endif
                  endif
              elseif (rank_local .gt. 0) then !worker here
@@ -1748,7 +1887,7 @@ Subroutine Worker_Job (sigma,d)
                  call set_e_soln(pol_index,e)
                  call create_rhsVector(grid,iTx,comb)
 #ifdef PETSC
-                 call sensSolve(per_index,TRN,e,comb,comm_local)
+                 call sensSolve(per_index,TRN,e,comb,device_id,comm_local)
 #else
                  write(6,*) 'idle NODE #', rank_world, ' hanging around'
                  write(6,*) '  WARNING: more than enough CPU(s) detected.'
@@ -1777,13 +1916,10 @@ Subroutine Worker_Job (sigma,d)
              !     write(6,*) 'group #', rank_leader, ' previous =',        &
              !         previous_time, 'now = ', now
              ! endif
-             time_passed = time_passed + now - previous_time
+             time_passed = now - previous_time
              previous_time = now
                     
          elseif (trim(worker_job_task%what_to_do) .eq. 'Jmult') then
-             ! reset the timer
-             now = MPI_Wtime()
-             previous_time = now
 
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
@@ -1819,27 +1955,37 @@ Subroutine Worker_Job (sigma,d)
                  call set_e_soln(pol_index,e)
                  if (size_local.gt.1) then
 #ifdef PETSC
-                     call sensSolve(per_index,FWD,e,comb,comm_local)
+                     call sensSolve(per_index,FWD,e,comb,device_id,comm_local)
 #else
                      ! note - it is possible to use other external solvers
                      ! here instead of the PETSc one, hence I left one 
                      ! unused switch here
-                     call sensSolve(per_index,FWD,e,comb)
+                     call sensSolve(per_index,FWD,e,comb,device_id)
 #endif
                  else ! you are on your own, aibo!
-#ifdef PETSC
-                     ! see if we have a GPU to spare
-                     if (rank_leader.ge.(size_leader - size_gpu)) then
-                         ! assign the GPU(s) to the last leaders
-                         ! i.e. if we have n groups and m gpus
-                         ! the last m groups will get a GPU
-                         call sensSolve(per_index,FWD,e,comb,comm_local,  &
-    &                       use_cuda)
+                     ! see if we have at least one GPU to spare
+                     if (size_gpu*cpus_per_gpu.gt.(size_leader-1)) then
+                         ! reset the ranks
+                         cpu_only_ranks = 1
                      else
-                         call sensSolve(per_index,TRN,e,comb,comm_local)
+                         cpu_only_ranks = size_leader-size_gpu*cpus_per_gpu
+                     end if
+                     if (rank_leader.ge.cpu_only_ranks) then
+                         ! assign the GPU(s) to the last leaders
+                         ! currently use cpus_per_gpu cpus for one GPU 
+                         ! (hard coded here)
+                         ! i.e. if we have n groups and m gpus
+                         ! the last m*cpus_per_gpu groups will get a GPU
+                         device_id = mod((rank_leader - cpu_only_ranks),&
+     &                   size_gpu)
+                     else
+                         device_id = -1
                      endif
+#ifdef PETSC
+                     call sensSolve(per_index,FWD,e,comb,device_id,  &
+    &                   comm_local)
 #else
-                     call sensSolve(per_index,FWD,e,comb)
+                     call sensSolve(per_index,TRN,e,comb,device_id)
 #endif
                  endif
              elseif (rank_local .gt. 0) then !worker here
@@ -1849,7 +1995,7 @@ Subroutine Worker_Job (sigma,d)
                  call set_e_soln(pol_index,e)
                  call create_rhsVector(grid,iTx,comb)
 #ifdef PETSC
-                 call sensSolve(per_index,FWD,e,comb,comm_local)
+                 call sensSolve(per_index,FWD,e,comb,device_id,comm_local)
 #else
                  write(6,*) 'idle NODE #', rank_world, ' hanging around'
                  write(6,*) '  WARNING: more than enough CPU(s) detected.'
@@ -1878,7 +2024,7 @@ Subroutine Worker_Job (sigma,d)
              !     write(6,*) 'group #', rank_leader, ' previous =',        &
              !         previous_time, 'now = ', now
              ! endif
-             time_passed = time_passed + now - previous_time
+             time_passed = now - previous_time
              previous_time = now
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'Distribute nTx')&
@@ -2068,9 +2214,6 @@ Subroutine Worker_Job (sigma,d)
                  end if 
                  call gather_runtime(comm_leader,time_passed,time_buff,ierr)
              else if (rank_local.eq.-1) then ! initial run
-                 ! reset the timer, for the first run
-                 now = MPI_Wtime()
-                 previous_time = now
                  time_passed = -1.0
                  call gather_runtime(comm_leader,time_passed,time_buff,ierr)
              endif
@@ -2144,7 +2287,6 @@ Subroutine Worker_Job (sigma,d)
      end do
 
 End Subroutine Worker_Job
-
 
 !******************************************************************************
 

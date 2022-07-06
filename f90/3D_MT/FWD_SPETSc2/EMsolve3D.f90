@@ -61,9 +61,9 @@ module EMsolve3D
 
   ! Default solver control parameters
   ! number of iterations for each call to divergence correction:
-  integer, parameter    ::              IterPerDivCorDef = 150
+  integer, parameter    ::              IterPerDivCorDef = 120
   ! maximum number of divergence correction calls allowed
-  integer, parameter    ::              MaxDivCorDef = 8
+  integer, parameter    ::              MaxDivCorDef = 7
   ! maximum number of PCG iterations for divergence correction
   integer, parameter    ::              MaxIterDivCorDef = 100
   ! misfit tolerance for convergence of EMsolve algorithm
@@ -377,16 +377,12 @@ Contains
           ! max number of divergence corrections exceeded; convergence failed
           failed = .true.
        endif
-       if (output_level > 2) then
-           write (6,*) 'iter: ', nIterTotal, ' residual: ',             &
-   &    EMrelErr(nIterTotal)
-       end if
     end do loop
     if (output_level > 2) then
        write (*,'(a12,a20,i8,g15.7)') node_info, 'finished solving:',     &
    &            nIterTotal, EMrelErr(nIterTotal)
-       write (*,'(a12,a22,f12.6)')    node_info, ' time taken (mins) ',   &
-   &            elapsed_time(timer)/60.0
+       write (*,'(a12,a22,f12.6)') node_info, 'solving time (sec): ',     &
+   &          elapsed_time(timer)
     end if
     e(EDGEi) = ei
     !  After solving symetrized system, need to do different things for
@@ -907,7 +903,7 @@ Contains
          call KSPGetPC(ksp_sub(i),pc_sub,ierr)
          !ILU preconditioner
          call PCSetType(pc_sub,psubtype,ierr)
-         call PCFactorSetLevels(pc_sub,1,ierr) ! use ILU(1) here
+         call PCFactorSetLevels(pc_sub,0,ierr) ! use ILU(0) here
          call KSPSetType(ksp_sub(i),KSPPREONLY,ierr)
          ! this following lines are for MUMPS (use with caution)
  !        call PCFactorSetMatSolverType(pc_sub,MATSOLVERMUMPS,ierr)
@@ -950,7 +946,7 @@ Contains
          nDivCor = nDivCor+1
          if (nDivCor < MaxDivCor) then
              if (rank_local.eq.0) then ! leader
-                 if (output_level > 2) then
+                 if (output_level > 3) then
                      ! note that the relative residual is "preconditioned"
                      ! (i.e. after applying the ILU preconditioner)
                      ! which is different from what you are experiencing 
@@ -973,8 +969,8 @@ Contains
          if (output_level > 2) then
              write (*,'(a12,a20,i8,g15.7)') node_info,'finished solving:',& 
     &             nIterTotal, EMrelErr(nIterTotal)
-             write (*,'(a12,a22,f12.6)')  node_info,' time taken (mins) ',&
-    &             elapsed_time(timer)/60.0
+             write (*,'(a12,a22,f12.6)') node_info,'solving time (sec): ',&
+    &             elapsed_time(timer)
          end if
      end if
      
@@ -1044,7 +1040,7 @@ Contains
 ! this is a test method that uses the CUDA lib, if you encounter any problems
 ! send the feedback to donghao@cugb.edu.cn
 
-  subroutine FWDSolve3Dc(bRHS,omega,eSol,comm_local,use_cuda)
+  subroutine FWDSolve3Dc(bRHS,omega,eSol,device_id,comm_local)
 !----------------------------------------------------------------------
      ! redefine some of the interfaces (locally) for our convenience
      use sg_vector !, only: copy => copy_cvector, &
@@ -1089,8 +1085,8 @@ Contains
      !  INPUTS:
      type (RHS_t), intent(in)           :: bRHS
      real(kind=prec), intent(in)        :: omega
+     integer, intent(in)                :: device_id
      integer, intent(in)                :: comm_local
-     logical, intent(in)                :: use_cuda
      !  OUTPUTS:
      !  eSol must be allocated before calling this routine
      type (cvector), intent(inout)      :: eSol
@@ -1133,7 +1129,7 @@ Contains
      end if
      ! for debug
      if (output_level > 3) then
-         if (use_cuda) then 
+         if (device_id.ge.0) then 
              write(6,*) 'GPU ACC STARTS...'
          else
              write(6,*) 'FALL BACK TO CPU...'
@@ -1307,7 +1303,7 @@ Contains
      block_size=AAii%nRow
      call MatSetSizes(Amat, block_size, block_size, Nei, Nei, ierr)
      ! set as cuSPARSE format
-     if (use_cuda) then 
+     if (device_id.ge.0) then 
          call MatSetType(Amat,MATMPIAIJCUSPARSE,ierr)
      else
      ! just need this to fall back to CPUs
@@ -1324,7 +1320,7 @@ Contains
      !-------------------------------------------------------------------------
      ! these part should be thread safe
      ! create from matrix size -
-     ! will create GPU vecs if use_cuda is supplied
+     ! will create GPU vecs if device_id>-1 is supplied
      call MatCreateVecs(Amat,bvec,PETSC_NULL_VEC,ierr)
      call VecSetFromOptions(bvec,ierr)
      call VecSet(bvec,C_ZERO,ierr)
@@ -1433,7 +1429,7 @@ Contains
          call KSPGetPC(ksp_sub(i),pc_sub,ierr)
          !ILU preconditioner
          call PCSetType(pc_sub,psubtype,ierr)
-         call PCFactorSetLevels(pc_sub,1,ierr) ! use ILU(1) here
+         call PCFactorSetLevels(pc_sub,0,ierr) ! use ILU(0) here
          call KSPSetType(ksp_sub(i),KSPPREONLY,ierr)
          ! this following lines are for MUMPS (use with caution)
  !        call PCFactorSetMatSolverType(pc_sub,MATSOLVERMUMPS,ierr)
@@ -1476,7 +1472,7 @@ Contains
          nDivCor = nDivCor+1
          if (nDivCor < MaxDivCor) then
              if (rank_local.eq.0) then ! leader
-                 if (output_level > 2) then
+                 if (output_level > 3) then
                      ! note that the relative residual is "preconditioned"
                      ! (i.e. after applying the ILU preconditioner)
                      ! which is different from what you are experiencing 
@@ -1495,8 +1491,8 @@ Contains
      if (output_level > 2) then
          write (*,'(a12,a20,i8,g15.7)') node_info,'finished solving:',& 
     &         nIterTotal, EMrelErr(nIterTotal)
-         write (*,'(a12,a22,f12.6)')  node_info,' time taken (mins) ',&
-    &         elapsed_time(timer)/60.0
+         write (*,'(a12,a22,f12.6)') node_info,'solving time (sec): ',&
+    &          elapsed_time(timer)
      end if
      
      call VecGetValues(xvec,Nei,(/(i,i=0,Nei-1)/),ei,ierr)
@@ -1523,7 +1519,7 @@ Contains
      endif
      call setVector(e,eSol)
      if (output_level > 3) then
-         if (use_cuda) then 
+         if (device_id.ge.0) then 
          ! for debug
              write(6,*) 'GPU ACC FINISHES...'
          else

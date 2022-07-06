@@ -119,7 +119,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0; 
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3D(bRHS,omega,eSol,comm_local,use_cuda)
+  subroutine FWDsolve3D(bRHS,omega,eSol,device_id,comm_local)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -135,8 +135,8 @@ Contains
     type (RHS_t), intent(in)      :: bRHS
     real(kind=prec), intent(in)   :: omega
     ! dummy parameter for compatibiliy
+    integer, intent(in),optional  :: device_id
     integer, intent(in),optional  :: comm_local 
-    logical, intent(in),optional  :: use_cuda
     ! OUTPUTS:
     ! eSol must be allocated before calling this routine
     type (cvector), intent(inout) :: eSol
@@ -371,8 +371,8 @@ Contains
     if (output_level > 2) then
        write (*,'(a12,a20,i8,g15.7)') node_info, 'finished solving:',         &
    &    nIterTotal, EMrelErr(nIterTotal)
-       write (*,'(a12,a22,f12.6)')    node_info, ' time taken (mins) ',       &
-   &    elapsed_time(timer)/60.0
+       write (*,'(a12,a22,f12.6)')    node_info, 'solving time (sec): ',  &
+   &            elapsed_time(timer)
     end if
     e(EDGEi) = ei
     !  After solving symetrized system, need to do different things for

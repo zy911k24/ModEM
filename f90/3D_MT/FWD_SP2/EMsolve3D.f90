@@ -55,7 +55,7 @@ module EMsolve3D
 
   ! Default solver control parameters
   ! number of iterations for each call to divergence correction:
-  integer, parameter    ::              IterPerDivCorDef = 150
+  integer, parameter    ::              IterPerDivCorDef = 120
   ! maximum number of divergence correction calls allowed
   integer, parameter    ::              MaxDivCorDef = 8
   ! maximum number of PCG iterations for divergence correction
@@ -120,7 +120,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0;
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3D(bRHS,omega,eSol,comm_local,use_cuda)
+  subroutine FWDsolve3D(bRHS,omega,eSol,device_id,comm_local)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -136,15 +136,15 @@ Contains
     type (RHS_t), intent(in)      :: bRHS
     real(kind=prec), intent(in)   :: omega
     !dummy parameter for compatibiliy
+    integer, intent(in),optional  :: device_id
     integer, intent(in),optional  :: comm_local 
-    logical, intent(in),optional  :: use_cuda
     !  OUTPUTS:
     !  eSol must be allocated before calling this routine
     type (cvector), intent(inout) :: eSol
 
     ! LOCAL VARIABLES
     logical                     :: converged,trans
-    integer                     :: iter, fid
+    integer                     :: iter, fid, ierr
     integer                     :: Ne,Nei,Nni,Nn,i
     complex(kind=prec)          :: iOmegaMuInv
     ! e(lectric field) s(ource) b(rhs) phi0(div(s))
@@ -337,7 +337,14 @@ Contains
     end if
 
     KSSiter%niter = 0
+#ifdef CUDA
+    ! FIXME this is now hard coded here
+    ! need a more elegant way to deal with it
+    KSSiter%maxIt = 900
+    MaxDivCor = 1
+#else
     KSSiter%maxIt = IterPerDivCor
+#endif
     allocate(KSSiter%rerr(IterPerDivCor))
     KSSiter%rerr = 0.0
     converged = .false.
@@ -352,8 +359,20 @@ Contains
     !   Call SdivCorr(ei,phi0)
     ! endif
     loop: do while ((.not.converged).and.(.not.failed))
+#ifdef CUDA
+       if (device_id.ge.0) then
+           ! before start, need to tell if the device is available
+           ierr = kernelc_hookCtx(device_id)
+           Call BICG(b, ei, KSSiter, device_id)
+           ! Call TFQMR(b, ei, KSSiter, device_id) 
+       else
+           Call BICG(b, ei, KSSiter)
+           ! Call TFQMR(b, ei, KSSiter) 
+       end if
+#else
        Call BICG(b, ei, KSSiter)
-       ! Call QMR(b, ei, KSSiter) 
+       ! Call TFQMR(b, ei, KSSiter) 
+#endif
        ! algorithm is converged when the relative error is less than tolerance
        ! (in which case KSSiter%niter will be less than KSSiter%maxIt)
        converged = KSSiter%niter .lt. KSSiter%maxIt
@@ -391,8 +410,8 @@ Contains
     if (output_level > 2) then
        write (*,'(a12,a20,i8,g15.7)') node_info, 'finished solving:',     &
    &            nIterTotal, EMrelErr(nIterTotal)
-       write (*,'(a12,a22,f12.6)')    node_info, ' time taken (mins) ',   &
-   &            elapsed_time(timer)/60.0
+       write (*,'(a12,a22,f12.6)')    node_info, 'solving time (sec): ',  &
+   &            elapsed_time(timer)
     end if
     e(EDGEi) = ei
     !  After solving symetrized system, need to do different things for
