@@ -340,12 +340,12 @@ Contains
 #ifdef CUDA
     ! FIXME this is now hard coded here
     ! need a more elegant way to deal with it
-    KSSiter%maxIt = 900
+    KSSiter%maxIt = maxIterTotal
     MaxDivCor = 1
 #else
     KSSiter%maxIt = IterPerDivCor
 #endif
-    allocate(KSSiter%rerr(IterPerDivCor))
+    allocate(KSSiter%rerr(KSSiter%maxIt))
     KSSiter%rerr = 0.0
     converged = .false.
     failed = .false.
