@@ -465,7 +465,7 @@ subroutine SdivCorr(inE,outE,phi0)
   divJ(2,nDivCor) = sqrt(dotProd(phiRHS,phiRHS))
 
   ! output level defined in basic file_units module
-  if (output_level > 3) then
+  if (output_level > 2) then
      write(*,'(a12,a47,g15.7)') node_info, 'divergence of currents before correction: ', divJ(1, nDivCor)
      write(*,'(a12,a47,g15.7)') node_info, 'divergence of currents  after correction: ', divJ(2, nDivCor)
   end if
@@ -555,6 +555,18 @@ end subroutine SdivCorr ! SdivCorr
      allocate(divJ(2,MaxDivCor))
      allocate(DivCorRelErr(MaxIterDivCor,MaxDivCor))
 
+     if (output_level > 3) then
+       write (*,*)
+       write (*,'(a60)') 'Forward solver configurations set to:'
+       write (*,'(a12,a48,i5)') node_info,'IterPerDivCor=',IterPerDivCor
+       write (*,'(a12,a48,i5)') node_info,'MaxDivCor=',MaxDivCor
+       write (*,'(a12,a48,i5)') node_info,'MaxIterTotal=',MaxIterTotal
+       write (*,'(a12,a48,i5)') node_info,'MaxIterDivCor=',MaxIterDivCor
+       write (*,'(a12,a48,g15.7)') node_info,'tolEMfwd=',tolEMfwd
+       write (*,'(a12,a48,g15.7)') node_info,'tolEMadj=',tolEMadj
+       write (*,'(a12,a48,g15.7)') node_info,'tolDivCor=',tolDivCor
+     end if
+     
   end subroutine setEMsolveControl
 
    ! ***************************************************************************
