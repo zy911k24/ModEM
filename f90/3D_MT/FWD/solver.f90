@@ -440,7 +440,7 @@ subroutine BICG(b,x,BICGiter)
   ! the adjoint (shadow) residual
   rnormin = rnorm
   BICGiter%rerr(1) = rnormin/bnorm
-  ! write(6,*) 'initial residual: ', BICGiter%rerr(1)
+  write(6,*) 'initial residual: ', BICGiter%rerr(1)
   converged = .false.
   maxiter = BICGiter%maxit
   imin = 0
@@ -519,6 +519,7 @@ subroutine BICG(b,x,BICGiter)
           BICGiter%failed = .false.
           BICGiter%niter = iter
           converged = .true.
+          write(6,*) 'full iteration complete, final residual: ',BICGiter%rerr(iter)
           exit
       end if
       if (rnorm .lt. rnormin) then
@@ -534,6 +535,7 @@ subroutine BICG(b,x,BICGiter)
       x = xmin; !comment this line
       BICGiter%niter=BICGiter%maxit
       BICGiter%rerr(BICGiter%maxit) = BICGiter%rerr(imin) ! and this line
+      write(6,*) 'not converged, using smallest residual: ',BICGiter%rerr(imin)
       ! to use the last iteration result instead of the 'best' 
   end if
   Call deall(xhalf)
