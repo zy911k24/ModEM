@@ -7,6 +7,7 @@ module UserCtrl
 
   character*1, parameter  :: READ_WRITE = 'R'
   character*1, parameter	:: FORWARD = 'F'
+  character*1, parameter	:: SECONDARY_FIELD = 'E'
   character*1, parameter	:: COMPUTE_J = 'J'
   character*1, parameter	:: MULT_BY_J = 'M'
   character*1, parameter	:: MULT_BY_J_T = 'T'
@@ -36,9 +37,12 @@ module UserCtrl
 	! Output file name for MPI nodes status info
 	character(80)       :: wFile_MPI
 
+	! Option to supply configuration file in place of command line
+	character(80)       :: rFile_Config
+
 	! Input files
 	character(80)       :: rFile_Grid, rFile_Model, rFile_Data
-	character(80)       :: rFile_dModel
+	character(80)       :: rFile_dModel, rFile_Model1D
 	character(80)       :: rFile_EMsoln, rFile_EMrhs, rFile_Prior
 
 	! Output files
@@ -55,6 +59,9 @@ module UserCtrl
 	! Choose the sort of test / procedure variant you wish to perform
 	character(80)       :: option
 
+    	! Out-of-core file prefix for storing working E-field solutions (NCI)
+    	character(80)       :: prefix
+
 	! Specify damping parameter for the inversion
 	real(8)             :: lambda
 
@@ -64,11 +71,14 @@ module UserCtrl
 	! Specify the magnitude for random perturbations
 	real(8)             :: delta
 
-    ! Specify the Covariance Type used in 3D (reserved for future use)
-    integer             :: CovType
+    	! Specify the Covariance Type used in 3D (reserved for future use)
+    	integer             :: CovType
 
 	! Indicate how much output you want
 	integer             :: output_level
+
+    	! Reduce master memory usage by storing E-fields in files (NCI)
+    	logical             :: storeSolnsInFile
 
   end type userdef_control
 
@@ -89,17 +99,20 @@ Contains
   	ctrl%job = ''
   	ctrl%rFile_invCtrl = 'n'
   	ctrl%rFile_fwdCtrl = 'n'
+  	ctrl%wFile_MPI = 'n'
+  	ctrl%rFile_Config = 'n'
   	ctrl%rFile_Grid = 'n'
   	ctrl%wFile_Grid = 'n'
   	ctrl%rFile_Model = 'n'
   	ctrl%wFile_Model = 'n'
+   	ctrl%rFile_Model1D = 'n'
   	ctrl%rFile_Data = 'n'
   	ctrl%wFile_Data = 'n'
   	ctrl%rFile_dModel = 'n'
   	ctrl%wFile_dModel = 'n'
   	ctrl%rFile_EMrhs = 'n'
-    ctrl%wFile_EMrhs = 'n'
-    ctrl%rFile_EMsoln = 'n'
+    	ctrl%wFile_EMrhs = 'n'
+    	ctrl%rFile_EMsoln = 'n'
   	ctrl%wFile_EMsoln = 'n'
   	ctrl%rFile_Prior = 'n'
   	ctrl%wFile_Sens = 'n'
@@ -109,9 +122,11 @@ Contains
   	ctrl%lambda = 10.
   	ctrl%eps = 1.0e-7
   	ctrl%delta = 0.05
-    ! 1 for AR, 2 for L1, 3 for L2
-    ctrl%CovType = 1
-  	ctrl%output_level = 3
+    	! 1 for AR, 2 for L1, 3 for L2
+    	ctrl%CovType = 1
+  	ctrl%output_level = 3	
+	ctrl%prefix = 'n'
+	ctrl%storeSolnsInFile = .false.
 
     ! Using process ID in MPI output file name has the advantage that
     ! the user may run several instances of the program in one directory
@@ -206,6 +221,15 @@ Contains
         write(*,*) '[FORWARD]'
         write(*,*) ' -F  rFile_Model rFile_Data wFile_Data [wFile_EMsoln rFile_fwdCtrl]'
         write(*,*) '  Calculates the predicted data and saves the EM solution'
+        write(*,*) '[SECONDARY_FIELD]'
+        write(*,*) ' -E  rFile_Model rFile_Model1D rFile_EMsoln1D rFile_Data wFile_Data ... '
+        write(*,*) '  Calculates the predicted data and saves the EM solution'
+        write(*,*) '      using the primary field E1D defined on grid edges'
+        write(*,*) '      from an external file rFile_EMsoln. Unless BCs are supplied,'
+        write(*,*) '      will set them to zero to accommodate secondary field formulation.'
+        write(*,*) '      rFile_Model1D is assumed to store the primary conductivity'
+        write(*,*) '      that was used to compute the primary field E1D.'
+        write(*,*) '      Total field E = E1D + dE is evaluated and output.'
         write(*,*) '[INVERSE]'
         write(*,*) ' -I NLCG rFile_Model rFile_Data [lambda eps]'
         write(*,*) '  Here, lambda = the initial damping parameter for inversion'
@@ -334,9 +358,64 @@ Contains
 	    if (narg > 4) then
 	       ctrl%rFile_fwdCtrl = temp(5)
 	    end if
-        if (narg > 5) then
-           ctrl%rFile_EMrhs = temp(6)
-        end if
+	    if (narg > 5) then
+	       ctrl%rFile_EMrhs = temp(6)
+	    end if
+
+      case (SECONDARY_FIELD) !E
+        if (narg < 5) then
+           write(0,*) 'Usage: -F  rFile_Model rFile_Data wFile_Data [wFile_EMsoln rFile_fwdCtrl rFile_EMrhs]'
+           write(0,*)
+           write(0,*) 'or, for the secondary field formulation, use the command'
+           write(0,*)
+           write(0,*) '       -E  rFile_Model rFile_Model1D rFile_EMsoln1D rFile_Data wFile_Data ...'
+           write(0,*)
+           write(0,*) 'where rFile_EMsoln specifies the primary field E1D for some 1D model. Then, can use'
+           write(0,*) '(sigma-sigma1d)*E1D for the interior source. This option sets BCs to zero.'
+           write(0,*) 'Note that the primary field does not have to be 1D; use for any general sources.'
+           write(0,*) 'Assumes the primary field on the same grid as model and at the correct frequencies.'
+           write(0,*)
+           write(0,*) 'Here, rFile_fwdCtrl is the forward solver control file in the format'
+           write(0,*)
+           write(0,*) 'Number of QMR iters per divergence correction : 40'
+           write(0,*) 'Maximum number of divergence correction calls : 20'
+           write(0,*) 'Maximum number of divergence correction iters : 100'
+           write(0,*) 'Misfit tolerance for EM forward solver        : 1.0e-7'
+           write(0,*) 'Misfit tolerance for EM adjoint solver        : 1.0e-7'
+           write(0,*) 'Misfit tolerance for divergence correction    : 1.0e-5'
+           write(0,*) 'Optional EM solution file name for nested BC  : nested.esoln'
+           write(0,*)
+           write(0,*) 'To specify air layers, append one of these three options. Default ''mirror 10 3. 30.'' '
+           write(0,*)
+           write(0,*) 'Option 1:'
+           write(0,*) 'Air layers mirror|fixed height|read from file : mirror'
+           write(0,*) 'Number of air layers and min top dz in km     : 10 3. 30.'
+           write(0,*)
+           write(0,*) 'Option 2:'
+           write(0,*) 'Air layers mirror|fixed height|read from file : fixed height'
+           write(0,*) 'Number of air layers and max height in km     : 12 1000.'
+           write(0,*)
+           write(0,*) 'Option 3:'
+           write(0,*) 'Air layers mirror|fixed height|read from file : read from file'
+           write(0,*) 'Number of air layers and dz top to bottom km  : 10 500. 200. 100. 50. 20. 10. 5. 2. 1. 0.5'
+           write(0,*)
+           stop
+        else
+	       ctrl%rFile_Model = temp(1)
+          ctrl%rFile_Model1D = temp(2)
+	       ctrl%rFile_EMsoln = temp(3)
+          ctrl%rFile_Data = temp(4)
+	       ctrl%wFile_Data = temp(5)
+	    end if
+	    if (narg > 5) then
+	       ctrl%wFile_EMsoln = temp(6)
+	    end if
+	    if (narg > 6) then
+	       ctrl%rFile_fwdCtrl = temp(7)
+	    end if
+       if (narg > 7) then
+          ctrl%rFile_EMrhs = temp(8)
+       end if
 
       case (COMPUTE_J) ! J
         if (narg < 3) then

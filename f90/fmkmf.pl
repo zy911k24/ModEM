@@ -306,7 +306,7 @@ print STDOUT @global_outlines;
 
 print "\n# Type \" make clean \" to get rid of all object and module files \n";
 
-print "clean:: \n";
+print "clean: \n";
 print "\tcd \$(OBJDIR); \\\n";
 print "\trm -f *~ *.o *.obj *.mod *.d *.s00 *.dbg *.stackdump \\\n";
 print "\t`find . -mindepth 1 -name \"*~\"` \n\n";

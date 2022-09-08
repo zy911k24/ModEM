@@ -26,6 +26,8 @@ logical, save, public   :: NESTED_BC = .false.
 logical, save, public   :: BC_FROM_RHS_FILE = .false.
 logical, save, public   :: BC_FROM_E0_FILE = .false.
 
+! option to read a primary solution from file for SFF
+logical, save, public   :: PRIMARY_E_FROM_FILE = .false.
 
 !=======================================================================
 !Mar. 13, 2011============================== Use only for MT Calculation
@@ -41,6 +43,13 @@ logical, save, public   :: BC_FROM_E0_FILE = .false.
 !May 15, 2018== AK == New general RHS for all transmitters now stored
 !=======================================================================
   type(rhsVectorMTX_t),save,public           ::  bAll
+
+!=======================================================================
+!Aug 18, 2021== AK == Also store an array of primary fields (not good
+!in terms of memory usage, will read each from file as needed ...)
+!=======================================================================
+  type(solnVectorMTX_t),save,public           ::  eAllPrimary
+  type(modelParam_t),save,public              ::  sigmaPrimary
 
 !  initialization routines (call Fwd version if no sensitivities are
 !     are calculated).  Note that these routines are set up to
@@ -448,7 +457,7 @@ end subroutine copyE0fromFile
       	comb%b(e%Pol_index(iMode))%adj = FWDorADJ
       	write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, &
      &          'Solving the ',FWDorADJ, ' problem for period ',iTx,&
-     &          ': ',(2*PI)/omega,' secs  mode # ',e%Pol_index(iMode)
+     &          ': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
         if (present(device_id)) then
             if (present(comm_local)) then
                 call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
