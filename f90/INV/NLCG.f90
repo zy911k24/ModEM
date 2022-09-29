@@ -232,7 +232,7 @@ Contains
    !  initial step size in the line search direction in model units
    real(kind=prec)                              :: startdm
    !  flavor is a string that specifies the algorithm to use
-   character(80)                                :: flavor = 'Wolfe'
+   character(80)                                :: flavor = 'Cubic'
 
    !  local variables
    type(dataVectorMTX_t)                        :: dHat, res
