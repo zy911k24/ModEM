@@ -4,10 +4,9 @@ module LBFGS
 
 use invcore
 
-
 implicit none
 
-public  :: LBFGSsolver, LBFGSsolver2
+public  :: LBFGSsolver
 
 ! iteration control for the LBFGS solver is initialized once
 ! and saved in the module to be used by most subroutines
@@ -81,15 +80,15 @@ Contains
      ! initial value of lambda (will not override the LBFGS input argument)
      iterControl%lambda = 10.
      ! exit if lambda < lambdaTol approx. 1e-4
-     iterControl%lambdaTol = 1.0e-8
+     iterControl%lambdaTol = 1.0e-4 ! makes no sense to use too small a value
      ! set lambda_i = lambda_{i-1}/k when the inversion stalls
      iterControl%k = 10.
      ! the factor that ensures sufficient decrease in the line search >=1e-4
-     iterControl%c = 1.0e-4
+     iterControl%c = 1e-4 
      ! the factor that ensures culvature condition in the line search c<c2<1
      iterControl%c2 = 0.9 ! use a value larger than 0.5
      ! restart QN every nQNmax iterations to ensure sufficient descend 
-     iterControl%nQNmax = 10
+     iterControl%nQNmax = 8
      ! the starting step for the line search
      iterControl%alpha_1 = 20.
      ! maximum initial delta mHat (overrides alpha_1)
@@ -186,7 +185,7 @@ Contains
    type(modelParam_t), intent(inout)             :: grad
 
    real(kind=prec) :: SS, mNorm, Nmodel
-	 type(modelParam_t)          :: dSS
+   type(modelParam_t)          :: dSS
 
    ! compute the model norm
    mNorm = dotProd(mHat,mHat)
@@ -207,7 +206,7 @@ Contains
    ! penalty functional = (scaled) sum of squares + scaled model norm
    F = SS + (lambda * mNorm/Nmodel)
 
-	 ! add the model norm derivative to the gradient of the penalty functional
+   ! add the model norm derivative to the gradient of the penalty functional
    call linComb(ONE,dSS,TWO*lambda/Nmodel,mHat,grad)
 
    call deall_modelParam(dSS)
@@ -215,7 +214,7 @@ Contains
    end subroutine update_damping_parameter
 
 !**********************************************************************
-   subroutine LBFGSsolver2(d,lambda,m0,m,fname)
+   subroutine LBFGSsolver(d,lambda,m0,m,fname)
 
    ! computes inverse solution minimizing penalty functional
    !  for fixed value of regularization parameter, using
@@ -223,7 +222,7 @@ Contains
    !  as described by Nocedal, 1980
    !  Various flavours of the algorithm and of the line search
    !  can be called from this routine
-   !  NOTE: Quasi-Newtonish methods should only be used with line searches
+   !  NOTE: Quasi-Newtonian methods should only be used with line searches
    !  which follows the (Strong/Weak) Wolfe condition, i.e. the 
    !  curvature condition should be satisfed to ensure stable Quasi-Newton
    !  iterations. 
@@ -262,11 +261,11 @@ Contains
 
    real(kind=prec)                              :: value, valuePrev, rms
    real(kind=prec)                              :: rmsPrev, alpha, alphaPrev
-   ! real(kind=prec)                              :: beta
+   real(kind=prec)                              :: beta = 1.0
    real(kind=prec)                              :: gnorm, mNorm, Nmodel
    real(kind=prec)                              :: grad_dot_h !, g_dot_g
-   integer                                      :: iter, nQN, nLS, nfunc, ios
-   integer                                      :: flag, precType = 1
+   integer                                      :: iter, flag, nLS, nfunc, ios
+   integer                                      :: nQN, nQNmax, precType = 1
    logical                                      :: ok
    character(3)                                 :: iterChar
    character(100)                               :: mFile, mHatFile, gradFile
@@ -289,6 +288,7 @@ Contains
    ! initialize the line search
    alpha = iterControl%alpha_1
    startdm = iterControl%startdm
+   nQNmax = iterControl%nQNmax 
 
    write(*,'(a41,es8.1)') 'The initial damping parameter lambda is ',lambda
    write(*,'(a55,f12.6)') 'The initial line search step size (in model units) is ',startdm
@@ -373,12 +373,17 @@ Contains
       select case (flavor)
       case ('Cubic')
           call lineSearchCubic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
+          beta = 1.0
       case ('Quadratic')
           call lineSearchQuadratic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
-      case ('Wolfe')
+          beta = 1.0
+      case ('Wolfe') ! wolfe with 2 FWD and 1 TRN per iteration
           call lineSearchWolfe(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll,flag)
-      case ('Wolfe2')
+          beta = 1.0
+      case ('Wolfe2')! wolfe with 1 FWD and 1 TRN per iteration
           call lineSearchWolfe2(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll,flag)
+          ! adjustment for beta, which controls the lambda update criterial
+          beta = 0.3
       case default
           call errStop('Unknown line search requested in LBFGS')
       end select
@@ -430,8 +435,10 @@ Contains
       end if
 
       ! if alpha is too small, we are not making progress: update lambda
-      if ((abs(rmsPrev - rms) < iterControl%fdiffTol).or.((valuePrev-value)/value <= 0.0005)) then
-      ! if (abs(rmsPrev - rms) < iterControl%fdiffTol) then
+      ! the default criteria is on rms only
+      ! if (abs(rmsPrev - rms) < iterControl%fdiffTol * beta) then
+      ! I would recommend using this (object function) instead 
+      if ((valuePrev-value)/value < iterControl%fdiffTol * beta) then
           ! update lambda, penalty functional and gradient
           call update_damping_parameter(lambda,mHat,value,grad)
           if (lambda < iterControl%lambdaTol) then
@@ -462,8 +469,9 @@ Contains
           cycle  ! skip to descend direction
       endif
       ! Wolfe line search failed (for some reason) 
-      if (flag.eq.-1) then ! need to reset the Hessian cache!
+      if ((flag.eq.-1) .and. (nQN .ge. nQNmax) ) then ! reset the QN search direction
           ! use the gradient at current model
+          ! need to reset the Hessian cache!
           gnorm = sqrt(dotProd(grad,grad))
           alpha = min(ONE,startdm)/gnorm
           ! g = - grad
@@ -515,307 +523,11 @@ Contains
    call deall_modelParam(gPrev)
    call deall_solnVectorMTX(eAll)
 
-   end subroutine LBFGSsolver2
-
-!**********************************************************************
-   subroutine LBFGSsolver(d,lambda,m0,m,fname)
-
-   ! computes inverse solution minimizing penalty functional
-   !  for fixed value of regularization parameter, using
-   !  limited memory Broyden-Fletcher-Goldfarb-Shanno method, 
-   !  as described by Nocedal, 1980
-   !  Various flavours of the algorithm and of the line search
-   !  can be called from this routine
-   !  NOTE: Quasi-Newtonish methods should only be used with line searches
-   !  which follows the (Strong/Weak) Wolfe condition, i.e. the 
-   !  curvature condtion should be satisfed to ensure stable Quasi-Newton
-   !  iterations. 
-   !   
-   !
-   !  Note about the starting model:
-   !  The starting model has to be in the smoothed model space,
-   !  i.e. of the form m = C_m^{1/2} \tilde{m} + m_0.
-   !  In order to compute \tilde{m} from the starting model,
-   !  C_m^{-1/2} has to be implemented. To avoid this issue
-   !  altogether, we are always starting from the prior,
-   !  with \tilde{m} = 0. However, in general we could also
-   !  start with the result of a previous search.
-
-   implicit none
-   !  d is data; on output it contains the responses for the inverse model
-   type(dataVectorMTX_t), intent(inout)         :: d
-   !  lambda is regularization parameter
-   real(kind=prec), intent(inout)               :: lambda
-   !  m0 is prior model parameter
-   type(modelParam_t), intent(in)               :: m0
-   !  m is solution parameter ... on input m contains starting guess
-   type(modelParam_t), intent(inout)            :: m
-   !  fname is a string that specifies the control file
-   character(*), intent(in), optional           :: fname
-   !  initial step size in the line search direction in model units
-   real(kind=prec)                              :: startdm
-   !  flavor is a string that specifies the algorithm to use
-   character(80)                                :: flavor = 'Wolfe2'
-
-   !  local variables
-   type(dataVectorMTX_t)                        :: dHat, res
-   type(solnVectorMTX_t)                        :: eAll
-   type(modelParam_t)                           :: mHat, h
-   type(modelParam_t)                           :: grad, gradPrev, z
-   type(modelParam_t)                           :: dM, dG, Bs
-   type(LBFGSiterCache_t)                       :: saved
-   ! to be deallocated, the above 12 variables need
-
-   real(kind=prec)                              :: value, valuePrev, rms
-   real(kind=prec)                              :: rmsPrev, alpha, alphaPrev
-   real(kind=prec)                              :: gnorm, mNorm, Nmodel
-   real(kind=prec)                              :: z_dot_h
-   integer                                      :: iter, nQN, nLS, nfunc, ios
-   integer                                      :: flag, restart
-   integer                                      :: precType = 1
-   logical                                      :: ok
-   character(3)                                 :: iterChar
-   character(100)                               :: mFile, mHatFile, gradFile
-   character(100)                               :: dataFile, resFile, logFile
-
-   if (present(fname)) then
-      call read_LBFGSiterControl(iterControl,fname,ok)
-      if (ok) then
-         lambda = iterControl%lambda
-      end if
-   else
-      call set_LBFGSiterControl(iterControl)
-   end if
-
-   ! initialize the output to log file
-   logFile = trim(iterControl%fname)//'_LBFGS.log'
-   open (unit=ioLog,file=logFile,status='unknown',position='append',iostat=ios)
-
-   ! initialize the line search
-   alpha = iterControl%alpha_1
-   startdm = iterControl%startdm
-
-   write(*,'(a41,es8.1)') 'The initial damping parameter lambda is ',lambda
-   write(*,'(a55,f12.6)') 'The initial line search step size (in model units) is ',startdm
-
-   write(ioLog,'(a41,es8.1)') 'The initial damping parameter lambda is ',lambda
-   write(ioLog,'(a55,f12.6)') 'The initial line search step size (in model units) is ',startdm
-
-   ! starting model 
-   mHat = m ! m_tilde
-
-   !  compute the penalty functional and predicted data
-   call func(lambda,d,m0,mHat,value,mNorm,dHat,eAll,rms)
-   call printf('START',lambda,alpha,value,mNorm,rms)
-   call printf('START',lambda,alpha,value,mNorm,rms,logFile)
-   ! initial function call
-   nfunc = 1
-   write(iterChar,'(i3.3)') 0
-   ! output (smoothed) initial model and responses for later reference
-   ! 1. m - m_0 = C_m^(1/2) * \tilde{m} 
-   ! 2. m = m_0 + (m - m_0)
-   call CmSqrtMult(mHat,dM)
-   call linComb(ONE,dM,ONE,m0,m)
-   if (output_level > 1) then
-     mFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.rho'
-     call write_modelParam(m,trim(mFile))
-   end if
-   if (output_level > 2) then
-     dataFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.dat'
-     call write_dataVectorMTX(dHat,trim(dataFile))
-   end if
-
-   ! compute gradient of the full penalty functional
-   call gradient(lambda,d,m0,m,grad,dHat,eAll)
-   if (output_level > 3) then
-     gradFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.grt'
-     call write_modelParam(grad,trim(gradFile))
-   end if
-
-   ! update the initial value of alpha if necessary
-   gnorm = sqrt(dotProd(grad,grad))
-   write(*,'(a42,es12.5)') '    GRAD: initial norm of the gradient is',gnorm
-   write(ioLog,'(a42,es12.5)') '     GRAD: initial norm of the gradient is',gnorm
-   if (gnorm < TOL6) then
-      call errStop('Problem with your gradient computations: first gradient is zero')
-   else !if (alpha * gnorm > startdm) then
-      alpha = startdm / gnorm
-      ! alpha = one / gnorm
-      write(*,'(a39,es12.5)') 'The initial value of alpha updated to ',alpha
-      write(ioLog,'(a39,es12.5)') 'The initial value of alpha updated to ',alpha
-   endif
-
-   ! initialize QN cache for deltaM and deltaG:
-   call init_LBFGSiterCache(saved,5)
-   nQN = 0
-   iter = 0
-   ! z = C^-1*grad; 
-   call applyPrecond(grad,z,precType,alpha,lambda,saved)
-   ! h = -z
-   call linComb(MinusONE, z, R_ZERO, z, h)
-   alpha = ONE
-   restart = 0
-   do
-      !  test for convergence ...
-      if((rms.lt.iterControl%rmsTol).or.(iter.ge.iterControl%maxIter)) then
-         exit
-      end if
-      iter = iter + 1
-      ! save the values of the functional and the directional derivative
-      rmsPrev = rms
-      valuePrev = value
-      ! save the previous grad
-      gradPrev = grad
-      ! at the end of line search, set mHat to the new value
-      ! m = mPrev + alpha*h  and evaluate gradient at new mHat
-      ! data and solnVector only needed for output
-      write(*,'(a23)') 'Starting line search...'
-      write(ioLog,'(a23)') 'Starting line search...'
-      select case (flavor)
-      case ('Quadratic')
-          call lineSearchQuadratic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
-      case ('Cubiic')
-          call lineSearchCubic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
-      case ('Wolfe2')
-          call lineSearchWolfe2(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll,flag,logFile)
-      case default
-          call errStop('Unknown line search requested in LBFGS')
-      end select
-      nfunc = nfunc + nLS
-      ! save the previous alpha 
-      alphaPrev = alpha
-      ! update the starting step for the next line search
-      ! alpha = 2*(value - valuePrev)/grad_dot_h ! used in CG
-      alpha = ONE 
-      ! alpha = 1 should always be sufficient descend as the H_k^0 is 
-      ! scaled with dm_dot_dg/dg_dot_dg, which ensures that the search
-      ! direction is also scaled. 
-      
-      write(*,'(a25,i5)') 'Completed LBFGS iteration ',iter
-      write(ioLog,'(a25,i5)') 'Completed LBFGS iteration ',iter
-      Nmodel = countModelParam(mHat)
-      mNorm = dotProd(mHat,mHat)/Nmodel
-      call printf('with',lambda,alpha,value,mNorm,rms)
-      call printf('with',lambda,alpha,value,mNorm,rms,logFile)
-
-      ! write out the intermediate model solution and responses
-      call CmSqrtMult(mHat,dM)
-      call linComb(ONE,dM,ONE,m0,m)
-      write(iterChar,'(i3.3)') iter
-      if (output_level > 1) then
-        mFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.rho'
-        call write_modelParam(m,trim(mFile))
-      end if
-      if (output_level > 2) then
-        mHatFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.prm'
-        call write_modelParam(mHat,trim(mHatFile))
-      end if
-      if (output_level > 2) then
-        dataFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.dat'
-        call write_dataVectorMTX(dHat,trim(dataFile))
-      end if
-      ! compute residual for output: res = d-dHat; do not normalize by errors
-      if (output_level > 3) then
-        res = d
-        call linComb(ONE,d,MinusONE,dHat,res)
-        resFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.res'
-        call write_dataVectorMTX(res,trim(resFile))
-      end if
-
-      ! if alpha is too small, we are not making progress: update lambda
-      if ((abs(rmsPrev - rms) < iterControl%fdiffTol).or.&
-          (abs(valuePrev-value)/value <=iterControl%c).or.&
-          ((restart.ge.2).and.(flag.eq.-1))) then
-          ! update lambda, penalty functional and gradient
-          call update_damping_parameter(lambda,mHat,value,grad)
-          ! update alpha
-          gnorm = sqrt(dotProd(grad,grad))
-          ! check that lambda is still at a reasonable value
-          if (lambda < iterControl%lambdaTol) then
-              write(*,'(a55)') 'Unable to get out of a local minimum. Exiting...'
-              write(ioLog,'(a55)') 'Unable to get out of a local minimum. Exiting...'
-              exit
-              ! return
-          endif
-          write(*,'(a34,es12.5)') 'The norm of the last gradient is ',gnorm
-          write(ioLog,'(a34,es12.5)') 'The norm of the last gradient is ',gnorm
-          ! alpha = min(iterControl%alpha_1,startdm/gnorm)
-          alpha = min(ONE,startdm)/gnorm
-          write(*,'(a48,es12.5)') 'The value of line search step alpha updated to ',alpha
-          write(ioLog,'(a48,es12.5)') 'The value of line search step alpha updated to ',alpha
-          ! restart
-          write(*,'(a55)') 'Restarting LBFGS with the damping parameter updated'
-          call printf('to',lambda,alpha,value,mNorm,rms)
-          write(ioLog,'(a55)') 'Restarting LBFGS with the damping parameter updated'
-          call printf('to',lambda,alpha,value,mNorm,rms,logFile)
-          ! reset the saved dM and dG cache also
-          saved%nCache = 0
-          ! z = C*grad; 
-          call applyPrecond(grad,z,precType,alpha,lambda,saved)
-          ! h = -z
-          call linComb(MinusONE, z, R_ZERO, z, h)
-          alpha = ONE
-          nQN = 0
-          restart = 0
-          cycle  ! skip to descend direction
-      endif
-      gnorm = sqrt(dotProd(grad,grad))
-      ! Wolfe line search failed (for some reason) 
-      if (flag.eq.-1) then ! need to reset the Hessian cache
-          ! use the gradient at current model
-          alpha = min(ONE,startdm)/gnorm
-          ! z = C*grad; 
-          call applyPrecond(grad,z,0,alpha,lambda,saved)
-          ! h = -z
-          call linComb(MinusONE, z, R_ZERO, z, h)
-          alpha = ONE
-          write(*,'(a42)') 'Restarting LBFGS with Hessian cache reset'
-          write(ioLog,'(a42)') 'Restarting LBFGS with Hessian cache reset'
-          nQN = 0
-          restart = restart + 1
-          ! reset the saved dM and dG cache also
-          saved%nCache = 0
-          cycle  ! skip to descend direction 
-      else
-          nQN = nQN + 1
-          ! dM = alphaPrev * h
-          call linComb(alphaPrev, h, R_ZERO, h, dM)
-          ! dG = grad - gradPrev
-          call linComb(MinusONE, gradPrev, ONE, grad, dG)
-          ! save dM and dG in our object...
-          call update_LBFGSiterCache(saved, dM, dG) 
-          ! z = C*grad; 
-          call applyPrecond(grad,z,precType,alpha,lambda,saved)
-          ! h = -z
-          call linComb(MinusONE, z, R_ZERO, z, h)
-          alpha = ONE
-          restart = 0
-      endif
-      write(*,*) 'Hessian updated with results from previous ', saved%nCache, ' iteration(s)'
-      write(ioLog,*) 'Hessian updated with results from previous ', saved%nCache, ' iteration(s)'
-   end do
-   call CmSqrtMult(mHat,dM)
-   call linComb(ONE,dM,ONE,m0,m)
-   d = dHat
-   write(*,'(a25,i5,a25,i5)') 'LBFGS iterations:',iter,' function evaluations:',nfunc
-   write(ioLog,'(a25,i5,a25,i5)') 'LBFGS iterations:',iter,' function evaluations:',nfunc
-   close(ioLog,iostat=ios)
-
-   ! /active lightsaber
-   call deall_dataVectorMTX(dHat)
-   call deall_dataVectorMTX(res)
-   call deall_solnVectorMTX(eAll)
-   call deall_modelParam(mHat)
-   call deall_modelParam(h)
-   call deall_modelParam(grad)
-   call deall_modelParam(gradPrev)
-   call deall_modelParam(z)
-   call deall_modelParam(dM)
-   call deall_modelParam(dG)
-   call deall_LBFGSiterCache(saved) 
-
    end subroutine LBFGSsolver
-!**********************************************************************
+
+  !**********************************************************************
+  ! NOTE: one should not use this for LBFGS as LBFGS requires the 
+  ! curvature condition (although you *can*, use at your own risk )
   subroutine lineSearchQuadratic(lambda,d,m0,h,alpha,mHat,f,grad, &
  &           rms,niter,dHat,eAll,gamma)
 
@@ -1008,8 +720,9 @@ Contains
 
   end subroutine lineSearchQuadratic
 
-
   !**********************************************************************
+  ! NOTE: one should not use this for LBFGS as LBFGS requires the 
+  ! curvature condition (although you *can*, use at your own risk )
   subroutine lineSearchCubic(lambda,d,m0,h,alpha,mHat,f,grad, &
    & rms,niter,dHat,eAll,gamma)
 
@@ -1276,6 +989,7 @@ Contains
   end subroutine lineSearchCubic
 
   !**********************************************************************
+  ! line search with 2 FWD and 1 TRN with strong Wolfe Condition
   subroutine lineSearchWolfe(lambda,d,m0,h,alpha,mHat,f,grad, &
    & rms,niter,dHat,eAll,flag)
  
@@ -1352,7 +1066,7 @@ Contains
    ! the real motivation, however, is try to implement Strong Wolfe condition 
    ! to prepare for L-BFGS method -
    ! as the standard Armijio backtracking method, which ignores the curvature 
-   ! condition, cannot guarantee the stable converge of Quasi-Newtonish method
+   ! condition, cannot guarantee the stable converge of Quasi-Newtonian method
 
    real(kind=prec), intent(in)               :: lambda ! lagrange multiplier
    type(dataVectorMTX_t), intent(in)         :: d
@@ -1396,7 +1110,7 @@ Contains
       flag = 1 ! Wolfe condition not satisfied
    end if
    ! rescale the search direction
-   ! h_dot_h = dotP rod(h,h)
+   ! h_dot_h = dotProd(h,h)
    ! h = scMult_modelParam(ONE/sqrt(h_dot_h),h)
 
    ! g_0 is the directional derivative of our line search function 
@@ -1592,13 +1306,6 @@ Contains
                    alpha = -g_0/(b+sqrt(b*b - 3.0*a*g_0))
                endif
            endif
-           ! if (alpha < 0.1*alpha_i) then !avoid too small a step 
-           !     alpha = 0.1 * alpha_i
-           !     write(*,'(a30)') 'searching step too small...'
-           !     write(ioLog,'(a30)') 'searching step too small...'
-           !     write(*,'(a21)') 'use default value...'
-           !     write(ioLog,'(a21)') 'use default value...'
-           ! endif
            ! if alpha is too close or too much smaller than its predecessor
            ! if ((alpha_j - alpha < eps).or.(alpha < k*alpha_j)) then
            !     alpha = alpha_j/TWO ! reset alpha to ensure progress
@@ -1645,7 +1352,7 @@ Contains
            f_i = f_j
            alpha_j = alpha
            f_j = f
-           if (ibracket >= 20) then
+           if (ibracket >= 3) then
                write(*,'(a69)') 'Warning: exiting bracketing since the it has iterated too many times!'
                write(ioLog,'(a69)') 'Warning: exiting bracketing since the it has iterated too many times!'
                if (present(flag)) then
@@ -1690,8 +1397,10 @@ Contains
    call deall_solnVectorMTX(eAll_1)
 
   end subroutine lineSearchWolfe
+
   !**********************************************************************
 
+  ! line search with 1 FWD and 1 TRN with strong Wolfe Condition
   subroutine lineSearchWolfe2(lambda,d,m0,h,alpha,mHat,f,grad, &
    & rms,niter,dHat,eAll,flag,logid)
  
@@ -1739,6 +1448,13 @@ Contains
    ! when the quadratic interpolation doesn't work, in which case cubic 
    ! probably won't work either...
    ! 
+   ! in practice, wolfe2 should be slower (as the line search is not exact)
+   ! in convergence (but still faster in time as the line search scheme is 
+   ! 1/3 faster. 
+   ! this may lead to quicker stop (or the update of the damping factor), as
+   ! the descend may not meet the requirement of the "enough progress". 
+   ! so I made a small modification in beta to allow the LBFGS to stall a
+   ! little longer in each stage. 
 
    implicit none
    real(kind=prec), intent(in)               :: lambda ! lagrange multiplier
@@ -1919,7 +1635,7 @@ Contains
                exit ! finishing bracketing session
            else if (nbracket.ge.2) then ! tried too many times...
                ! by this point the alpha should be quite large
-               ! we are already far from the f_0 and g_0 
+               ! we are already quite far from the f_0 and g_0 
                ! the functional space cannot be considered quadratic 
                ! anymore - need to reset Hessian cache, if any
                alpha_i = R_ZERO
@@ -2015,11 +1731,7 @@ Contains
        endif
        ! firstly reduce the interval to avoid infinity loop
        left = alpha_i + min(0.1,c2)*(alpha_j - alpha_i)
-       !if (f_j .gt. 1.5*f_i) then
-       !    right = alpha_j - 0.618*(alpha_j - alpha_i)
-       !else
        right = alpha_j - 0.1*(alpha_j - alpha_i)
-       !endif
        if ((istrapped .eq. 1).and.(nbracket.eq.0)) then ! try quadratic 
            call pickAlphaQuadratic(left,right,alpha_i,f_i,&
                g_i,alpha_j,f_j,alphaNext)
@@ -2159,7 +1871,6 @@ Contains
        write(*,'(a40)') 'Wolfe Condition NOT satisfied, abort...'
        write(ioLog,'(a40)') 'Wolfe Condition NOT satisfied, abort...'
    endif
-
 
    if (starting_guess) then
        if (istrapped.ne.0) then

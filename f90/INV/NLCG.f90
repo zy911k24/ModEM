@@ -60,7 +60,7 @@ Contains
    type(NLCGiterControl_t), intent(inout)	:: iterControl
 
      ! maximum number of iterations in one call to iterative solver
-     iterControl%maxIter = 600
+     iterControl%maxIter = 300
      ! convergence criteria: return from solver if rms < rmsTol
      iterControl%rmsTol  = 1.05
      ! inversion stalls when abs(rms - rmsPrev) < fdiffTol (2e-3 works well)
@@ -68,11 +68,13 @@ Contains
      ! initial value of lambda (will not override the NLCG input argument)
      iterControl%lambda = 1.
      ! exit if lambda < lambdaTol approx. 1e-4
-     iterControl%lambdaTol = 1.0e-8
+     iterControl%lambdaTol = 1.0e-4 ! makes no sense to use too small a value
      ! set lambda_i = lambda_{i-1}/k when the inversion stalls
      iterControl%k = 10.
      ! the factor that ensures sufficient decrease in the line search >=1e-4
      iterControl%c = 1.0e-4
+     ! the factor that ensures culvature condition in the line search c<c2<1
+     iterControl%c2 = 0.9 ! use a value larger than 0.5
      ! restart CG every nCGmax iterations to ensure conjugacy
      iterControl%nCGmax = 8
      ! the starting step for the line search
@@ -87,7 +89,7 @@ Contains
    end subroutine set_NLCGiterControl
 
 
-   ! ***************************************************************************
+   ! **************************************************************************
    ! * read_NLCGiterControl reads the inverse solver configuration from file
 
    subroutine read_NLCGiterControl(iterControl,rFile,fileExists)
@@ -230,7 +232,7 @@ Contains
    !  initial step size in the line search direction in model units
    real(kind=prec)                              :: startdm
    !  flavor is a string that specifies the algorithm to use
-   character(80)                                :: flavor = 'Cubic'
+   character(80)                                :: flavor = 'Wolfe'
 
    !  local variables
    type(dataVectorMTX_t)                        :: dHat, res
@@ -347,13 +349,13 @@ Contains
       write(ioLog,'(a23)') 'Starting line search...'
 	  select case (flavor)
 	  case ('Cubic')
-              call lineSearchCubic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
+          call lineSearchCubic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
 	      !call deall(eAll)
 	  case ('Quadratic')
 	      call lineSearchQuadratic(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
 	      !call deall(eAll)
 	  case ('Wolfe')
-              call lineSearchWolfe(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
+          call lineSearchWolfe(lambda,d,m0,h,alpha,mHat,value,grad,rms,nLS,dHat,eAll)
 	      !call deall(eAll)
 	  case default
         call errStop('Unknown line search requested in NLCG')
@@ -398,8 +400,11 @@ Contains
         call write_dataVectorMTX(res,trim(resFile))
       end if
 
-	  ! if alpha is too small, we are not making progress: update lambda
+      ! if alpha is too small, we are not making progress: update lambda
+      ! the default criteria is on rms only
       if (abs(rmsPrev - rms) < iterControl%fdiffTol) then
+      ! I would recommend using this (object function) instead 
+      ! if ((valuePrev-value)/value < iterControl%fdiffTol) then
           ! update lambda, penalty functional and gradient
           call update_damping_parameter(lambda,mHat,value,grad)
           ! check that lambda is still at a reasonable value
@@ -433,18 +438,18 @@ Contains
       gPrev_dot_gPrev = dotProd(gPrev,gPrev)
       g_dot_h = dotProd(g,h)
 
-	  ! Polak-Ribiere variant
-	  beta = ( g_dot_g - g_dot_gPrev )/gPrev_dot_gPrev
+      ! Polak-Ribiere variant
+      beta = ( g_dot_g - g_dot_gPrev )/gPrev_dot_gPrev
 
-	  ! restart CG if the orthogonality conditions fail. Using the fact that
-		! h_{i+1} = g_{i+1} + beta * h_i. In order for the next directional
-		! derivative = -g_{i+1}.dot.h_{i+1} to be negative, the condition
-		! g_{i+1}.dot.(g_{i+1}+beta*h_i) > 0 must hold. Alternatively, books
-		! say we can take beta > 0 (didn't work as well)
-      !if ((beta.lt.R_ZERO).or.(g_dot_g + beta*g_dot_h .le. R_ZERO)&
-      !    .and.(nCG .ge. iterControl%nCGmax)) then  !PR+
+      ! restart CG if the orthogonality conditions fail. Using the fact that
+      ! h_{i+1} = g_{i+1} + beta * h_i. In order for the next directional
+      ! derivative = -g_{i+1}.dot.h_{i+1} to be negative, the condition
+      ! g_{i+1}.dot.(g_{i+1}+beta*h_i) > 0 must hold. Alternatively, books
+      ! say we can take beta > 0 (didn't work as well)
+      ! if (((beta.lt.R_ZERO).or.(g_dot_g + beta*g_dot_h .le. R_ZERO))&
+      !     .or.(nCG .ge. iterControl%nCGmax)) then  !PR+
       if ((g_dot_g + beta*g_dot_h .le. R_ZERO)&
-          .and.(nCG .ge. iterControl%nCGmax)) then  !PR
+          .and. (nCG .ge. iterControl%nCGmax)) then !PR
           ! restart
           write(*,'(a45)') 'Restarting NLCG to restore orthogonality'
           write(ioLog,'(a45)') 'Restarting NLCG to restore orthogonality'
@@ -479,7 +484,7 @@ Contains
 
 !**********************************************************************
   subroutine lineSearchQuadratic(lambda,d,m0,h,alpha,mHat,f,grad, &
-  								rms,niter,dHat,eAll,gamma)
+     rms,niter,dHat,eAll,gamma)
 
    ! Line search that imitates the strategy of Newman & Alumbaugh (2000),
    ! except without the errors. In particular, we only test the sufficient
@@ -1009,8 +1014,8 @@ Contains
    !    greater than alpha_1 may be needed to satisfy Wolfe's condition 
    !    (so "back"tracking may not be enough)
     
-   ! in practise, this would almost never go to step 3 in the first 100
-   ! iterations 
+   ! in practise, this almost always gets identical result with Anna's cubic
+   ! search scheme - for the first hundred iterations
    !
    ! following Anna's idea, the major intention here is to use a cheap line
    ! search scheme (with only 3 forward-like-calculations) to quickly skip 
@@ -1242,17 +1247,6 @@ Contains
                    alpha = -g_0/(b+sqrt(b*b - 3.0*a*g_0))
                endif
            endif
-           ! if (alpha < 0.1*alpha_i) then !avoid too small a step 
-           !     alpha = 0.1 * alpha_i
-           !     write(*,'(a30)') 'searching step too small...'
-           !     write(ioLog,'(a30)') 'searching step too small...'
-           !     write(*,'(a21)') 'use default value...'
-           !     write(ioLog,'(a21)') 'use default value...'
-           ! endif
-           ! if alpha is too close or too much smaller than its predecessor
-           ! if ((alpha_j - alpha < eps).or.(alpha < k*alpha_j)) then
-           !     alpha = alpha_j/TWO ! reset alpha to ensure progress
-           ! end if
            ! compute the penalty functional
            call linComb(ONE,mHat_0,alpha,h,mHat)
            call func(lambda,d,m0,mHat,f,mNorm,dHat,eAll,rms)
@@ -1292,7 +1286,7 @@ Contains
            f_i = f_j
            alpha_j = alpha
            f_j = f
-           if (ibracket >= 10) then
+           if (ibracket >= 5) then
                write(*,'(a69)') 'Warning: exiting bracketing since the it has iterated too many times!'
                write(ioLog,'(a69)') 'Warning: exiting bracketing since the it has iterated too many times!'
                if (f < f_1) then
