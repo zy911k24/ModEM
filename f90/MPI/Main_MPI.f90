@@ -1985,7 +1985,7 @@ Subroutine Worker_Job (sigma,d)
                      call sensSolve(per_index,FWD,e,comb,device_id,  &
     &                   comm_local)
 #else
-                     call sensSolve(per_index,TRN,e,comb,device_id)
+                     call sensSolve(per_index,FWD,e,comb,device_id)
 #endif
                  endif
              elseif (rank_local .gt. 0) then !worker here
