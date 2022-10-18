@@ -1505,7 +1505,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
           write(6,*) 'Warning: b in BICG has all zeros, returning zero &
      &        solution'
           x = b 
-          KSPiter%niter=1
+          niter=1
           KSPiter%failed=.false.
           KSPiter%rerr(1)=0.0
           converged = .true.
@@ -1535,7 +1535,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       if ( rnorm .le. btol ) then ! the first guess is already good enough
          ! returning
           write(6, *) " The first guess is good enough, exiting..."
-          KSPiter%niter=1
+          niter=1
           KSPiter%failed=.false.
           converged = .true.
           goto 9527 
@@ -2628,7 +2628,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
           write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
           x = b 
-          KSPiter%niter=1
+          niter=1
           KSPiter%failed=.false.
           KSPiter%rerr(1)=0.0
           converged = .true.
@@ -2657,7 +2657,8 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       KSPiter%rerr(1) = real(rnorm/bnorm)
       if ( rnorm .le. btol ) then ! the first guess is already good enough
          ! returning
-          KSPiter%niter=1
+          write(6, *) " The first guess is good enough, exiting..."
+          niter=1
           KSPiter%failed=.false.
           converged = .true.
           goto 9527 
