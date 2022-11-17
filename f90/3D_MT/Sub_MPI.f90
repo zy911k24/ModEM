@@ -116,7 +116,7 @@ end subroutine count_number_of_messages_to_RECV
      	type(userdef_control), intent(in)   :: ctrl
         integer index
         index=1
-        call MPI_Pack(ctrl%job,80*21, MPI_CHARACTER, userdef_control_package, Nbytes, index, MPI_COMM_WORLD, ierr)
+        call MPI_Pack(ctrl%job,80*23, MPI_CHARACTER, userdef_control_package, Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(ctrl%lambda,3, MPI_DOUBLE_PRECISION, userdef_control_package, Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(ctrl%CovType,1, MPI_INTEGER, userdef_control_package,  Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(ctrl%output_level,1, MPI_INTEGER, userdef_control_package, Nbytes, index, MPI_COMM_WORLD, ierr)
@@ -185,6 +185,7 @@ subroutine check_userdef_control_MPI (which_proc,ctrl)
        write(6,*)trim(which_proc),' : ctrl%rFile_fwdCtrl ',trim(ctrl%rFile_fwdCtrl)
        write(6,*)trim(which_proc),' : ctrl%rFile_invCtrl ',trim(ctrl%rFile_invCtrl)
        write(6,*)trim(which_proc),' : ctrl%rFile_Config ',trim(ctrl%rFile_Config)
+       write(6,*)trim(which_proc),' : ctrl%rFile_Prior ',trim(ctrl%rFile_Prior)
        write(6,*)trim(which_proc),' : ctrl%prefix ',trim(ctrl%prefix)
        write(6,*)trim(which_proc),' : ctrl%storeSolnsInfile ',ctrl%storeSolnsInfile
 

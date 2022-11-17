@@ -500,8 +500,8 @@ Subroutine Master_Job_fwdPred(sigma,d1,eAll)
              d1%d(iTx)%data(i)%errorBar = .false.
              iDt = d1%d(iTx)%data(i)%dataType
              do j = 1,d1%d(iTx)%data(i)%nSite
-                 call dataResp(eAll%solns(iTx),sigma,iDt,                 &
-                     d1%d(iTx)%data(i)%rx(j),d1%d(iTx)%data(i)%value(:,j))
+                 call dataResp(eAll%solns(iTx),sigma,iDt,d1%d(iTx)%data(i)%rx(j),d1%d(iTx)%data(i)%value(:,j), &
+                           d1%d(iTx)%data(i)%orient(j))
              end do
          end do
      end do
@@ -1477,6 +1477,12 @@ Subroutine Worker_Job (sigma,d)
      type(sparseVector_t), pointer          :: L(:)
      type(modelParam_t), pointer            :: Qreal(:),Qimag(:)
      logical                                :: Qzero
+     type(orient_t)               :: orient
+ 
+     ! 2019.05.08, Liu Zhongyin, add isite for rx in dataBlock_t
+     integer                       :: isite
+
+      
      ! time
      DOUBLE PRECISION                       :: time_passed, now
      DOUBLE PRECISION, pointer,dimension(:) :: time_buff
@@ -1692,7 +1698,9 @@ Subroutine Worker_Job (sigma,d)
                  Call EdgeLength(e0%grid, l_E)
                  Call FaceArea(e0%grid, S_F)
                  ! compute linearized data functional(s) : L
-                 call Lrows(e0,sigma,dt,stn_index,L)
+                 !call Lrows(e0,sigma,dt,stn_index,L)
+		 ! 2022.10.06, Liu Zhongyin, Add Azimuth
+		 call Lrows(e0,sigma,dt,stn_index,orient,L)
                  ! compute linearized data functional(s) : Q
                  call Qrows(e0,sigma,dt,stn_index,Qzero,Qreal,Qimag)
                  ! clean up the grid elements stored in GridCalc on the 

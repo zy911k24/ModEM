@@ -1,17 +1,17 @@
 module utilities
 
-      use math_constants
-      implicit none
+	use math_constants
+	implicit none
 
   ! Variables required for storing the date and time in SECONDS. If used
   ! throughout the program, these make the routine profiling easier
-      type  :: timer_t
+  type  :: timer_t
 
-        private
-	real :: rtime = 0.0 ! run time
-	real :: stime, etime ! start and end times
+    private
+	real					:: rtime = 0.0 ! run time
+	real					:: stime, etime ! start and end times
 
-      end type timer_t
+  end type timer_t
 
   !character(80)  :: msg
 
@@ -636,6 +636,37 @@ function is_digit(ch) result(res)
 	return
 
 end function is_digit
+
+subroutine strcount(str,delims,nargs)
+
+  ! Parses the string 'str' into arguments args(1), ..., args(nargs) based on
+  ! the delimiters contained in the string 'delims'. Preceding a delimiter in
+  ! 'str' by a backslash (\) makes this particular instance not a delimiter.
+  ! The integer output variable nargs contains the number of arguments found.
+
+  ! Liu Zhongyin, 2019.08.27, copied from "parse", used to get str count
+    implicit none
+    character(len=*) :: str,delims
+    character(len=len_trim(str)) :: strsav
+    character(len=len_trim(str)) :: args
+    integer                     :: lenstr,isp,ich,k,i,nargs
+    strsav=str
+    call compact(str)
+    args = ' '
+    nargs=0
+    lenstr=len_trim(str)
+    if(lenstr==0) return
+    k=0
+  
+    do
+       if(len_trim(str) == 0) exit
+       nargs=nargs+1
+       call split(str,delims,args)
+       call removebksl(args)
+    end do
+    str=strsav
+  
+  end subroutine strcount
 
 !**********************************************************************
 recursive subroutine QSort(a, ia, i0, i1)
