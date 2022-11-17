@@ -188,10 +188,10 @@ Contains
     if(.not.associated(v)) then
        allocate(v(nVecT))
     endif
-    if (nVec(1)>100 .or. nVec(2)>100) then
-        write(0,*) 'NOTE: Reshape of large arrays is a common cause of runtime failure at stacksize limit.'
-        write(0,*) 'NOTE: Raise the stacksize limit with -heap-arrays compiler flag or ulimit -s unlimited.'
-    endif
+    !if (nVec(1)>100 .or. nVec(2)>100) then
+    !    write(0,*) 'NOTE: Reshape of large arrays is a common cause of runtime failure at stacksize limit.'
+    !    write(0,*) 'NOTE: Raise the stacksize limit with -heap-arrays compiler flag or ulimit -s unlimited.'
+    !endif
    !   now that we know v is allocated, an of proper size
    !     just copy contents of E into v
     id(1) = nVec(1)
