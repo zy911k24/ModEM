@@ -814,7 +814,7 @@ Contains
             case(Full_Impedance,Off_Diagonal_Impedance,Full_Vertical_Components)
                 read(ioDat,'(a)',iostat=ios) tmpline
 
-                if (ios /= 0) then
+                if ((ios /= 0) .or. (tmpline(1:1)=='#')) then
                     backspace(ioDat)
                     exit
                 end if
@@ -895,7 +895,7 @@ Contains
             case(Full_Interstation_TF)
                 read(ioDat,'(a)',iostat=ios) tmpline
 
-                if (ios /= 0) then
+                if ((ios /= 0) .or. (tmpline(1:1)=='#')) then
                     backspace(ioDat)
                     exit
                 end if
@@ -976,7 +976,7 @@ Contains
             case(Off_Diagonal_Rho_Phase,Phase_Tensor)
                 read(ioDat,'(a)',iostat=ios) tmpline
 
-                if (ios /= 0) then
+                if ((ios /= 0) .or. (tmpline(1:1)=='#')) then
                     backspace(ioDat)
                     exit
                 end if
