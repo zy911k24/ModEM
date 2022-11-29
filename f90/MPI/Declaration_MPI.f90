@@ -1,15 +1,15 @@
 
 Module Declaration_MPI
 #ifdef MPI
+! include 'mpif.h'
+     use mpi
      implicit none
-! consider building mpi binding and using 'use mpi' instead
-include 'mpif.h'
 
 ! Declaration of general MPI stuff
 !********************************************************************
 Integer        :: taskid,total_number_of_Proc,number_of_workers
 Integer        :: MASTER, FROM_MASTER, FROM_WORKER,TAG,ierr,dest
-INTEGER        :: STATUS(MPI_STATUS_SIZE)
+Integer        :: STATUS(MPI_STATUS_SIZE)
 parameter         (MASTER=0,FROM_MASTER=1,FROM_WORKER=2,Tag=1)
 !********************************************************************
 ! additional parameters needed by two-layered parallelization
@@ -17,21 +17,33 @@ parameter         (MASTER=0,FROM_MASTER=1,FROM_WORKER=2,Tag=1)
 integer        :: comm_world, comm_leader, comm_local
 integer        :: rank_world, rank_leader, rank_local
 integer        :: size_world, size_leader, size_local
+integer        :: info_world, info_leader, info_local
 integer        :: group_world, group_leader
+! this is used to store the name of proc/cpu for current rank and identify 
+! ranks from different hosts, useful when grouping cpus according to 
+! topology - note hostname_len cannot exceed 40 (hard coded here)
+character*(40) :: hostname_MPI
+integer        :: hostname_len, ngroup
+! one master switch for parallel paradigm - currently not supported for 
+! on-the-fly modification, 
+! TODO: need to think about it - if we really need an on-the-fly config
+! 0 : simple grouping, 1 proc per each fwd/trn task (default)
+! 1 : topology grouping, 1 node per each fwd/trn task
+! 2 : equal grouping, n procs per each fwd/trn task
+! 3 : dynamic grouping, variable number of procs per each fwd/trn task, 
+!     for load-balancing
+integer        :: para_method = 0
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
 integer        :: size_gpu = 0 
-! modify with caution
-! if you want to use more than one cpus to feed one gpu
+! change the cpus_per_gpu if you want to use more than one cpus to 
+! feed one gpu, modify at your own risk! 
 integer        :: cpus_per_gpu = 3 ! hard coded here 
 integer        :: device_id = -1
 ! this is used to store the timer of each mpi sub-process
 DOUBLE PRECISION    :: previous_time
 integer, allocatable, dimension(:) :: prev_group_sizes
-! this is used for store the current name of proc/cpu to identify different
-! platforms, useful to group cpus from different nodes (hosts)
-character*(40) ::  current_proc_name_MPI
 
 !********************************************************************
 ! Parameters required to create an MPI derived data types.
@@ -49,8 +61,6 @@ integer        :: typelist(0:21)
 
 
 
-
-
 ! Parameters used in communication
 !********************************************************************
 Integer        :: answers_to_receive,received_answers,recv_loop
@@ -61,7 +71,7 @@ real*8,   pointer, dimension(:)  :: model_para_vec
 character, pointer, dimension(:) :: eAll_para_vec       !! needed for MPI_pack/MPI_unpack; counted in bytes
 character, pointer, dimension(:) :: e_para_vec          !! needed for MPI_pack/MPI_unpack; counted in bytes
 character, pointer, dimension(:) :: sigma_para_vec      !! needed for MPI_pack/MPI_unpack; counted in bytes
-character, pointer, dimension(:) :: data_para_vec      !! needed for MPI_pack/MPI_unpack; counted in bytes
+character, pointer, dimension(:) :: data_para_vec       !! needed for MPI_pack/MPI_unpack; counted in bytes
 character, pointer, dimension(:) :: worker_job_package  !! needed for MPI_pack/MPI_unpack; counted in bytes
 character, pointer, dimension(:) :: userdef_control_package !! needed for MPI_pack/MPI_unpack; counted in bytes
 
@@ -78,7 +88,6 @@ DOUBLE PRECISION    :: starttime_total,endtime_total
 !********************************************************************
 
 
-
 ! A drived data type to distribute Info. between Processors.
 !********************************************************************
 type :: define_worker_job
@@ -89,7 +98,7 @@ type :: define_worker_job
      logical       :: keep_E_soln=.false.
      logical       :: several_Tx=.false.
      logical       :: create_your_own_e0=.false.
-    ! 2022.10.06, Liu Zhongyin, add iSite storing the site index in rx of dataBlock_t
+     ! 2022.10.06, Liu Zhongyin, add iSite storing the site index in rx of dataBlock_t
      Integer       :: iSite
  end type define_worker_job
 type(define_worker_job), save :: worker_job_task
@@ -99,7 +108,7 @@ type(define_worker_job), save :: worker_job_task
 
 interface
 
-   ! kernelc_getDevNum
+   ! kernelc_getDevNum --> call cuda c kernel code with iso_c_binding
    integer(c_int) function kernelc_getDevNum() & 
     &              bind (C, name="kernelc_getDevNum" )
      ! interface to get the number of GPU devices - 
@@ -131,7 +140,6 @@ subroutine create_worker_job_task_place_holder
          if(.not. associated(worker_job_package)) then
             allocate(worker_job_package(Nbytes))
          end if
-             
 
 end subroutine create_worker_job_task_place_holder
 !*******************************************************************************
@@ -152,10 +160,10 @@ index=1
 
         call MPI_Pack(worker_job_task%keep_E_soln,1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
         call MPI_Pack(worker_job_task%several_Tx,1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
-        call MPI_Pack(worker_job_task%create_your_own_e0,1, 		MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
+        call MPI_Pack(worker_job_task%create_your_own_e0,1, MPI_LOGICAL, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
 
         ! 2019.05.08, Liu Zhongyin, add iSite for rx in dataBlock_t
-        call MPI_Pack(worker_job_task%iSite, 1,                 MPI_INTEGER  , worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
+        call MPI_Pack(worker_job_task%iSite, 1,             MPI_INTEGER, worker_job_package, Nbytes, index, MPI_COMM_WORLD, ierr)
 
 end subroutine Pack_worker_job_task
 
@@ -181,13 +189,13 @@ index=1
 
 end subroutine Unpack_worker_job_task
 
-subroutine gather_runtime(comm_current,time_passed,time_buff,ierr)
-! simple subroutine to get the runtime of each sub tasks to access the parallel 
-! efficiency 
+subroutine gather_runtime(comm_current,time_passed,time_buff)
+! simple subroutine to get the runtime of each sub tasks to access the
+! parallel efficiency 
 ! collective on comm_current
       implicit none
       double precision,intent(in)                :: time_passed
-      integer,intent(in)                         :: comm_current,ierr
+      integer,intent(in)                         :: comm_current
       double precision,intent(out),pointer,dimension(:)   :: time_buff
       integer                                    :: current_rank
       integer                                    :: current_size,root=0

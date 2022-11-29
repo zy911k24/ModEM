@@ -443,7 +443,7 @@ extern "C" int kernelc_hookCtx(int dev_idx)
                 break;
             }
         }
-        sleep(0.1);
+        sleep(0.05);
     }
     printf(" # Dev Selected:  %i. %s [%s]\n", dev_idx, device_name, pci_bus.busId);
     result = nvmlShutdown();

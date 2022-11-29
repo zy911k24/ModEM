@@ -157,6 +157,7 @@ Contains
       call updateOmegaMuSig(inOmega)
 #ifdef PETSC
       ! don't need to setup this as we will use preconditioner in PETSc
+      call PC_setup()
 #else
       call PC_setup()
 #endif
@@ -225,6 +226,7 @@ Contains
       call updateOmegaMuSig(inOmega,CondParam)
 #ifdef PETSC
       ! don't need to setup this as we will use preconditioner in PETSc
+      call PC_setup()
 #else
       call PC_setup()
 #endif
