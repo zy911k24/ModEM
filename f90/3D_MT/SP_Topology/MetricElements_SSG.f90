@@ -9,7 +9,7 @@
 
 module MetricElements_SG
 
-   use gridcalc
+   use gridcalc ! spherical coords module selected at compile time from GridCalcS.f90
    use vectranslate
 
    implicit none

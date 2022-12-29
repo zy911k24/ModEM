@@ -59,6 +59,13 @@ logical, save, public   :: PRIMARY_E_FROM_FILE = .false.
 !    coefficients are updated, matrices factored, etc.).  This
 !    functionality needs to be maintained in implementations for new
 !    problems!
+
+!=======================================================================
+!Aug 18, 2021== AK == Local variables used to SFF (originally CSEM only) 
+!=======================================================================
+   type(rvector), save, private :: edgeCond ! Full conductivity (on edge)
+   type(rvector), save, private :: condAnomaly ! Anomalous conductivity (on edge)
+   type(cvector), save, private :: E_p         ! Primary field
 public initSolver
 
 !  cleanup/deallocation routines
@@ -204,9 +211,22 @@ end subroutine copyE0fromFile
       call ModelDataInit(grid)
       call ModelOperatorSetup()
       modelDataInitialized = .true.
+	  
+   !=======================================================================
+   !Mar. 13, 2011================================= Use for CSEM Calculation
+   !=======================================================================
+   !  call setPrimaryCond(sigma, .true.) ! Originally created by Aihua;
+   ! This subroutine can create the primary model by averaging Sigma
+   ! or read it from file. If the second argument is true, this routine
+   ! will read Primary model from file.
    endif
-   ! now calls this all-at-once
-   ! call UpdateFreqCond(txDict(iTx)%omega, sigma)
+   !if (txDict(iTx)%Tx_type=='CSEM') then	
+   !   xTx1D = txDict(iTx)%xyzTx(1)
+   !   yTx1D = txDict(iTx)%xyzTx(2)   
+   !   Call set1DModel(sigma,xTx1D,yTx1D)
+   !end if
+   
+
 !    the following needs work ... want to avoid reinitializing
 !     operator coefficients when conductivity does not change;
 !     need to have a way to reset sigmaNotCurrent to false when
@@ -220,9 +240,23 @@ end subroutine copyE0fromFile
 !      sigmaNotCurrent = .false.
 !   endif
 
+   if (txDict(iTx)%Tx_type=='SFF') then
+      ! compute sigma-sigma1D for the source... NOT PHYSICAL!
+      !Call linComb_modelParam(ONE,sigma,MinusONE,sigmaPrimary,sigmaTemp)
+      ! sigmaTemp is the anomalous conductivity, map it onto edges
+      !Call ModelParamToEdge(sigmaTemp,condAnomaly)
+      ! sigmaTemp is the anomalous conductivity, map it onto edges
+      Call ModelParamToEdge(sigma,edgeCond)
+      Call ModelParamToEdge(sigmaPrimary,condAnomaly)
+      ! compute sigma-sigma1D for the source... NOT PHYSICAL!
+      Call linComb_rvector(ONE,edgeCond,MinusONE,condAnomaly,condAnomaly)
+
+      write(0,'(a35,3i5,a2)') 'Conductivity anomaly dimensions: [',condAnomaly%nx,condAnomaly%ny,condAnomaly%nz,' ]'
+   end if
    ! This needs to be called before solving for a different frequency
    !!!!!!!  BUT AFTER UPDATECOND !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    call UpdateFreq(txDict(iTx)%omega)
+
    end subroutine initSolver
 
    !**********************************************************************
@@ -273,7 +307,7 @@ end subroutine copyE0fromFile
 ! We are doing all this in a separate routine because we want this to be
 ! a high-level function that can be called from the upper level.
 !
-! A. Kelbert, 24 May 2018
+! A. Kelbert, 24 May 2018; last edited 18 Aug 2021
   Subroutine fwdSetup(iTx,e0,b0)
 
     !  Input mode, period
@@ -289,12 +323,29 @@ end subroutine copyE0fromFile
     real(kind=prec)     :: omega
     complex(kind=prec)  :: i_omega_mu
 
+    ! local variables for TIDE
+   integer		 :: ios,istat
+   character*80 :: file_name,comment
+   character*2  :: tidal_component
+   logical		 :: exists
+   type(sparsevecc) :: jInt
 
+    ! For RHS vector, the major differences between MT and CSEM are
+    ! (1) Boundary condition for MT isn't zeros while CSEM is zeros
+    ! (2) CSEM has a source term while that of MT is zeros
     ! Initialize the RHS vector; should we always clean it up on input?
     if (.not. b0%allocated) then
       select case (txDict(iTx)%Tx_type)
+      case ('CSEM','SFF')
+        b0%nonzero_Source = .true.
+        b0%sparse_Source = .false.
+        b0%nonzero_BC = .false.
       case ('MT')
         b0%nonzero_Source = .false.
+        b0%sparse_Source = .false.
+        b0%nonzero_BC = .true.
+      case('TIDE')
+        b0%nonzero_Source = .true.
         b0%sparse_Source = .false.
         b0%nonzero_BC = .true.
       case default
@@ -312,6 +363,29 @@ end subroutine copyE0fromFile
 
         select case (txDict(iTx)%Tx_type)
 
+            case ('CSEM')
+                !  set period, complete setup of 3D EM equation system
+                omega = txDict(iTx)%omega
+                i_omega_mu = cmplx(0.,ISIGN*MU_0*omega,kind=prec)
+                ! Now finish up the computation of the general b0%s = - ISIGN * i\omega\mu_0 j
+                call diagMult(condAnomaly,E_P,b0%b(j)%s)
+                call scMult(-i_omega_mu,b0%b(j)%s,b0%b(j)%s)
+
+            case ('SFF')
+                ! this is currently implemented only for 1 mode - check for this...
+                !if (iMode .ne. 1) then
+                !  write(0,*) 'ERROR: SFF only implemented for one mode at present. Exiting...'
+                !  stop
+                !end if
+                ! we've read eAllPrimary from EM soln file already
+                E_P = eAllPrimary%solns(iTx)%pol(iMode)
+                !  set period, complete setup of 3D EM equation system
+                omega = txDict(iTx)%omega
+                i_omega_mu = cmplx(0.,ISIGN*MU_0*omega,kind=prec)
+                ! Now finish up the computation of the general b0%s = - ISIGN * i\omega\mu_0 j
+                call diagMult(condAnomaly,E_P,b0%b(j)%s)
+                call scMult(-i_omega_mu,b0%b(j)%s,b0%b(j)%s)
+
             case ('MT')
                 if (BC_FROM_RHS_FILE) then
                     ! in this case, we've read bAll from RHS file already
@@ -320,7 +394,7 @@ end subroutine copyE0fromFile
                     BC = bAll%combs(iTx)%b(iMode)%bc
 
                 elseif (BC_FROM_E0_FILE) then
-                    ! THIS OPTION SHOULD BE CLEANED UP
+                    ! TEMPORARY, TO REPLICATE TIDES - WILL FIX THIS LATER
                     ! we are going to make a huge assumption here: nPol == 1 always for this case
                     !  and of course transmitters are in same order always
                     write (*,'(a12,a28,a12,i4,a15,i2)') node_info, 'Setting the BC from E0 file ', &
@@ -350,6 +424,29 @@ end subroutine copyE0fromFile
                 b0%b(j)%adj = 'FWD'
                 b0%b(j)%bc = BC
                 call deall_cboundary(BC)
+
+            case ('TIDE') ! in the future, may use the BC options from MT block above
+
+               file_name = trim(txDict(iTx)%id)//'.source'
+               inquire(FILE=file_name,EXIST=exists)
+               if (exists) then
+                  write(*,*) node_info,'Reading source - i \omega \mu \sigma_E (v x B) from interior source file: ',trim(file_name)
+                  open(ioREAD,file=file_name,status='unknown',form='formatted',iostat=ios)
+                  read(ioREAD,'(a35)',iostat=istat) comment
+                  read(ioREAD,'(a2)',iostat=istat) tidal_component
+                  if (tidal_component .ne. trim(txDict(iTx)%id)) then
+                     write(0,*) node_info,'Warning: tidal component ',tidal_component,' is read from file ',trim(file_name)
+                  end if
+                  call read_sparsevecc(ioREAD,jInt)
+                  close(ioREAD)
+               end if
+
+               ! Assume that the source - i \omega \mu \sigma_E (v x B) in on the edges
+               if(jInt%allocated) then
+                  write(0,*) node_info,'Using interior forcing to compute the RHS for the FWD problem'
+                  call add_scvector(ISIGN*C_ONE,jInt,b0%b(j)%s)
+                  call deall_sparsevecc(jInt)
+               end if
 
             case default
                 write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to compute RHS'
@@ -387,14 +484,51 @@ end subroutine copyE0fromFile
    i_omega_mu = cmplx(0.,ISIGN*MU_0*omega,kind=prec)
 
    !  complete operator intialization, for this frequency
-   !  call UpdateFreq(txDict(iTx)%omega)
-   !  loop over polarizations
-   if (txDict(iTx)%Tx_type=='MT') then
+   if (txDict(iTx)%Tx_type=='CSEM') then 
+
+      ! THIS IS THE TEMPORARY SETUP FOR CSEM - NOT ACTIVE AT PRESENT [AK] 
+      ! Now finish up the computation of the general b0%s = - ISIGN * i\omega\mu_0 j
+      !call diagMult(condAnomaly,E_P,b0%s)
+      !call scMult(-i_omega_mu,b0%s,b0%s)
+      !   call forward solver, compute secondary field
+      write(*,'(a12,a3,a25,i3,a14,es15.7)') 'Solving the ','FWD', &
+                  ' problem for transmitter ',iTx,' at frequency ',txDict(iTx)%PERIOD
+      call zero_solnVector(e0)
+      call FWDsolve3D(b0%b(1),omega,e0%pol(1))
+
+      !   add primary field to secondary field
+      !e0%pol(1)=E_p
+      call add(E_p,e0%pol(1),e0%pol(1))
+      !term=1.0/10.0 ! txDict(iTx)%Moment  
+      !call scMult(term,e0%pol(1),e0%pol(1))
+
+   elseif (txDict(iTx)%Tx_type=='SFF') then 
+ 
+      ! General b0%s = - ISIGN * i\omega\mu_0 (sigma-sigma1d) E1D already computed
+      do iMode = 1,e0%nPol
+         ! Extract primary solution again...
+         E_P = eAllPrimary%solns(iTx)%pol(iMode)
+		   ! call forward solver, compute secondary field
+         ! set the starting solution to zero
+		   ! NOTE that in the MPI parallelization, e0 may only contain a single mode;
+		   ! mode number is determined by Pol_index, NOT by its order index in e0
+		   ! ... but b0 uses the same fake indexing as e0
+		   write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, 'Solving the ','SFF', &
+			   	' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
+         call zero(e0%pol(iMode))
+		   call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
+		   write (6,*)node_info,'FINISHED solve, nPol',e0%nPol
+         ! now add primary field to secondary field
+         call add(E_p,e0%pol(iMode),e0%pol(iMode))
+      enddo
+
+   elseif ((txDict(iTx)%Tx_type=='MT') .or. (txDict(iTx)%Tx_type=='TIDE')) then
+       !  loop over polarizations
        do iMode = 1,e0%nPol
        ! compute boundary conditions for polarization iMode
        !   uses cell conductivity already set by updateCond
        ! call setBound(iTx,e0%Pol_index(iMode),e0%pol(imode),b0%bc)
-       ! NOTE that in the MPI parallelization, e0 may only contain a single mode
+       ! NOTE that in the MPI parallelization, e0 may only contain a single mode;
        ! mode number is determined by Pol_index, NOT by its order index in e0
        ! ... but b0 uses the same fake indexing as e0
          write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, &
@@ -450,7 +584,7 @@ end subroutine copyE0fromFile
 !  zero starting solution, solve for all modes
    call zero_solnVector(e)
    
-   if (txDict(iTx)%Tx_type=='MT') then 
+   if (txDict(iTx)%Tx_type=='MT' .or. txDict(iTx)%Tx_type=='CSEM' ) then 
    	omega = txDict(iTx)%omega
    	period = txDict(iTx)%period
       do iMode = 1,e%nPol

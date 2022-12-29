@@ -13,11 +13,11 @@ INV_dir="INV"
 if [ $2 = "debug" ]; then
 # Debug configuration
 perl fmkmf.pl -f90 mpiifort \
--opt '-O0 -w -std03 -fp-stack-check -g -traceback' \
--mpi '-cpp -DMPI' \
+-opt '-O0 -w -std03 -fp-stack-check -g -traceback -ffree-line-length-none' \
+-mpi '-fpp -DMPI' \
 -o './objs/3D_MT/IFortDebugMPI' \
 -l '-lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/composer_xe_2015/mkl/lib/intel64' \
+-lp '-L${MKLROOT}/lib/intel64' \
 -p .:$INV_dir:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:$MT_path_dir \
 Mod3DMT.f90 > $1
 
@@ -28,7 +28,7 @@ perl fmkmf.pl -f90 mpifort \
 -mpi '-cpp -DMPI' \
 -o './objs/3D_MT/GFortranDebugMPI' \
 -l '-lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/composer_xe_2015/mkl/lib/intel64' \
+-lp '-L${MKLROOT}/lib/intel64' \
 -p .:$INV_dir:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:$MT_path_dir \
 Mod3DMT.f90 > $1
 sed -i.bak 's/-module $(OBJDIR)\./--sysroot=$(OBJDIR)\./g' $1 # override the default
@@ -37,22 +37,22 @@ rm $1.bak
 elif [ $2 = "release" ]; then
 # Release configuration
 perl fmkmf.pl -f90 mpiifort \
--opt '-O2 -w -std03 -fp-stack-check -g -traceback -mavx' \
--mpi '-cpp' \
+-opt '-O2 -w -std03 -fp-stack-check -g -traceback -mavx -ffree-line-length-none' \
+-mpi '-fpp' \
 -o './objs/3D_MT/IFortRelease' \
 -l '-lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/composer_xe_2015/mkl/lib/intel64' \
+-lp '${MKLROOT}/lib/intel64' \
 -p .:$INV_dir:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:$MT_path_dir \
 Mod3DMT.f90 > $1
 
 else
 # MPI configuration (main release option)
 perl fmkmf.pl -f90 mpiifort \
--opt '-O2 -w -std03 -fp-stack-check -g -traceback -mavx' \
+-opt '-O2 -w -std03 -fp-stack-check -g -traceback -mavx -ffree-line-length-none' \
 -mpi '-cpp -DMPI' \
 -o './objs/3D_MT/IFortReleaseMPI' \
 -l '-lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/composer_xe_2015/mkl/lib/intel64' \
+-lp '${MKLROOT}/lib/intel64' \
 -p .:MPI:$INV_dir:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:$MT_path_dir \
 Mod3DMT.f90 > $1
 fi
