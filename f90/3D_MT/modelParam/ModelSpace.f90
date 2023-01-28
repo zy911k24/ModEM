@@ -19,6 +19,9 @@ module ModelSpace
 !    ModelParamToCell, ModelParamToEdge, EdgeToModelParam,
 !    QtoModelParam, sigC
 
+#ifdef HDF5
+  use hdf5
+#endif
   use gridcalc
   use file_units
   use math_constants
@@ -107,6 +110,17 @@ interface countModelParam
 end interface
 
 !  I/O interfaces
+#ifdef HDF5
+
+interface write_modelParam
+   MODULE PROCEDURE write_modelParam_hdf5
+end interface
+
+interface read_modelParam
+   MODULE PROCEDURE read_modelParam_hdf5
+end interface
+
+#else
 
 interface write_modelParam
    MODULE PROCEDURE write_modelParam_WS
@@ -115,6 +129,8 @@ end interface
 interface read_modelParam
    MODULE PROCEDURE read_modelParam_WS
 end interface
+
+#endif
 
 interface writeVec_modelParam
    MODULE PROCEDURE writeVec_modelParam_binary
@@ -143,6 +159,7 @@ Contains
 #include "modelParamIO/Binary.inc"
 #include "modelParamIO/Mackie.inc"
 #include "modelParamIO/WS.inc"
+#include "modelParamIO/HDF5.inc"
 
 !  MPI model parameter, if needed
 #ifdef MPI
