@@ -78,9 +78,13 @@ program Mod3DMT
     if (PRIMARY_E_FROM_FILE) then
         if (taskid==0) then
             call read_solnVectorMTX(grid,eAllPrimary,cUserDef%rFile_EMsoln)
+            write(0,*) 'Read the primary electric field solutions for',eAllPrimary%nTx,' periods'
             call read_modelParam(grid,airLayers,sigmaPrimary,cUserDef%rFile_Model1D)
        else
             ! need to logic to fetch the interior source from the master node
+            ! for now, just reading the files again on each node!
+            call read_solnVectorMTX(grid,eAllPrimary,cUserDef%rFile_EMsoln)
+            call read_modelParam(grid,airLayers,sigmaPrimary,cUserDef%rFile_Model1D)
         end if
     end if
 #else
