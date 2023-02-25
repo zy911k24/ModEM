@@ -54,27 +54,67 @@ program Mod3DMT
     ! This why, reading and setting the large grid and its E solution comes after setting the trasnmitters Dictionary.
     if (NESTED_BC) then
       if (taskid==0) then
-            call read_Efield_from_file(solverParams)
-            call Interpolate_BC(grid)
+            !call read_Efield_from_file(solverParams)
+            nestedEM_initialized = .false.
+            call read_solnVectorMTX(Larg_Grid,eAll_larg,solverParams%E0fileName)
+            call interpolate_BC_from_E_soln(eAll_larg,Larg_Grid,grid,nTx_nPol)
             call Master_job_Distribute_nTx_nPol(nTx_nPol)
+            nestedEM_initialized = .true.
       else
             call RECV_nTx_nPol
-            call ini_BC_from_file(grid)
+            call init_BC_from_file(grid,nTx_nPol)
             call RECV_BC_form_Master
+            call unpack_BC_from_file(bAll)
       end if    
-    end if    
-#else
-      call setGrid(grid)
-#endif
-
-#ifdef MPI
+    end if
+    ! No interpolation, just fetch the boundary conditions from a RHS file
+    ! still want to store in BC_from_file to enable MPI communication [AK]
     if (BC_FROM_RHS_FILE) then
         if (taskid==0) then
             call read_rhsVectorMTX(grid,bAll,cUserDef%rFile_EMrhs)
+            call pack_BC_from_file(grid,bAll,nTx_Pol)
+            call Master_job_Distribute_nTx_nPol(nTx_nPol)
         else
-            ! need to logic to fetch the BCs from the master node
+            call RECV_nTx_nPol
+            call init_BC_from_file(grid,nTx_nPol)
+            call RECV_BC_form_Master
+            call unpack_BC_from_file(bAll)
         end if
     end if
+    ! No interpolation, just fetch the boundary conditions from a RHS file
+    ! still want to store in BC_from_file to enable MPI communication [AK]
+    if (BC_FROM_E0_FILE) then
+        if (taskid==0) then
+            call read_solnVectorMTX(grid,eAll,cUserDef%rFile_EMsoln)
+            call getBC_solnVectorMTX(eAll,bAll)
+            call pack_BC_from_file(grid,bAll,nTx_Pol)
+            call Master_job_Distribute_nTx_nPol(nTx_nPol)
+        else
+            call RECV_nTx_nPol
+            call init_BC_from_file(grid,nTx_nPol)
+            call RECV_BC_form_Master
+            call unpack_BC_from_file(bAll)
+        end if
+    end if
+#else
+    call setGrid(grid)
+    if (NESTED_BC) then
+            nestedEM_initialized = .false.
+            call read_solnVectorMTX(Larg_Grid,eAll_larg,solverParams%E0fileName)
+            call interpolate_BC_from_E_soln(eAll_larg,Larg_Grid,grid,nTx_nPol)
+            call unpack_BC_from_file(bAll)
+            nestedEM_initialized = .true.
+    end if
+    if (BC_FROM_RHS_FILE) then
+            call read_rhsVectorMTX(grid,bAll,cUserDef%rFile_EMrhs)
+    end if
+    if (BC_FROM_E0_FILE) then
+            call read_solnVectorMTX(grid,eAll,cUserDef%rFile_EMsoln)
+            call getBC_solnVectorMTX(eAll,bAll)
+    end if
+#endif
+
+#ifdef MPI
     if (PRIMARY_E_FROM_FILE) then
         if (taskid==0) then
             call read_solnVectorMTX(grid,eAllPrimary,cUserDef%rFile_EMsoln)
@@ -88,9 +128,6 @@ program Mod3DMT
         end if
     end if
 #else
-    if (BC_FROM_RHS_FILE) then
-        call read_rhsVectorMTX(grid,bAll,cUserDef%rFile_EMrhs)
-    end if
     if (PRIMARY_E_FROM_FILE) then
         call read_solnVectorMTX(grid,eAllPrimary,cUserDef%rFile_EMsoln)
         call read_modelParam(grid,airLayers,sigmaPrimary,cUserDef%rFile_Model1D)
@@ -240,6 +277,11 @@ program Mod3DMT
         end select
         call write_modelParam(sigma1,cUserDef%wFile_Model)
 #endif
+
+     case (DATA_FROM_E)
+        ! no need to run the forward solution to compute the data functionals
+        ! from the initial electric field
+        call dryRun(sigma0,allData,bAll,eAll)
 
      case (EXTRACT_BC)
         ! no need to run the forward solution to extract the boundary
