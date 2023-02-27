@@ -614,6 +614,8 @@ Contains
            write(0,*)
            write(0,*) '  Reads your input files to set up the grid and data functionals;'
            write(0,*) '  computes the data functionals from the supplied electric field'
+           write(0,*) '  Optionally writes out the BCs extracted from the electric field.'
+           write(0,*) '  Optionally also writes back the electric field for debugging.'
            stop
         else
             ctrl%rFile_Model = temp(1)
@@ -623,7 +625,7 @@ Contains
             if (narg > 4) then
                 ctrl%wFile_EMrhs = temp(5)
             end if
-            if (narg > 4) then
+            if (narg > 5) then
                 ctrl%wFile_EMsoln = temp(6)
             end if
         end if

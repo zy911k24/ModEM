@@ -281,11 +281,17 @@ program Mod3DMT
      case (DATA_FROM_E)
         ! no need to run the forward solution to compute the data functionals
         ! from the initial electric field
-        call dryRun(sigma0,allData,bAll,eAll)
+        ! note also that BC_FROM_E0_FILE is already activated and bAll computed;
+        ! as written, dataFunc will not work with MPI since eAll has not been
+        ! transferred to the workers; only bAll
+        call dataFunc(sigma0,allData,eAll)
+        call write_dataVectorMTX(allData,cUserDef%wFile_Data)
 
      case (EXTRACT_BC)
         ! no need to run the forward solution to extract the boundary
         ! conditions from the initial electric field
+        ! should duplicate BC_FROM_E0_FILE functionality but recomputes bAll
+        ! here for debugging of initSolver and fwdSetup
         call dryRun(sigma0,allData,bAll,eAll)
 
      case (TEST_GRAD)

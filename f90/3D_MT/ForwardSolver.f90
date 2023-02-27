@@ -414,7 +414,7 @@ end subroutine unpack_BC_from_file
                     ! which was MPI messaged to all nodes, then unpacked back into bAll. This allows an arbitrary
                     ! number of modes per transmitter (2 modes used to be hardcoded) but the period and mode
                     ! layout needs to be consistent throughout. [AK 2/24/2023]
-                    write (*,'(a12,a29,a12,i4,a15,i2)') node_info, 'Setting the BC from RHS file ', &
+                    write (*,'(a12,a29,a12,i4,a15,i2)') node_info, 'Setting the BC from RHS or E-field file ', &
                         ' for period ',iTx,' & mode # ',iMode
                     BC = bAll%combs(iTx)%b(iMode)%bc
 
