@@ -1287,7 +1287,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       end if
       ierr = cusparseSpMV_bufferSize_cmplx(cusparseHandle,              &
      &        TRANS, C_ONE, matA, vecX, C_ONE, vecY,                   &
-     &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG1, mbsize)
+     &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG2, mbsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I2)') " error estimating buffer for spMV ",  ierr2
@@ -1485,7 +1485,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ! need to be analyzed
       ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS,                  &
      &        C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,             &
-     &        CUSPARSE_SPMV_CSR_ALG1, buffer)
+     &        CUSPARSE_SPMV_CSR_ALG2, buffer)
       ierr2 = ierr2 + ierr
       ! and get the values back 
       ierr = cusparseDnVecGetValues(vecY, devPtrR)
@@ -1535,7 +1535,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       if ( rnorm .le. btol ) then ! the first guess is already good enough
          ! returning
           write(6, *) " The first guess is good enough, exiting..."
-          KSPiter%niter=1
+          iter=1
           KSPiter%failed=.false.
           converged = .true.
           goto 9527 
@@ -1668,7 +1668,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ! V = CC*PH + Diag(iwus)*PH
         ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
      &         C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,  &
-     &         CUSPARSE_SPMV_CSR_ALG1, buffer)
+     &         CUSPARSE_SPMV_CSR_ALG2, buffer)
         ierr2 = ierr2 + ierr
         ! and get the values back 
         ierr = cusparseDnVecGetValues(vecY, devPtrV)
@@ -1789,7 +1789,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ! T = A*SH + Diag(iwus)*SH
         ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
        &        C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,                 & 
-       &        CUSPARSE_SPMV_CSR_ALG1, buffer)
+       &        CUSPARSE_SPMV_CSR_ALG2, buffer)
         ierr2 = ierr2 + ierr
         ! and get the values back 
         ierr = cusparseDnVecGetValues(vecY, devPtrT)
@@ -1865,7 +1865,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             ! R = CC*X + Diag(iwus)*X
             ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
      &          C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,  &
-     &          CUSPARSE_SPMV_CSR_ALG1, buffer)
+     &          CUSPARSE_SPMV_CSR_ALG2, buffer)
             ierr2 = ierr2 + ierr
             ! and get the values back
             ierr = cusparseDnVecGetValues(vecY, devPtrR)
@@ -2391,7 +2391,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ! y = a*A*x + b*y --> y = Ax
       ierr = cusparseSpMV_bufferSize_cmplx(cusparseHandle,              &
      &        TRANS, C_ONE, matA, vecX, C_ONE, vecY,                   &
-     &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG1, mbsize)
+     &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG2, mbsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I2)') " error estimating buffer for spMV ",  ierr2
@@ -2609,7 +2609,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ! R = CC*X + Diag(iwus)*X
       ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS,                  &
      &        C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,             &
-     &        CUSPARSE_SPMV_CSR_ALG1, buffer)
+     &        CUSPARSE_SPMV_CSR_ALG2, buffer)
       ierr2 = ierr2 + ierr
       ! and get the values back
       ierr = cusparseDnVecGetValues(vecY, devPtrR)
@@ -2658,7 +2658,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       if ( rnorm .le. btol ) then ! the first guess is already good enough
          ! returning
           write(6, *) " The first guess is good enough, exiting..."
-          KSPiter%niter=1
+          iter=1
           KSPiter%failed=.false.
           converged = .true.
           goto 9527 
@@ -2792,7 +2792,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ! V = CC*PH + Diag(iwus)*PH
         ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
      &         C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,  &
-     &         CUSPARSE_SPMV_CSR_ALG1, buffer)
+     &         CUSPARSE_SPMV_CSR_ALG2, buffer)
         ierr2 = ierr2 + ierr
         ! and get the values back 
         ierr = cusparseDnVecGetValues(vecY, devPtrV)
@@ -2909,7 +2909,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ! T = A*SH + Diag(iwus)*SH
         ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
        &        C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,                 & 
-       &        CUSPARSE_SPMV_CSR_ALG1, buffer)
+       &        CUSPARSE_SPMV_CSR_ALG2, buffer)
         ierr2 = ierr2 + ierr
         ! and get the values back 
         ierr = cusparseDnVecGetValues(vecY, devPtrT)
@@ -2987,7 +2987,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             ! R = CC*X + Diag(iwus)*X
             ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
      &          C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,  &
-     &          CUSPARSE_SPMV_CSR_ALG1, buffer)
+     &          CUSPARSE_SPMV_CSR_ALG2, buffer)
             ierr2 = ierr2 + ierr
             ! and get the values back
             ierr = cusparseDnVecGetValues(vecY, devPtrR)
