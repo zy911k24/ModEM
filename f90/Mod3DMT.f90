@@ -284,7 +284,7 @@ program Mod3DMT
         ! note also that BC_FROM_E0_FILE is already activated and bAll computed;
         ! as written, dataFunc will not work with MPI since eAll has not been
         ! transferred to the workers; only bAll
-        call dataFunc(sigma0,allData,eAll)
+        call dataOnly(sigma0,allData,eAll)
         call write_dataVectorMTX(allData,cUserDef%wFile_Data)
 
      case (EXTRACT_BC)
