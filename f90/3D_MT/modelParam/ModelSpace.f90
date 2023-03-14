@@ -172,7 +172,9 @@ Contains
 #include "modelParamIO/Binary.inc"
 #include "modelParamIO/Mackie.inc"
 #include "modelParamIO/WS.inc"
+#ifdef HDF5
 #include "modelParamIO/HDF5.inc"
+#endif
 
 !  MPI model parameter, if needed
 #ifdef MPI
