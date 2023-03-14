@@ -8,8 +8,13 @@ module Main
   use ForwardSolver ! txDict, solnVectorMTX
   use sensmatrix
   use userctrl
+#ifdef HDF5
+  use ioHDF5
+  use dataio_hdf5
+#else
   use ioascii
   use dataio
+#endif
   implicit none
 
       ! I/O units ... reuse generic read/write units if
@@ -209,6 +214,12 @@ Contains
        call warning('No input data file - unable to set up dictionaries')
     end if
     
+    !--------------------------------------------------------------------------
+    ! Allocate bAll in all cases except if we compute the BCs internally
+    if (.not. COMPUTE_BC) then
+        call create_rhsVectorMTX(allData%nTx,bAll)
+    end if
+
 	!--------------------------------------------------------------------------
 	!  Initialize additional data as necessary
 	select case (cUserDef%job)

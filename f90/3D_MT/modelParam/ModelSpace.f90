@@ -35,6 +35,10 @@ module ModelSpace
 
   implicit none
 
+#ifdef HDF5
+  integer(HID_T), private, save   :: file_id, group_id, attr_id, dset_id, dspace_id, atype_id, aspace_id ! file, data set, and dataspace handles
+#endif
+
   ! supported model parameter types (conductivity only)
    character(len=80), parameter		:: LOGE = 'LOGE'
    character(len=80), parameter     :: LOG_10 = 'LOG10'
@@ -69,6 +73,15 @@ module ModelSpace
      !  supported paramType at present: LINEAR, LOG10 and LOGE
      character (len=80)	:: paramType = ''
   end type modelParam_t
+
+  ! Used for HDF5 attributes
+  type :: custom_att
+    ! Define different attribute types
+    character(len=100)          :: att_string
+    integer                     :: att_int
+    real(8)                     :: att_real
+
+  end type custom_att
 
   character(len=80), save           :: userParamType = 'LOGE'
 
