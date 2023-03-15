@@ -360,6 +360,7 @@ Contains
 
     ! read frequency header - 1 record
     read(ioNum) fileOmega, fileIfreq, fileMode, ModeName
+    write(0,*) fileOmega, fileIfreq, fileMode, ModeName
 
     ! read electrical field data - 3 records
     read(ioNum) inE%x
@@ -535,7 +536,7 @@ Contains
       end do		  
 		  
 		  
-          nRecSkip = 4
+          nRecSkip = 0
 
           do j = 1,nTx
        
@@ -649,7 +650,7 @@ Contains
                   call create_rhsVector(grid,iTx,bAll%combs(iTx))
               end do
 
-              nRecSkip = 4
+              nRecSkip = 0
 
               do j = 1,nTx
 

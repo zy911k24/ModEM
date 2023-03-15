@@ -682,7 +682,7 @@ Contains
           call create_solnVector(Larg_Grid,iTx,eAll%solns(iTx))
       end do		  
 		  
-		  nRecSkip = 4
+		  nRecSkip = 0
 		  
           do j = 1,nTx
        
@@ -855,7 +855,7 @@ Contains
               end do
 
 
-              nRecSkip = 4
+              nRecSkip = 0
 
               do j = 1,nTx
 
