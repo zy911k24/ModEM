@@ -130,7 +130,7 @@ interface write_modelParam
 end interface
 
 interface read_modelParam
-   MODULE PROCEDURE read_modelParam_hdf5
+   MODULE PROCEDURE read_modelParam_WS
 end interface
 
 #else
