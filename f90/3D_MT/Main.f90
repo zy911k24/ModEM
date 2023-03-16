@@ -281,12 +281,10 @@ Contains
        sigma1 = sigma0
        call zero(sigma1)
 
-     case (DATA_FROM_E)
+     case (DATA_FROM_E) ! already reading the E field under the BC_FROM_E0_FILE flag
          inquire(FILE=cUserDef%rFile_EMsoln,EXIST=exists)
-         if (exists) then
-            call read_solnVectorMTX(grid,eAll,cUserDef%rFile_EMsoln)
-         else
-            call warning('The input EM solution file does not exist')
+         if (.not. exists) then
+            call warning('Cannot compute data from the input EM solution - file does not exist')
          end if
 
      case (TEST_GRAD, TEST_SENS)

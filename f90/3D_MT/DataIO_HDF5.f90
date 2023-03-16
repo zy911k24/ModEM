@@ -23,8 +23,8 @@ module DataIO_HDF5
   end interface
   
   interface read_dataVectorMTX 
-    MODULE PROCEDURE read_Z_list
-    !MODULE PROCEDURE read_hdf5_data
+    !MODULE PROCEDURE read_Z_list
+    MODULE PROCEDURE read_hdf5_data
   end interface
 
   interface deall_dataFileInfo
@@ -1137,8 +1137,13 @@ subroutine read_hdf5_datablocks(allData, cfile)
                     deallocate(idx_data, STAT=istat)
                 end if 
             end if 
-        end do 
+        end do
+
+        allData%d(iTx)%allocated = .true.
+
     end do
+
+    allData%allocated = .true.
 
  CALL close_hdf5(cfile)
    
