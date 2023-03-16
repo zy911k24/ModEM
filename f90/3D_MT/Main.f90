@@ -281,6 +281,14 @@ Contains
        sigma1 = sigma0
        call zero(sigma1)
 
+     case (DATA_FROM_E)
+         inquire(FILE=cUserDef%rFile_EMsoln,EXIST=exists)
+         if (exists) then
+            call read_solnVectorMTX(grid,eAll,cUserDef%rFile_EMsoln)
+         else
+            call warning('The input EM solution file does not exist')
+         end if
+
      case (TEST_GRAD, TEST_SENS)
          inquire(FILE=cUserDef%rFile_dModel,EXIST=exists)
          if (exists) then
@@ -303,7 +311,7 @@ Contains
            case default
        end select
        select case (cUserDef%option)
-           case('L','P','e','d')
+           case('L','P','e')
                inquire(FILE=cUserDef%rFile_EMsoln,EXIST=exists)
                if (exists) then
                   call read_solnVectorMTX(grid,eAll,cUserDef%rFile_EMsoln)
