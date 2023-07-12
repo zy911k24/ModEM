@@ -1,9 +1,11 @@
 ! *****************************************************************************
-module DataIO_HDF5
+!   This is the HDF5 I/O version coded by Spencer Wilbur (USGS) under the direction
+!   of Anna Kelbert, Jul. 2023. File intentionally misnamed; it is renamed at the
+!   level of the configuration file.
+module DataIO
   ! This module contains io routines for reading and writing the data vectors
   ! Version: 3D MT
   use hdf5
-  use ISO_C_BINDING
   use math_constants
   use file_units
   use utilities
@@ -1839,4 +1841,4 @@ subroutine read_Z_list(allData,cfile)
    end subroutine read_Z_list
 
 
-end module DataIO_HDF5
+end module DataIO

@@ -3,11 +3,7 @@ module INVcore
 !use math_constants
 !use utilities
 use senscomp
-#ifdef HDF5
-  use dataio_hdf5
-#else
-  use dataio
-#endif
+use dataio
 
 #ifdef MPI
   use Main_MPI

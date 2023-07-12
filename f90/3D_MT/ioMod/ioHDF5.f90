@@ -30,9 +30,13 @@
 !   which were hardcoded to Ex, Ey by Pol_name(:), now stored in EMsoln & EMrhs.
 !   And of course we can and should now use read_cvector/write_cvector instead
 !   (this is not fixed yet). Ideally, convert everything to NetCDF or similar.
+!
+!   This is the HDF5 I/O version coded by Spencer Wilbur (USGS) under the direction
+!   of Anna Kelbert, Jul. 2023. File intentionally misnamed; it is renamed at the
+!   level of the configuration file.
 
 ! *****************************************************************************
-module ioHDF5
+module ioAscii
   ! This module contains io routines for boundary nodes,
   ! electric field solutions, impedances, and solver diagnostics
   use hdf5
@@ -1035,4 +1039,4 @@ Contains
 
       end subroutine write_rhsVectorMTX
 
-end module ioHDF5
+end module ioAscii

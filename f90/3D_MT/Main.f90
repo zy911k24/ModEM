@@ -8,13 +8,8 @@ module Main
   use ForwardSolver ! txDict, solnVectorMTX
   use sensmatrix
   use userctrl
-#ifdef HDF5
-  use ioHDF5
-  use dataio_hdf5
-#else
   use ioascii
   use dataio
-#endif
   implicit none
 
       ! I/O units ... reuse generic read/write units if

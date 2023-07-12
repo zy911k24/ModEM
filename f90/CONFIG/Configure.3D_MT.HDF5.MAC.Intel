@@ -40,6 +40,10 @@ perl fmkmf.pl -f90 mpiifort \
 Mod3DMT.f90 > $1
 fi
 
+# Now replace the I/O files with HDF5 versions
+sed -i .bak 's/ioAscii\./ioHDF5\./g' $1
+sed -i .bak 's/DataIO\./DataIO_HDF5\./g' $1
+
 if [ $# -le 2 ]; then
     echo 1>&2 Cartesian version of the makefile ready to use.
     exit
