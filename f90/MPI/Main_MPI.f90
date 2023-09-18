@@ -573,9 +573,15 @@ Subroutine Master_Job_fwdPred(sigma,d1,eAll,comm)
      job_name= 'FORWARD'
      call Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll,comm_current)
 
+     ! Initialize only those grid elements on the master that are used in
+     ! EMfieldInterp
+     ! (obviously a quick patch, needs to be fixed in a major way)
+     ! A.Kelbert 2018-01-28
 
+     Call EdgeLength(grid, l_E)
+     Call FaceArea(grid, S_F)
 
-     ! Compute the model Responses
+     ! Compute the model Responces
      do iTx=1,nTx
          do i = 1,d1%d(iTx)%nDt
              d1%d(iTx)%data(i)%errorBar = .false.
@@ -586,11 +592,13 @@ Subroutine Master_Job_fwdPred(sigma,d1,eAll,comm)
              end do
          end do
      end do
-
+     ! clean up the grid elements stored in GridCalc on the master node
+     call deall_rvector(l_E)
+     call deall_rvector(S_F)
      write(ioMPI,*)'FWD: Finished calculating for (', nTx , ') Transmitters '
      endtime=MPI_Wtime()
      time_used = endtime-starttime
-     write(ioMPI,*)'FWD: TIME REQUIRED: ',time_used ,'s'
+     write(ioMPI,*)'FWD: TIME REQUIERED: ',time_used ,'s'
      call deall (e0)
 
 end subroutine Master_Job_fwdPred
@@ -1950,14 +1958,22 @@ Subroutine Worker_Job(sigma,d)
                  do iFunc=1,nFunc
                      call create_sparseVector(e0%grid,per_index,L(iFunc))
                  end do
-
+                 ! Initialize only those grid elements on the leader that 
+                 ! are used in EMfieldInterp
+                 ! (obviously a quick patch, needs to be fixed in a major way)
+                 ! A.Kelbert 2018-01-28
+                 Call EdgeLength(e0%grid, l_E)
+                 Call FaceArea(e0%grid, S_F)
                  ! compute linearized data functional(s) : L
                  !call Lrows(e0,sigma,dt,stn_index,L)
 		 ! 2022.10.06, Liu Zhongyin, Add Azimuth
 		 call Lrows(e0,sigma,dt,stn_index,orient,L)
                  ! compute linearized data functional(s) : Q
                  call Qrows(e0,sigma,dt,stn_index,Qzero,Qreal,Qimag)
-
+                 ! clean up the grid elements stored in GridCalc on the 
+                 ! leader node
+                 call deall_rvector(l_E)
+                 call deall_rvector(S_F) 
              end if
              ! loop over functionals  (e.g., for 2D TE/TM impedances 
              ! nFunc = 1)

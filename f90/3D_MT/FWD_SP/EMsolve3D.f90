@@ -36,7 +36,7 @@ module EMsolve3D
     real(kind = 8)            ::      AirLayersMaxHeight, AirLayersAlpha, AirLayersMinTopDz
     real(kind = 8), pointer, dimension(:)   :: AirLayersDz
     logical                   ::      AirLayersPresent=.false.
-    character (len=10)        ::      solver_name="QMR"		
+    character (len=10)        ::      solver_name="BICG"		
     character (len=50) , public      ::   get_1D_from="Geometric_mean"	
   end type emsolve_control
 
@@ -66,7 +66,7 @@ module EMsolve3D
   ! misfit tolerance for convergence of divergence correction solver
   real(kind=prec), parameter       ::      tolDivCorDef = 1E-7
   !Solver name, by default we use QMR
-  character (len=10)  		   ::   solver_name="QMR"
+  character (len=10)  		   ::   solver_name="BICG"
   character (len=50) , public      ::   get_1D_from="Geometric_mean"
 							 
 
@@ -581,7 +581,7 @@ end subroutine SdivCorr ! SdivCorr
         tolEMfwd = tolEMDef
         tolEMadj = tolEMDef
         tolDivCor = tolDivCorDef
-        solver_name="QMR"
+        solver_name="BICG"
         get_1D_from="Geometric_mean"
      else
         IterPerDivCor = solverControl%IterPerDivCor

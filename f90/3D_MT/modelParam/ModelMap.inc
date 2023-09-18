@@ -20,8 +20,6 @@
 ! modeling codes (the non-linear mapping only), and by SolverSens/DataSens
 ! (the linearized mappings and adjoint) and thus names/interfaces
 ! need to be kept consistent with what is used in these routines.
-! Volume elements V_E, V_C and V_N are global variables stored in GridCalc
-! module and initialized/deallocated once by modelOperator3D.
 !
 ! Note that for 2D MT different mapping routines are used for
 ! TE and TM modes, as the natural representations for the two cases
@@ -187,6 +185,16 @@ subroutine ModelParamToEdge(m, Econd, m0)
 
   end if
   
+  ! V_C and V_E are global variables stored in GridCalc, initialized in initSolver;
+  ! for efficiency, do not recompute unless called outside of solver for testing.
+  !if (.not. V_C%allocated) then
+  call CellVolume(m%grid, V_C) ! global variable
+  !end if
+
+  !if (.not. V_E%allocated) then
+  call EdgeVolume(m%grid, V_E) ! global variable
+  !end if
+  
   ! for spherical coords to be strictly correct, need to also average the volumes
   ! instead of using the edge volumes V_E, use the "ghost" averaged version...
   ! which also has full volumes on boundary edges as if the grid extended further
@@ -276,6 +284,15 @@ subroutine ModelParamToNode(m, Ncond, m0)
         temp%v(:, :, 1:nzAir) = airCond
      endif
   endif
+  
+  ! V_C and V_N are global variables stored in GridCalc, initialized in initSolver;
+  ! for efficiency, do not recompute unless called outside of solver for testing.
+  if (.not. V_C%allocated) then
+     call CellVolume(m%grid, V_C) ! global variable
+  end if
+  if (.not. V_N%allocated) then
+     call NodeVolume(m%grid, V_N) ! global variable
+  end if
   
   ! for spherical coords to be strictly correct, need to also average the volumes
   ! instead of using the node volumes V_N, use the "ghost" averaged version...

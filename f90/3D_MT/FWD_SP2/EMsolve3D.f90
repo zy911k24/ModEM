@@ -37,7 +37,7 @@ module EMsolve3D
     real(kind = 8)            ::      AirLayersMaxHeight, AirLayersAlpha, AirLayersMinTopDz
     real(kind = 8), pointer, dimension(:)   :: AirLayersDz
     logical                   ::      AirLayersPresent=.false.
-    character (len=10)        ::      solver_name="QMR"		
+    character (len=10)        ::      solver_name="BICG"		
     character (len=50) , public      ::   get_1D_from="Geometric_mean"	
   end type emsolve_control
 
@@ -57,7 +57,7 @@ module EMsolve3D
 
   ! Default solver control parameters
   ! number of iterations for each call to divergence correction:
-  integer, parameter    ::              IterPerDivCorDef = 120
+  integer, parameter    ::              IterPerDivCorDef = 150
   ! maximum number of divergence correction calls allowed
   integer, parameter    ::              MaxDivCorDef = 8
   ! maximum number of PCG iterations for divergence correction
@@ -66,8 +66,8 @@ module EMsolve3D
   real(kind=prec), parameter       ::      tolEMDef = 1E-10
   ! misfit tolerance for convergence of divergence correction solver
   real(kind=prec), parameter       ::      tolDivCorDef = 1E-7
-  !Solver name, by default we use QMR
-  character (len=10)  		   ::   solver_name="QMR"
+  !Solver name, by default we use BICG
+  character (len=10)  		   ::   solver_name="BICG"
   character (len=50) , public      ::   get_1D_from="Geometric_mean"
 							 
 
@@ -648,7 +648,7 @@ end subroutine SdivCorr ! SdivCorr
         tolEMfwd = tolEMDef
         tolEMadj = tolEMDef
         tolDivCor = tolDivCorDef
-        solver_name="QMR"
+        solver_name="BICG"
         get_1D_from="Geometric_mean"
      else
         IterPerDivCor = solverControl%IterPerDivCor
