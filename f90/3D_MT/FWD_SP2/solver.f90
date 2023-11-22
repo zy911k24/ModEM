@@ -3138,7 +3138,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
           stop
       end if 
       return
-end subroutine cuBiCGmix ! cuBiCG
+end subroutine cuBiCGmix ! cuBiCGmix
 
 #endif
 

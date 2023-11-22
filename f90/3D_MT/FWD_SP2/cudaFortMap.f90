@@ -1379,6 +1379,15 @@ module cudaFortMap
      integer (c_int), value      :: count 
    end subroutine kernelc_update_xc
 
+   ! cf_free
+   subroutine cf_free(ptr)  bind (C, name="free" )
+     use iso_c_binding
+     implicit none
+     ! this calls free from the c side to deal with arrays
+     ! associated by c_loc
+     type (c_ptr),value          :: ptr 
+   end subroutine cf_free
+
    ! kernelc_hookCtx
    integer(c_int) function kernelc_hookCtx(device_idx) & 
     &              bind (C, name="kernelc_hookCtx" )
@@ -1388,22 +1397,20 @@ module cudaFortMap
      ! get the current device idx
    end function kernelc_hookCtx
 
+   ! TODO
+   ! currently do not need it here, since we already defined this at 
+   ! Declarition_MPI.f90
+   ! since currently the GPU version is bind to MPI - I don't see 
+   ! why we need it here
+   ! still - we may need this at some stage when I find the time to
+   ! peel GPU from MPI...
    ! kernelc_getDevNum
-   integer(c_int) function kernelc_getDevNum() & 
-    &              bind (C, name="kernelc_getDevNum" )
-     use iso_c_binding
-     implicit none
-     ! get the number of GPU devices  
-   end function kernelc_getDevNum
-
-   ! cf_free
-   subroutine cf_free(ptr)  bind (C, name="free" )
-     use iso_c_binding
-     implicit none
-     ! this calls free from the c side to deal with arrays
-     ! associated by c_loc
-     type (c_ptr),value          :: ptr 
-   end subroutine cf_free
+   ! integer(c_int) function kernelc_getDevNum() & 
+   !  &              bind (C, name="kernelc_getDevNum" )
+   !   use iso_c_binding
+   !   implicit none
+   !   ! get the number of GPU devices  
+   ! end function kernelc_getDevNum
 
    end interface  
 

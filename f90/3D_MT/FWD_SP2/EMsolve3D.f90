@@ -370,13 +370,19 @@ Contains
            ! before start, need to tell if the device is available
            ierr = kernelc_hookCtx(device_id)
            if (trim(solver_name) .eq. 'PCG') then
-             write(*,*) 'Warning: CUDA PCG is not yet implemented',KSSiter%rerr(1)
+             write(*,*) '[WARNING] CUDA PCG is not yet implemented'
+             write(*,*) '[WARNING] Fall back to CPU version of PCG'
+             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
              Call PCG(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'QMR') then
-             write(*,*) 'Warning: CUDA QMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] CUDA QMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] Fall back to CPU version of QMR'
+             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
              Call QMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'TFQMR') then
-             write(*,*) 'Warning CUDA TFQMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] CUDA TFQMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
+             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
              Call TFQMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'BICG') then
              write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
@@ -386,16 +392,21 @@ Contains
            end if
 
        else
+           write(*,*) '[WARNING] can not attach to a valid GPU...'
            if (trim(solver_name) .eq. 'PCG') then
+             write(*,*) '[WARNING] Fall back to CPU version of PCG'
              write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
              Call PCG(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'QMR') then
+             write(*,*) '[WARNING] Fall back to CPU version of QMR'
              write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
              Call QMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'TFQMR') then
+             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
              write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
              Call TFQMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'BICG') then
+             write(*,*) '[WARNING] Fall back to CPU version of BICG'
              write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
              Call BICG(b, ei, KSSiter)
            else
