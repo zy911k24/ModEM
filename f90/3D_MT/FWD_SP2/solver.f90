@@ -717,7 +717,7 @@ subroutine TFQMR(b,x,KSPiter,adjt)
 end subroutine TFQMR ! tfqmr 
 
 ! *****************************************************************************
-subroutine BICG(b,x,KSPiter,adjt)
+subroutine BiCG(b,x,KSPiter,adjt)
   ! Stablized version of BiConjugate Gradient, set up for solving
   ! A x = b using routines in  mult_Aii.
   ! solves for the interior (edge) field
@@ -753,7 +753,7 @@ subroutine BICG(b,x,KSPiter,adjt)
   logical,intent(in),optional                      :: adjt
 
   ! local variables
-  complex (kind=prec),allocatable,dimension(:)  :: R, RT, V,T
+  complex (kind=prec),allocatable,dimension(:)  :: R,RT,V,T
   complex (kind=prec),allocatable,dimension(:)  :: P,PT,PH,S,ST,SH,AX
   complex (kind=prec),allocatable,dimension(:)  :: xhalf,xmin
   real    (kind=prec)                           :: rnorm, bnorm, rnormin, btol
@@ -923,7 +923,7 @@ subroutine BICG(b,x,KSPiter,adjt)
   deallocate(SH)
   deallocate(V)
   deallocate(T)
-end subroutine BICG ! BICG
+end subroutine BiCG ! BICG
   
 
 ! *****************************************************************************

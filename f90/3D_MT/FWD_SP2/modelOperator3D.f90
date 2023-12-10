@@ -198,7 +198,7 @@ Contains
        ! as the GD should be updated whenever the omega or the conductivity
        ! is updated
        ! could find a better place for this
-       call GradDivSetup2(SigEdge,SigNode)
+       call GradDivSetup(SigEdge,SigNode)
        omega = ONE ! setup an (arbitary) working omega
        VomegaMuSig = MU_0*Omega*SigEdge(EDGEi)*Vedge(EDGEi)
       ! TEMPORARY; REQUIRED FOR BOUNDARY CONDITIONS
@@ -267,7 +267,7 @@ Contains
          ! as the GD should be updated whenever the omega or the conductivity
          ! is updated
          ! could find a better place for this
-         call GradDivSetup2(SigEdge,SigNode)
+         call GradDivSetup(SigEdge,SigNode)
          VomegaMuSig = MU_0*inOmega*SigEdge(EDGEi)*Vedge(EDGEi)
          omega = inOmega
          deallocate(SigEdge)
@@ -794,7 +794,7 @@ Contains
       return
    end subroutine
 !*****************************************************************************
-   subroutine GradDivSetup(SigEdge)
+   subroutine GradDivSetup1(SigEdge)
    ! a subroutine to add divergence enforcement into system Matrix A to avoid
    ! using divergence correction with iterative solvers.
    ! essentially this builds Grad(Div(sigma*E)) = 0 and add it to the CC
@@ -813,6 +813,9 @@ Contains
    ! VGaDa
    ! for the EARTH:
    ! VGeDe
+   ! this is the original idea (from Gary) to use edge sigma
+   ! this uses only the edge sigma - while the other uses node sigma as the
+   ! weight
    implicit none
    real(kind=prec),intent(in)              :: SigEdge(:)
    type(spMatCSR_Real)                     :: Dt,GDa,GDe,GD
@@ -910,10 +913,10 @@ Contains
    deallocate(Eair)
    deallocate(Nearth)
    deallocate(Nair)
-   end subroutine GradDivSetup
+   end subroutine GradDivSetup1
 
 !*****************************************************************************
-   subroutine GradDivSetup2(SigEdge,SigNode)
+   subroutine GradDivSetup(SigEdge,SigNode)
    ! a subroutine to add divergence enforcement into system Matrix A to avoid
    ! using divergence correction with iterative solvers.
    ! essentially this builds Grad(Div(sigma*E)) = 0 and add it to the CC
@@ -932,8 +935,11 @@ Contains
    ! VGaDa
    ! for the EARTH:
    ! VGeDe
+   ! this is the modified idea (as in Dong and Egbert 2019) to use node sigma 
+   ! as the weight
    implicit none
    real(kind=prec),intent(in)              :: SigEdge(:),SigNode(:)
+   ! temp variables
    type(spMatCSR_Real)                     :: Dt,GDa,GDe,GD
    real(kind=prec),allocatable,dimension(:):: M1air,M2air
    real(kind=prec),allocatable,dimension(:):: M0earth,M1earth,M2earth
@@ -1005,7 +1011,7 @@ Contains
    deallocate(M4earth)
    deallocate(Nearth)
    deallocate(Nair)
-   end subroutine GradDivSetup2
+   end subroutine GradDivSetup
 
 !*****************************************************************************
 !  this generate the air/earth domain index for both Edges and Nodes

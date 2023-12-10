@@ -101,6 +101,10 @@ module spOpTools
      module procedure sort_spMatCSR_real
      module procedure sort_spMatCSR_cmplx
   END INTERFACE
+  INTERFACE sort_spMatCSR2 ! with two parameters
+     module procedure sort_spMatCSR2_real
+     module procedure sort_spMatCSR2_cmplx
+  END INTERFACE
 
 Contains
    subroutine create_spMatCSR_Real(m,n,nz,A)
@@ -347,7 +351,6 @@ Contains
       do i = 1,C%nRow
          C%row(i+1) = C%row(i)+rowT(i)
       enddo
-
       !    now fill in columns and values
       rowT = 0
       do i = 1,nz
@@ -918,13 +921,11 @@ Contains
       type(spMatCSR_Real),  intent(in)          :: A
       type(spMatCSR_Real),  intent(inout)       :: Atrans
       type(spMatIJS_Real)                       :: B
-      integer                   :: i,nz,nz1,temp
+      integer                                   :: i,nz,nz1,temp
 
       nz = A%row(A%nRow+1)-1
       call create_spMatCSR(A%nCol,A%nRow,nz,Atrans)
-
       call create_spMatIJS(A%nRow,A%nCol,nz,B)
-
       call CSR2IJS(A,B)
       do i = 1,nz
           temp = B%I(i)
@@ -935,7 +936,7 @@ Contains
       B%nRow = B%nCol
       B%nCol = temp
 
-      call IJS2CSR_Real(B,Atrans)
+      call IJS2CSR(B,Atrans)
       call deall_spMATIJS(B)
 
       if(A%lower) then
@@ -2296,7 +2297,7 @@ Contains
       call deall_spMatCSR(Ctemp)
    end subroutine
 !*******************************************************************
-   subroutine sort_spMatCSR_real(A)
+   subroutine sort_spMatCSR_Real(A)
    ! sort the CSR col indices (and correspnding vals) in each row into
    ! ascent order
    ! reorder col indices like col:  4  1  3  2 -> 1  2  3  4
@@ -2343,6 +2344,62 @@ Contains
           !write(6,*) A%col(j1:j2)
           A%col(j1:j2)=int(col)
           A%val(j1:j2)=A%val(idx)
+          deallocate(col)
+          deallocate(idx)
+      enddo
+   end subroutine
+!*******************************************************************
+   subroutine sort_spMatCSR2_Real(A, As)
+   ! sort the CSR col indices (and correspnding vals) in each row into
+   ! ascent order
+   ! reorder col indices like col:  4  1  3  2 -> 1  2  3  4
+   !                          val:  3  1  1 -1 -> 1 -1  1  2 
+      implicit none
+      type(spMatCSR_Real),  intent(in)            :: A
+      type(spMatCSR_Real),  intent(out)           :: As
+      integer                                     :: i,j1,j2,k,nz
+      integer,allocatable,dimension(:)            :: idx
+      real(kind=prec),allocatable,dimension(:)    :: col
+      nz = A%row(A%nRow+1)-1
+      call create_spMatCSR(A%nRow,A%nCol,nz,As)
+      do i = 2, A%nRow+1
+          j1=A%row(i-1)
+          j2=A%row(i)-1
+          allocate(col(j2-j1+1))
+          allocate(idx(j2-j1+1))
+          idx=(/(k, k=j1,j2, 1)/)
+          col=real(A%col(j1:j2))
+          call QSort(col,idx) 
+          As%col(j1:j2)=int(col)
+          As%val(j1:j2)=A%val(idx)
+          deallocate(col)
+          deallocate(idx)
+      enddo
+   end subroutine
+!*******************************************************************
+   subroutine sort_spMatCSR2_Cmplx(A, As)
+   ! sort the CSR col indices (and correspnding vals) in each row into
+   ! ascent order
+   ! reorder col indices like col:  4  1  3  2 -> 1  2  3  4
+   !                          val:  3  1  1 -1 -> 1 -1  1  2 
+      implicit none
+      type(spMatCSR_Cmplx),  intent(inout)        :: A
+      type(spMatCSR_Cmplx),  intent(out)          :: As
+      integer                                     :: i,j1,j2,k,nz
+      integer,allocatable,dimension(:)            :: idx
+      real(kind=prec),allocatable,dimension(:)    :: col
+      nz = A%row(A%nRow+1)-1
+      call create_spMatCSR(A%nRow,A%nCol,nz,As)
+      do i = 2, A%nRow+1
+          j1=A%row(i-1)
+          j2=A%row(i)-1
+          allocate(col(j2-j1+1))
+          allocate(idx(j2-j1+1))
+          idx=(/(k, k=j1,j2, 1)/)
+          col=real(A%col(j1:j2))
+          call QSort(col,idx) 
+          As%col(j1:j2)=int(col)
+          As%val(j1:j2)=A%val(idx)
           deallocate(col)
           deallocate(idx)
       enddo

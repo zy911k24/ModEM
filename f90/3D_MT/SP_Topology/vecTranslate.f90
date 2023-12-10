@@ -376,9 +376,10 @@ Contains
       character(*), intent(in)    :: nodeType
       type(grid_t), intent(in)    :: grid
       integer, dimension(:), intent(in)        :: IndVec
-      integer, dimension(:), intent(out)        :: I,J,K
-      integer            ::   nx,ny,nz,nxy,nVec,ii
-      real(4)           ::   rNxy,rNx
+      integer, dimension(:), intent(out)       :: I,J,K
+      integer                                  :: nx,ny,nz,nxy,nVec,ii
+      integer                                  :: rNxy,rNx
+      ! real(4)                                :: rNxy,rNx
  
       call setLimits(nodeType,grid,nx,ny,nz)
       nVec = size(IndVec)
@@ -391,13 +392,32 @@ Contains
       if(nVec.ne.size(K)) then
          call errStop('size of IndVec and K do not agree')
       endif
-      rNxy = float(nx*ny)
-      rNx = float(nx)
+      ! rNxy = float(nx*ny)
+      ! rNx  = float(nx)
+      rNxy = nx * ny
+      rNx  = nx
       do ii = 1,nVec
          I(ii) = mod(IndVec(ii),nx)
-         J(ii) = mod(ceiling(float(IndVec(ii))/rNx),ny)
-         K(ii) = ceiling(float(IndVec(ii))/rNxy)
+         ! J(ii) = mod(ceiling(float(IndVec(ii))/rNx),ny)
+         J(ii) = mod((IndVec(ii)+rNx-1)/rNx,ny)
+         ! K(ii) = ceiling(float(IndVec(ii))/rNxy)
+         K(ii) = (IndVec(ii)+rNxy-1)/rNxy
       enddo
+      ! write(6,*) 'nx = ', nx, 'ny = ', ny, 'nz = ', nz
+      ! do ii = 1,nVec
+      !    if (I(ii) .gt. nx) then
+      !        write(6,*) 'I(ii) = ', I(ii)
+      !        call errStop('I index exceeds the limit')
+      !    endif
+      !    if (J(ii) .gt. ny) then
+      !        write(6,*) 'J(ii) = ', J(ii)
+      !        call errStop('J index exceeds the limit')
+      !    endif
+      !    if (K(ii) .gt. nz) then
+      !        write(6,*) 'K(ii) = ', K(ii)
+      !        call errStop('K index exceeds the limit')
+      !    endif
+      ! enddo
       where(I.eq.0) I = nx
       where(J.eq.0) J = ny
       where(K.eq.0) K = nz
@@ -427,7 +447,7 @@ Contains
          call errStop('size of IndVec and K do not agree')
       endif
       nxy = nx*ny
-      !   IndVec = (K-1)*nxy+(J-1)*nx+I
+      ! IndVec = (K-1)*nxy+(J-1)*nx+I
       do ii = 1,nVec
          IndVec(ii) = (K(ii)-1)*nxy+(J(ii)-1)*nx + I(ii)
       enddo

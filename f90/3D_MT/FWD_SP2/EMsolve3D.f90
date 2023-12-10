@@ -154,7 +154,7 @@ Contains
     integer                     :: Ne,Nei,Nni,Nn,i
     complex(kind=prec)          :: iOmegaMuInv
     ! e(lectric field) s(ource) b(rhs) phi0(div(s))
-    complex(kind=prec), pointer, dimension (:) :: e,s,b
+    complex(kind=prec), pointer, dimension (:)     :: e,s,b
     complex(kind=prec), allocatable, dimension (:) :: ei,si,phi0
     complex(kind=prec), allocatable, dimension (:) :: temp, stemp
     character(80)                                  :: cfile
@@ -495,13 +495,13 @@ Contains
     endif
     call setVector(e,eSol)
     ! deallocate local temporary arrays
-    deallocate(b)
-    deallocate(s)
     deallocate(e)
     deallocate(ei)
+    deallocate(s)
+    deallocate(si)
+    deallocate(b)
     deallocate(temp)
     deallocate(stemp)
-    deallocate(si)
     ! uncomment the following lines for divergence correction
     ! if(bRHS%nonzero_Source) then
     !     deallocate(phi0)
