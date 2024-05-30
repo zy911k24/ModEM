@@ -468,7 +468,7 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      integer, intent(in), optional      :: comm
      ! local
      integer                            :: idest,i,j
-     DOUBLE PRECISION                   :: time_passed, now
+     DOUBLE PRECISION                   :: time_passed, now 
      DOUBLE PRECISION, pointer,dimension(:) :: time_buff ! nGroup by 1 array
      integer                            :: size_current, comm_current
      
@@ -524,7 +524,7 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
 end subroutine Master_Job_Regroup
 
 !----------------------------------------------------------------------------
-!##########################  Master_Job_FORWARD ############################
+!##########################  Master_Job_fwdPred ############################
 
 Subroutine Master_Job_fwdPred(sigma,d1,eAll,comm)
 
@@ -706,7 +706,7 @@ Subroutine Master_job_calcJ(d,sigma,sens,eAll,comm)
          end do
      end do
 ! Start the PING PONG procedure:
-! 1- Recieve an answer.
+! 1- Receive an answer.
 ! 2 -Check if all stations, all data types and all periods haven been sent.
 ! 3- Send indicies if required.  
 
@@ -714,7 +714,7 @@ Subroutine Master_job_calcJ(d,sigma,sens,eAll,comm)
      write(6,*)'answers_to_receive=', answers_to_receive
      do while (received_answers .lt. answers_to_receive) 
 
-!    Recieve worker INFO:                       
+!    Receive worker INFO:                       
      call create_worker_job_task_place_holder
      call MPI_RECV(worker_job_package, Nbytes, MPI_PACKED ,MPI_ANY_SOURCE,&
     &              FROM_WORKER,comm_current,STATUS, ierr)
@@ -725,7 +725,7 @@ Subroutine Master_job_calcJ(d,sigma,sens,eAll,comm)
      which_dt=worker_job_task%data_type_index                      
      which_stn=worker_job_task%Stn_index
      write(ioMPI,8552) which_per ,which_dt,which_stn,who             
-!    Recieve results from a worker:
+!    Receive results from a worker:
 !    Store the result in sens
      nComp = d%d(which_per)%data(which_dt)%nComp           
      isComplex = d%d(which_per)%data(which_dt)%isComplex
@@ -921,7 +921,7 @@ Subroutine Master_job_JmultT(sigma,d,dsigma,eAll,s_hat,comm)
          end do
      end if
      starttime = MPI_Wtime()
-!First ditribute both model parameters and data
+     ! First ditribute both model parameters and data
      call Master_job_Distribute_Model(sigma)
      call Master_job_Distribute_Data(d)
 
@@ -1457,6 +1457,7 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      Integer        :: per_index,pol_index,des_index
      logical        :: keep_soln,savedSolns,ascend
      integer        :: comm_current, size_current
+     double precision :: now, just, time_passed
 
      savedSolns = present(eAll_in)
      ! over-ride the default communicator, if needed
@@ -1562,10 +1563,10 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
          call Unpack_e_para_vec(eAll_out%solns(which_per))
 
          write(ioMPI,'(a10,a16,i5,a8,i5,a11,i5)')trim(job_name) ,        &
-    &   ': Recieve Per # ',which_per ,' and Pol # ', which_pol ,' from ',&
+    &   ': Receive Per # ',which_per ,' and Pol # ', which_pol ,' from ',&
     &    who 
          write(6,'(a10,a16,i5,a8,i5,a11,i5)')trim(job_name) ,            &
-    &   ': Recieve Per # ',which_per ,' and Pol # ', which_pol ,' from ',&
+    &   ': Receive Per # ',which_per ,' and Pol # ', which_pol ,' from ',&
     &    who 
 
          received_answers=received_answers+1
@@ -1702,7 +1703,7 @@ Subroutine Worker_Job(sigma,d)
      ! the general idea (from Naser, I believe) is:  
      ! 
      ! 1. a worker firstly prepare a worker_job info (structure datatype)
-     ! 2. listen to the boss and find out what to do (recieve worker_job) 
+     ! 2. listen to the boss and find out what to do (receive worker_job) 
      ! 3. receive the data package from the boss
      ! 4. do the job and return the data to the boss
      ! 5. return to 1 and loop, untill the STOP instruction
@@ -1749,7 +1750,7 @@ Subroutine Worker_Job(sigma,d)
 
       
      ! time
-     DOUBLE PRECISION                       :: time_passed, now
+     DOUBLE PRECISION                       :: time_passed, now, just
      DOUBLE PRECISION, pointer,dimension(:) :: time_buff
        
      nTx=d%nTx
@@ -1768,8 +1769,8 @@ Subroutine Worker_Job(sigma,d)
              rank_current = rank_world
              write(6,'(a12,a35)') node_info,                              &
     &            ' Waiting for a message from Master'
-             write(6,'(a12, a22, f12.6)') node_info,        &
-                 ' time elapsed (sec): ', time_passed
+             write(6,'(a12, a28, f12.6)') node_info,        &
+                 ' total time elapsed (sec): ', time_passed
          else
              if (rank_local .eq. 0) then
                  ! group leader, reports to master
@@ -2073,7 +2074,9 @@ Subroutine Worker_Job(sigma,d)
              end if
              if ((rank_local.eq.0) .or. (para_method.eq.0)) then
                  ! leader prepares the basic data structure
-                 call initSolver(per_index,sigma,grid,e0,e,comb)   
+                 ! firstly fill some dummy values
+                 iTx = 1
+                 call create_solnVector(grid,iTx,e0)
                  call get_nPol_MPI(e0)
                  write(6,'(a12,a18,i5,a12)') node_info,                   &
     &                ' Start Receiving ' , orginal_nPol, ' from Master'
@@ -2084,6 +2087,7 @@ Subroutine Worker_Job(sigma,d)
     &                    FROM_MASTER,comm_current, STATUS, ierr)
                      call Unpack_e_para_vec(e0)
                  end do
+                 call initSolverWithOutE0(per_index,sigma,grid,e,comb)   
                  write(6,'(a12,a18,i5,a12)') node_info,                   &
     &                ' Finished Receiving ', orginal_nPol, ' from Master'
                  call LmultT(e0,sigma,d%d(per_index),comb)
@@ -2140,6 +2144,7 @@ Subroutine Worker_Job(sigma,d)
              now = MPI_Wtime()
              time_passed = now - previous_time
              previous_time = now
+
                     
          elseif (trim(worker_job_task%what_to_do) .eq. 'Jmult') then
 

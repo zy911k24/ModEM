@@ -180,6 +180,133 @@ Contains
    end subroutine initSolver
 
    !**********************************************************************
+   subroutine initSolverWithoutE0(iTx,sigma,grid,e,comb)
+   !   Initializes forward solver for
+   !    transmitter iTx: in this instance TE or TM mode solvers
+   !    for the appropriate frequency depending on mode
+   !    but without tampering the e0
+   !
+   !   Idea is to call this before calling fwdSolve or sensSolve,
+   !     in particular before the first solution for each transmitter
+   !     (frequency).  If called for the first time (in a program run,
+   !     or after a call to exitSolver), or if the previous call to
+   !     this routine initialized for a different data type (TE vs. TM
+   !     mode) full initialization (after deallocation/cleanup if required)
+   !     is performed.
+   !
+   !   iTx defines transmitter: for 2D MT, this provides info about
+   !       frequency and TE/TM mode; for 3D MT just frequency
+   !
+   !   This now does all setup (including matrix factorization) for
+   !     the appropriate mode/frequency
+   !   NOTE: e and comb are optional calling arguments;
+   !     both should be present if one is
+
+   integer, intent(in)				:: iTx
+   type(modelParam_t),intent(in), target		:: sigma
+   type(grid_t), intent(in), target         :: grid
+   !  following structures are initialized/created in this routine
+   !	solution vector for forward problem
+   ! type(solnVector_t), intent(inout)			:: e0
+   !	solution vector for sensitivity
+   type(solnVector_t), intent(inout), optional	:: e
+   !	forcing for sensitivity
+   type(rhsVector_t), intent(inout), optional		:: comb
+
+   !  local variables
+   integer					:: IER
+   real(kind=prec)			:: period
+   character*2          	:: mode
+   logical					:: initForSens
+
+   initForSens = present(comb)
+
+   mode = txDict(iTx)%mode
+   period = txDict(iTx)%period
+
+
+         !  not inital solution, but mode has changed from last
+         !  sensitivity calculated: will need to reinitialize
+         !  solver + e0 soln arrays ... first deallocate from
+         !  previous mode
+         !  call deall_solnVector(e0)
+         if(initForSens) then
+            call deall_rhsVector(comb)
+            call deall_solnVector(e)
+         endif
+         select case(mode)
+            case('TE')
+               call Fwd2DdeallTE()
+            case('TM')
+               call Fwd2DdeallTM()
+            case default
+         end select
+
+      
+
+      ! initialize coefficient matrix (frequency indpendent part)
+      select case(mode)
+         case('TE')
+            call FWD2DSetupTE(grid,sigma,IER)
+            if(IER.lt.0) then
+              call errStop('initializing for TE mode in initSolver')
+            endif
+         case('TM')
+            call FWD2DSetupTM(grid,sigma,IER)
+            if(IER.lt.0) then
+              call errStop('initializing for TM mode in initSolver')
+            endif
+         case default
+            call errStop('mode must be TE or TM in initSolver')
+      end select
+
+      !  allocate for rhs for background, scratch sensitivity solutions
+      if (output_level > 3) then
+          write(*,*) 'Initializing background solution for 2D forward solver... iTx=',iTx,' mode=',mode
+      endif
+      !  allocate for background solution
+      ! call create_solnVector(grid,iTx,e0)
+
+
+
+   !  allocate storage for the sensitivity soln and RHS if run for the first time
+   !  or with a new mode; if the mode is new deallocate them first (above)
+   if(initForSens) then
+     !  allocate for sensitivity solution, RHS
+     if (.not. e%allocated) then
+        if (output_level > 3) then
+            write(*,*) 'Initializing 2D EM soln for sensitivity... iTx=',iTx,' model=',mode
+        endif
+        call create_solnVector(grid,iTx,e)
+     endif
+     if (.not. comb%allocated) then
+        if (output_level > 3) then
+            write(*,*) 'Initializing the RHS for 2D sensitivity... iTx=',iTx,' model=',mode
+        endif
+        comb%nonzero_source = .true.
+        comb%nonzero_bc = .false.
+        comb%adj = ''
+        call create_rhsVector(grid,iTx,comb)
+     endif
+   endif
+
+   !   complete initialization of coefficient matrix, then factor
+   !   (factored matrix is saved in TE/TM mode modeling module
+   !   This needs to be called before solving for a different frequency
+   if (output_level > 3) then
+      write(*,*) 'Updating frequency for 2D forward solver... iTx=',iTx,' mode=',mode
+   endif
+   select case (mode)
+      case ('TE')
+         call UpdateFreqTE(period)
+      case ('TM')
+         call UpdateFreqTM(period)
+      case default
+   end select
+
+   end subroutine initSolverWithoutE0
+
+   !**********************************************************************
    subroutine exitSolver(e0,e,comb)
    !   deallocates rhs0, rhs and solver arrays
    type(solnVector_t), intent(inout), optional  :: e0
