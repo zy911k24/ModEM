@@ -330,7 +330,6 @@ Contains
     ! resetting
     nIterTotal = 0
     nDivCor = 0
-    call reset_time(timer)
     ! Initialize iteration control/diagnostic structure for KSS
     if (trans) then
        KSSiter%tol = tolEMadj
@@ -343,12 +342,18 @@ Contains
     end if
 
     KSSiter%niter = 0
-#ifdef CUDA
+#if defined(CUDA)
+    ! FIXME this is now hard coded here
+    ! need a more elegant way to deal with it
+    KSSiter%maxIt = maxIterTotal
+    MaxDivCor = 1
+#elif defined(HIP)
     ! FIXME this is now hard coded here
     ! need a more elegant way to deal with it
     KSSiter%maxIt = maxIterTotal
     MaxDivCor = 1
 #else
+    call reset_time(timer)
     KSSiter%maxIt = IterPerDivCor
 #endif
     allocate(KSSiter%rerr(KSSiter%maxIt))
@@ -365,10 +370,11 @@ Contains
     !   Call SdivCorr(ei,phi0)
     ! endif
     loop: do while ((.not.converged).and.(.not.failed))
-#ifdef CUDA
+#if defined(CUDA)
        if (device_id.ge.0) then
            ! before start, need to tell if the device is available
-           ierr = kernelc_hookCtx(device_id)
+           ierr = cf_hookDev(device_id)
+           call reset_time(timer)
            if (trim(solver_name) .eq. 'PCG') then
              write(*,*) '[WARNING] CUDA PCG is not yet implemented'
              write(*,*) '[WARNING] Fall back to CPU version of PCG'
@@ -390,8 +396,8 @@ Contains
            else
              write(*,*) 'Unknown Forward Solver Method'
            end if
-
        else
+           call reset_time(timer)
            write(*,*) '[WARNING] can not attach to a valid GPU...'
            if (trim(solver_name) .eq. 'PCG') then
              write(*,*) '[WARNING] Fall back to CPU version of PCG'
@@ -412,7 +418,55 @@ Contains
            else
              write(*,*) 'Unknown Forward Solver Method'
            end if
-
+       end if
+#elif defined(HIP)
+       if (device_id.ge.0) then
+           ierr = cf_hookDev(device_id)
+           call reset_time(timer)
+           ! before start, need to tell if the device is available
+           if (trim(solver_name) .eq. 'PCG') then
+             write(*,*) '[WARNING] HIP PCG is not yet implemented'
+             write(*,*) '[WARNING] Fall back to CPU version of PCG'
+             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
+             Call PCG(b, ei, KSSiter)
+           elseif (trim(solver_name) .eq. 'QMR') then
+             write(*,*) '[WARNING] HIP QMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] Fall back to CPU version of QMR'
+             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
+             Call QMR(b, ei, KSSiter)
+           elseif (trim(solver_name) .eq. 'TFQMR') then
+             write(*,*) '[WARNING] HIP TFQMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
+             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
+             Call TFQMR(b, ei, KSSiter)
+           elseif (trim(solver_name) .eq. 'BICG') then
+             write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
+             Call BICG(b, ei, KSSiter, device_id)
+           else
+             write(*,*) 'Unknown Forward Solver Method'
+           end if
+       else
+           call reset_time(timer)
+           write(*,*) '[WARNING] can not attach to a valid GPU...'
+           if (trim(solver_name) .eq. 'PCG') then
+             write(*,*) '[WARNING] Fall back to CPU version of PCG'
+             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
+             Call PCG(b, ei, KSSiter)
+           elseif (trim(solver_name) .eq. 'QMR') then
+             write(*,*) '[WARNING] Fall back to CPU version of QMR'
+             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
+             Call QMR(b, ei, KSSiter)
+           elseif (trim(solver_name) .eq. 'TFQMR') then
+             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
+             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
+             Call TFQMR(b, ei, KSSiter)
+           elseif (trim(solver_name) .eq. 'BICG') then
+             write(*,*) '[WARNING] Fall back to CPU version of BICG'
+             write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
+             Call BICG(b, ei, KSSiter)
+           else
+             write(*,*) 'Unknown Forward Solver Method'
+           end if
        end if
 #else
       if (trim(solver_name) .eq. 'PCG') then

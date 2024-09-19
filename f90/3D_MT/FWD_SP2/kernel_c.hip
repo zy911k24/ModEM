@@ -1,10 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <complex.h>
-#include <cuda.h>
-#include <nvml.h>
-#include <cuda_runtime.h>
+#include "hip/hip_runtime.h"
 
 // simple kernel function that converts double vectors to single
 __global__ void real64to32(const double *in, float *out, const int N)
@@ -72,7 +71,7 @@ __global__ void hada_cmplx(const double *ina, const double *inb, double *out, co
 
 __global__ void xpby_real(const double *x, const double b, double *y, const int N)
 {
-    // CUDA kernel implementing xpby:
+    // HIP kernel implementing xpby:
     // y = x + b*y
     int pos = (blockDim.x*blockDim.y)*blockIdx.x+blockDim.x*threadIdx.y+threadIdx.x;
     if (pos<N) 
@@ -83,7 +82,7 @@ __global__ void xpby_real(const double *x, const double b, double *y, const int 
 
 __global__ void xpby_cmplx(const double *x, double br, double bi, double *y, const int N)
 {
-    // CUDA kernel implementing xpby:
+    // HIP kernel implementing xpby:
     // y = x + b*y
     // complex makes this a little tricky - need a temp variable
     int pos = ((blockDim.x*blockDim.y)*blockIdx.x+blockDim.x*threadIdx.y+threadIdx.x)*2;
@@ -100,7 +99,7 @@ __global__ void xpby_cmplx(const double *x, double br, double bi, double *y, con
 
 __global__ void p_update_real(const double *v, const double *r, const double beta, const double omega, double *p, const int N)
 {
-    // CUDA kernel implementing p update:
+    // HIP kernel implementing p update:
     // p = r + beta * (p - omega*v)
     int pos = (blockDim.x*blockDim.y)*blockIdx.x+blockDim.x*threadIdx.y+threadIdx.x;
     if (pos<N) 
@@ -111,7 +110,7 @@ __global__ void p_update_real(const double *v, const double *r, const double bet
 
 __global__ void p_update_cmplx(const double *r, const double *v, const double br, const double bi, const double wr, const double wi, double *p, const int N)
 {
-    // CUDA kernel implementing p update:
+    // HIP kernel implementing p update:
     // p = r + beta * (p - omega*v)
     int pos = ((blockDim.x*blockDim.y)*blockIdx.x+blockDim.x*threadIdx.y+threadIdx.x)*2;
     if (pos<N) 
@@ -129,7 +128,7 @@ __global__ void p_update_cmplx(const double *r, const double *v, const double br
 
 __global__ void x_update_cmplx(const double *p, const double *s, const double ar, const double ai, const double wr, const double wi, double *x, const int N)
 {
-    // CUDA kernel implementing p update:
+    // HIP kernel implementing p update:
     int pos = ((blockDim.x*blockDim.y)*blockIdx.x+blockDim.x*threadIdx.y+threadIdx.x)*2;
     if (pos<N) 
     {  
@@ -143,7 +142,7 @@ __global__ void x_update_cmplx(const double *p, const double *s, const double ar
 
 __global__ void reduce_real(double *a, double s, const int N)
 {
-    // CUDA kernel implementing reduce s = sum(a)
+    // HIP kernel implementing reduce s = sum(a)
     int pos = (blockDim.x*blockDim.y)*blockIdx.x+blockDim.x*threadIdx.y+threadIdx.x;
     int number_of_threads = (blockDim.x*blockDim.y);
     int step = 1; //initial step
@@ -162,7 +161,7 @@ __global__ void reduce_real(double *a, double s, const int N)
 }
 
 // function to wait for sometime
-void sleep(int seconds)
+void sleep(float seconds)
 {
     // Converting time into milli_seconds
     int milli_seconds = 1000 * seconds;
@@ -332,40 +331,39 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double
     double wi = cimag(omega);
     // call function on GPU
     x_update_cmplx<<< grids, blocks >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
-
     return;
 }
 
 // function called from main fortran program 
 extern "C" int cf_resetFlag(int dev_idx)
 {
-    cudaError_t err;
+    hipError_t err;
     unsigned int flag = 0;
-    err = cudaGetDeviceFlags(&flag);
-    if (err != cudaSuccess)
+    err = hipGetDeviceFlags(&flag);
+    if (err != hipSuccess)
     {
         printf("Failed to get the device flags %i: %s\n", dev_idx, 
-           cudaGetErrorString(err));
+           hipGetErrorString(err));
     }
     // printf("Dev = %i, flag = %i \n", dev_idx, flag);
-    if (flag == cudaDeviceScheduleYield)
+    if (flag == hipDeviceScheduleYield)
     {
-        err = cudaSetDeviceFlags(cudaDeviceScheduleSpin);
-        if (err != cudaSuccess)
+        err = hipSetDeviceFlags(hipDeviceScheduleSpin);
+        if (err != hipSuccess)
         {
             printf("Failed to set the device flag %i: %s\n", dev_idx, 
-            cudaGetErrorString(err));
+            hipGetErrorString(err));
             return 1;
         }
     }
     else
     {
         sleep(0.1);
-        err = cudaSetDeviceFlags(cudaDeviceScheduleYield);
-        if (err != cudaSuccess)
+        err = hipSetDeviceFlags(hipDeviceScheduleYield);
+        if (err != hipSuccess)
         {
             printf("Failed to set the device flag %i: %s\n", dev_idx, 
-            cudaGetErrorString(err));
+            hipGetErrorString(err));
             return 1;
         }
     }
@@ -375,28 +373,34 @@ extern "C" int cf_resetFlag(int dev_idx)
 // function called from main fortran program 
 extern "C" int cf_hookDev(int dev_idx)
 {
-    cudaDeviceProp dev_prop;
-    cudaError_t err;
+    hipDeviceProp_t dev_prop;
+    hipError_t err;
     size_t freeBytes, totalBytes, usedBytes;
     int nDevices;
     unsigned int flag = 0;
     double memusage;
      
     // unsigned int i;
-    err = cudaGetDeviceCount(&nDevices);
-    if (err != cudaSuccess) 
+    err = hipGetDeviceCount(&nDevices);
+    if (err != hipSuccess) 
     {
-        printf("Error: Failed to inquire the number of devices %s\n", cudaGetErrorString(err));
+        printf("Error: Failed to inquire the number of devices %s\n", hipGetErrorString(err));
         return 1;
     }
-    // see the number of devices
+    // see if we have enough number of device
     if (dev_idx + 1 > nDevices) 
     { 
-        printf("Error: device idx out of range! \n");
-        printf(" inquired device idx = %i, nDevices = %u \n", dev_idx, nDevices);
+        printf(" inquired device idx = %i, nDevices = %i \n", dev_idx, nDevices);
+        printf(" Error: device idx out of range! \n");
         goto Error;
     }
-    err = cudaGetDeviceProperties(&dev_prop, dev_idx);
+    // get the basic properties
+    err = hipGetDeviceProperties(&dev_prop, dev_idx);
+    if (err != hipSuccess )
+    {
+        printf("Failed to get device property %i: %i \n", dev_idx, err);
+        goto Error;
+    }
     //printf("Device Idx: %d, name: %s \n", dev_idx, dev_prop.name);
     //printf("  Memory Clock Rate (KHz): %d\n",
     //         dev_prop.memoryClockRate);
@@ -404,61 +408,61 @@ extern "C" int cf_hookDev(int dev_idx)
     //         dev_prop.memoryBusWidth);
     //printf("  Peak Memory Bandwidth (GB/s): %f\n",
     //         2.0*dev_prop.memoryClockRate*(dev_prop.memoryBusWidth/8)/1.0e6);
-    //printf("  PCI bus ID: %i\n",
+    //printf("  PCI bus ID: %d\n",
     //         dev_prop.pciBusID);
     //printf("  is integrated GPU : %i\n",
     //         dev_prop.integrated);
-    // now try to get 
     if (dev_prop.integrated == 1 ) // is integrated gpu
     {
 	printf(" WARNING: integrated device found for device: %i ! \n", dev_idx);
 	printf(" this may lead to unsupported computation error...\n");
     }
     //now try to hook on to that device
-    err = cudaSetDevice(dev_idx);
-    if (err != cudaSuccess)
+    err = hipSetDevice(dev_idx);
+    if (err != hipSuccess)
     {
         printf("Failed to set device %i: %u \n", dev_idx, err);
         goto Error;
     }
-    err = cudaGetDeviceFlags(&flag);
-    if (err != cudaSuccess)
+    err = hipGetDeviceFlags(&flag);
+    if (err != hipSuccess)
     {
         printf("Failed to get the device flags %i: %s\n", dev_idx, 
-            cudaGetErrorString(err));
+            hipGetErrorString(err));
     }
+    // now try to get affiliated device
     while(true)
     {
-        // see if this device is available
-        err =  cudaMemGetInfo(&freeBytes, &totalBytes);
-        if (err != cudaSuccess)
+        // try to get some info for the device
+        err =  hipMemGetInfo(&freeBytes, &totalBytes);
+        if (err != hipSuccess)
         {
             printf("Failed to get usage for device %i: %s\n", dev_idx, 
-                cudaGetErrorString(err));
+                hipGetErrorString(err));
             goto Error;
         }
         usedBytes = totalBytes - freeBytes;
         memusage = 100.0*usedBytes/totalBytes;
         // now get some device flags
-        err = cudaGetDeviceFlags(&flag);
-        if (err != cudaSuccess)
+        err = hipGetDeviceFlags(&flag);
+        if (err != hipSuccess)
         {
             printf("Failed to get the device flags %i: %s\n", dev_idx, 
-               cudaGetErrorString(err));
+               hipGetErrorString(err));
         }
         // printf("Dev = %i, flag = %i \n", dev_idx, flag);
-        if (flag != cudaDeviceScheduleYield && memusage < 50)
-        // if (memusage < 50)
-        // if (flag != cudaDeviceScheduleYield)
+        if (flag != hipDeviceScheduleYield && memusage < 50)
+        // if (memusage < 45)
+        // if (flag != hipDeviceScheduleYield)
         {
-            // If the number of CUDA contexts is greater than the number of 
+            // If the number of HIP contexts is greater than the number of 
             // logical processors in the system, use Spin scheduling. 
             // Else use Yield scheduling.
-            err = cudaSetDeviceFlags(cudaDeviceScheduleYield);
-            if (err != cudaSuccess)
+            err = hipSetDeviceFlags(hipDeviceScheduleYield);
+            if (err != hipSuccess)
             {
                 printf("Failed to set the device flag %i: %s\n", dev_idx, 
-                  cudaGetErrorString(err));
+                  hipGetErrorString(err));
 	    }
             printf(" # Dev Status  : GPU-mem = %f %%, PCI %i: %i\n", 
                    memusage, dev_prop.pciBusID, dev_prop.pciDeviceID );
@@ -473,127 +477,4 @@ Error:
     printf("Error: Failed to attach to device: %i \n", dev_idx);
     return 1;
 }
-/*
-// function called from main fortran program 
-extern "C" int cf_hookCtx(int dev_idx)
-{
-    nvmlReturn_t result;
-    cudaError_t err;
-    CUcontext thisCtx;
-    nvmlDevice_t device;
-    nvmlPciInfo_t pci_bus;
-    nvmlUtilization_t usage;
-    unsigned int Ndevice;
-    // unsigned int i;
-    // unsigned int nProc = 32;
-    // nvmlProcessInfo_t pInfo[nProc];
-    char device_name[NVML_DEVICE_NAME_BUFFER_SIZE];
-
-    // First initialize NVML library
-    result = nvmlInit();
-    if (NVML_SUCCESS != result)
-    { 
-        printf("Failed to initialize NVML: %s\n", nvmlErrorString(result));
-        return 1;
-    }
-    result = nvmlDeviceGetCount(&Ndevice);
-    if (NVML_SUCCESS != result)
-    { 
-        printf("Failed to initialize NVML: %s\n", nvmlErrorString(result));
-        return 1;
-    }
-    if (dev_idx + 1 > Ndevice) 
-    { 
-        printf("Error: not enough devices detected \n");
-        printf("required device idx = %i, Ndevice = %u \n", dev_idx, Ndevice);
-        goto Error;
-    }
-    err = cudaSetDevice(dev_idx);
-	if( err != cudaSuccess )
-    {
-        printf("Failed to set device %i: %u \n", dev_idx, err);
-        goto Error;
-    }
-    while(true)
-    {
-        // Query for device handle to perform operations on a device
-        // You can also query device handle by other features like:
-        // nvmlDeviceGetHandleBySerial
-        // nvmlDeviceGetHandleByPciBusId
-        result = nvmlDeviceGetHandleByIndex(dev_idx, &device);
-        if (NVML_SUCCESS != result)
-        { 
-            printf("Failed to get handle for device %i: %s\n", dev_idx, nvmlErrorString(result));
-            goto Error;
-        }
-        // now get the current context (if any)
-        cuCtxGetCurrent(&thisCtx);
-        if(thisCtx == NULL) // first call to this device
-        {
-            cuCtxCreate(&thisCtx, 0, dev_idx);
-            result = nvmlDeviceGetName(device, device_name, NVML_DEVICE_NAME_BUFFER_SIZE);
-            if (NVML_SUCCESS != result)
-            { 
-                printf("Failed to get name of device %i: %s\n", dev_idx, nvmlErrorString(result));
-                goto Error;
-            }
-            // pci.busId is very useful to know which device physically 
-            // you're talking to
-            // Using PCI identifier you can also match nvmlDevice 
-            // handle to CUDA device.
-            result = nvmlDeviceGetPciInfo(device, &pci_bus);
-            if (NVML_SUCCESS != result)
-            { 
-                printf("Failed to get pci info for device %i: %s\n", dev_idx, nvmlErrorString(result));
-                goto Error;
-            }
-            break;// just go ahead to initialize the case
-        }
-        else// see if this device is available
-        {
-            cuCtxSetCurrent(thisCtx);
-            result = nvmlDeviceGetUtilizationRates( device, &usage );
-            if (NVML_SUCCESS != result)
-            {
-                printf("Failed to get usage for device %i: %s\n", dev_idx, nvmlErrorString(result));
-                goto Error;
-            }
-            if (usage.memory+usage.gpu < 15)
-            {
-                printf(" # Dev Status  : GPU-util=%u GPU-mem=%u \n", usage.gpu, usage.memory );
-                result = nvmlDeviceGetName(device, device_name, NVML_DEVICE_NAME_BUFFER_SIZE);
-                if (NVML_SUCCESS != result)
-                { 
-                    printf("Failed to get name of device %i: %s\n", dev_idx, nvmlErrorString(result));
-                    goto Error;
-                }
-                // pci.busId is very useful to know which device physically 
-                // you're talking to
-                // Using PCI identifier you can also match nvmlDevice 
-                // handle to CUDA device.
-                result = nvmlDeviceGetPciInfo(device, &pci_bus);
-                if (NVML_SUCCESS != result)
-                { 
-                    printf("Failed to get pci info for device %i: %s\n", dev_idx, nvmlErrorString(result));
-                    goto Error;
-                }
-                break;
-            }
-        }
-        sleep(0.05);
-    }
-    printf(" # Dev Selected:  %i. %s [%s]\n", dev_idx, device_name, pci_bus.busId);
-    result = nvmlShutdown();
-    if (NVML_SUCCESS != result)
-        printf("Failed to shutdown NVML: %s\n", nvmlErrorString(result));
-
-    return 0;
-Error:
-    result = nvmlShutdown();
-    if (NVML_SUCCESS != result)
-        printf("Failed to shutdown NVML: %s\n", nvmlErrorString(result));
-
-    return 1;
-}
-*/
 

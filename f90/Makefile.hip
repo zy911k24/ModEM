@@ -45,20 +45,26 @@
 # ------------------Macro-Defs---------------------
 include Makefile.local
 OBJDIR = ./objs/3D_MT/GFortReleaseMPI_SP2
-F90 = /usr/local/bin/mpif90
-FFLAGS = -O3 -mavx2 -ffree-line-length-none -fPIC #-fallow-argument-mismatch
+F90 = mpif90
+FFLAGS = -O3 -march=znver3 -ffree-line-length-none -fPIC 
+#-fallow-argument-mismatch
 # FFLAGS = -g -fbacktrace -fbounds-check -ffpe-trap=zero -ffree-line-length-none
-NCC = /usr/local/cuda/bin/nvcc
-CFLAGS = -O3
+HIPCC = hipcc -fPIE
+# HIPCC = /public/home/cugb1993010830/package/dtk-24.04.1/bin/hipcc -fPIE --offload-arch=gfx906
+CFLAGS = -O3 --offload-arch=gfx1100
 # CFLAGS = -g 
-MPIFLAGS = -cpp -DMPI -DCUDA 
+MPIFLAGS = -cpp -DMPI -DHIP
 MODULE = -J $(OBJDIR)
-CUDA_INC = -I/usr/local/cuda/include
-LIBS_PATH = -L/usr/lib64 -L/usr/local/cuda/lib64 
-LIBS = -lblas -llapack -ldl -lcudart -lcublas -lcusparse -lnvidia-ml -lcuda -lstdc++
+HIP_INC = -I/opt/rocm/include
+# HIP_INC = -I/public/software/compiler/dtk/dtk-23.04/include
+# HIP_INC = -I/public/home/cugb1993010830/package/dtk-24.04.1/include
+LIBS_PATH = -L/usr/lib64 -L/opt/rocm/lib
+# LIBS_PATH = -L/usr/lib64 -L/public/software/compiler/dtk/dtk-23.04/lib
+# LIBS_PATH = -L/public/home/cugb1993010830/package/dtk-24.04.1/lib
+LIBS = -llapack -lblas -ldl -lamdhip64 -lhipblas -lhipsparse -lstdc++
 
 # -------------------End-macro-Defs---------------------------
-OBJ = $(OBJDIR)/math_constants.o $(OBJDIR)/fields_orientation.o $(OBJDIR)/utilities.o $(OBJDIR)/file_units.o $(OBJDIR)/DataSpace.o $(OBJDIR)/GridDef.o $(OBJDIR)/sg_vector.o $(OBJDIR)/sg_scalar.o $(OBJDIR)/sg_spherical.o $(OBJDIR)/elements.o $(OBJDIR)/GridCalc.o $(OBJDIR)/sg_sparse_vector.o $(OBJDIR)/Declaration_MPI.o $(OBJDIR)/ModelSpace.o $(OBJDIR)/transmitters.o $(OBJDIR)/receivers.o $(OBJDIR)/SensMatrix.o $(OBJDIR)/EMfieldInterp.o $(OBJDIR)/sg_boundary.o $(OBJDIR)/SolnSpace.o $(OBJDIR)/dataTypes.o $(OBJDIR)/DataFunc.o $(OBJDIR)/DataSens.o $(OBJDIR)/SolverSens.o $(OBJDIR)/vecTranslate.o $(OBJDIR)/spOpTools.o $(OBJDIR)/spOpTopology_SG.o $(OBJDIR)/MetricElements_CSG.o $(OBJDIR)/nestedEM.o $(OBJDIR)/WSfwd2Dpar.o $(OBJDIR)/WSutils.o $(OBJDIR)/WSfwd1Dmod.o $(OBJDIR)/WSfwd2Dmod.o $(OBJDIR)/FwdTEmod.o $(OBJDIR)/boundary_ws.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/kernel_c.o $(OBJDIR)/cudaFortMap.o $(OBJDIR)/solver.o $(OBJDIR)/EMsolve3D.o $(OBJDIR)/ForwardSolver.o $(OBJDIR)/SensComp.o $(OBJDIR)/UserCtrl.o $(OBJDIR)/Sub_MPI.o $(OBJDIR)/Main_MPI.o $(OBJDIR)/SymmetryTest.o $(OBJDIR)/ioAscii.o $(OBJDIR)/DataIO.o $(OBJDIR)/Main.o $(OBJDIR)/INVcore.o $(OBJDIR)/NLCG.o $(OBJDIR)/DCG.o $(OBJDIR)/LBFGS.o $(OBJDIR)/Mod3DMT.o 
+OBJ = $(OBJDIR)/math_constants.o $(OBJDIR)/fields_orientation.o $(OBJDIR)/utilities.o $(OBJDIR)/file_units.o $(OBJDIR)/DataSpace.o $(OBJDIR)/GridDef.o $(OBJDIR)/sg_vector.o $(OBJDIR)/sg_scalar.o $(OBJDIR)/sg_spherical.o $(OBJDIR)/elements.o $(OBJDIR)/GridCalc.o $(OBJDIR)/sg_sparse_vector.o $(OBJDIR)/Declaration_MPI.o $(OBJDIR)/ModelSpace.o $(OBJDIR)/transmitters.o $(OBJDIR)/receivers.o $(OBJDIR)/SensMatrix.o $(OBJDIR)/EMfieldInterp.o $(OBJDIR)/sg_boundary.o $(OBJDIR)/SolnSpace.o $(OBJDIR)/dataTypes.o $(OBJDIR)/DataFunc.o $(OBJDIR)/DataSens.o $(OBJDIR)/SolverSens.o $(OBJDIR)/vecTranslate.o $(OBJDIR)/spOpTools.o $(OBJDIR)/spOpTopology_SG.o $(OBJDIR)/MetricElements_CSG.o $(OBJDIR)/nestedEM.o $(OBJDIR)/WSfwd2Dpar.o $(OBJDIR)/WSutils.o $(OBJDIR)/WSfwd1Dmod.o $(OBJDIR)/WSfwd2Dmod.o $(OBJDIR)/FwdTEmod.o $(OBJDIR)/boundary_ws.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/kernel_c.o $(OBJDIR)/hipFortMap.o $(OBJDIR)/solver.o $(OBJDIR)/EMsolve3D.o $(OBJDIR)/ForwardSolver.o $(OBJDIR)/SensComp.o $(OBJDIR)/UserCtrl.o $(OBJDIR)/Sub_MPI.o $(OBJDIR)/Main_MPI.o $(OBJDIR)/SymmetryTest.o $(OBJDIR)/ioAscii.o $(OBJDIR)/DataIO.o $(OBJDIR)/Main.o $(OBJDIR)/INVcore.o $(OBJDIR)/NLCG.o $(OBJDIR)/DCG.o $(OBJDIR)/LBFGS.o $(OBJDIR)/Mod3DMT.o 
 
 
 all: Mod3DMT 
@@ -108,7 +114,7 @@ $(OBJDIR)/GridCalc.o:3D_MT/GridCalc.f90 $(OBJDIR)/sg_vector.o $(OBJDIR)/sg_scala
 $(OBJDIR)/sg_sparse_vector.o:FIELDS/FiniteDiff3D/sg_sparse_vector.f90 $(OBJDIR)/math_constants.o $(OBJDIR)/GridDef.o $(OBJDIR)/sg_vector.o 
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) FIELDS/FiniteDiff3D/sg_sparse_vector.f90 -o $(OBJDIR)/sg_sparse_vector.o
 
-$(OBJDIR)/Declaration_MPI.o:MPI/Declaration_MPI.f90  
+$(OBJDIR)/Declaration_MPI.o:MPI/Declaration_MPI.f90 $(OBJDIR)/hipFortMap.o  
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) MPI/Declaration_MPI.f90 -o $(OBJDIR)/Declaration_MPI.o
 
 $(OBJDIR)/ModelSpace.o:3D_MT/modelParam/ModelSpace.f90 $(OBJDIR)/GridCalc.o $(OBJDIR)/file_units.o $(OBJDIR)/math_constants.o $(OBJDIR)/utilities.o $(OBJDIR)/sg_scalar.o $(OBJDIR)/sg_vector.o $(OBJDIR)/sg_sparse_vector.o $(OBJDIR)/Declaration_MPI.o 3D_MT/modelParam/modelCov/RecursiveAR.hd 3D_MT/modelParam/ModelMap.inc 3D_MT/modelParam/modelCov/RecursiveAR.inc 3D_MT/modelParam/modelParamIO/Binary.inc 3D_MT/modelParam/modelParamIO/Mackie.inc 3D_MT/modelParam/modelParamIO/WS.inc 3D_MT/modelParam/modelParamIO/HDF5.inc 3D_MT/modelParam/ModelParam_MPI.inc
@@ -180,13 +186,13 @@ $(OBJDIR)/boundary_ws.o:3D_MT/FWD/boundary_ws.f90 $(OBJDIR)/sg_vector.o $(OBJDIR
 $(OBJDIR)/modelOperator3D.o:3D_MT/FWD_SP2/modelOperator3D.f90 $(OBJDIR)/vecTranslate.o $(OBJDIR)/spOpTools.o $(OBJDIR)/spOpTopology_SG.o $(OBJDIR)/MetricElements_CSG.o $(OBJDIR)/ModelSpace.o $(OBJDIR)/sg_boundary.o $(OBJDIR)/nestedEM.o $(OBJDIR)/boundary_ws.o 
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) 3D_MT/FWD_SP2/modelOperator3D.f90 -o $(OBJDIR)/modelOperator3D.o
 
-$(OBJDIR)/kernel_c.o:3D_MT/FWD_SP2/kernel_c.cu 
-	 $(NCC) -c $(CFLAGS) 3D_MT/FWD_SP2/kernel_c.cu -o $(OBJDIR)/kernel_c.o
+$(OBJDIR)/kernel_c.o:3D_MT/FWD_SP2/kernel_c.hip 
+	 $(HIPCC) -c $(CFLAGS) 3D_MT/FWD_SP2/kernel_c.hip -o $(OBJDIR)/kernel_c.o $(HIP_INC)
 
-$(OBJDIR)/cudaFortMap.o:3D_MT/FWD_SP2/cudaFortMap.f90 $(OBJDIR)/math_constants.o $(OBJDIR)/utilities.o $(OBJDIR)/kernel_c.o 
-	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) 3D_MT/FWD_SP2/cudaFortMap.f90 -o $(OBJDIR)/cudaFortMap.o
+$(OBJDIR)/hipFortMap.o:3D_MT/FWD_SP2/hipFortMap.f90 $(OBJDIR)/utilities.o $(OBJDIR)/kernel_c.o 
+	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) 3D_MT/FWD_SP2/hipFortMap.f90 -o $(OBJDIR)/hipFortMap.o
 
-$(OBJDIR)/solver.o:3D_MT/FWD_SP2/solver.f90 $(OBJDIR)/math_constants.o $(OBJDIR)/utilities.o $(OBJDIR)/spOpTools.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/cudaFortMap.o $(OBJDIR)/kernel_c.o 
+$(OBJDIR)/solver.o:3D_MT/FWD_SP2/solver.f90 $(OBJDIR)/math_constants.o $(OBJDIR)/utilities.o $(OBJDIR)/spOpTools.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/hipFortMap.o $(OBJDIR)/kernel_c.o 
 	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) 3D_MT/FWD_SP2/solver.f90 -o $(OBJDIR)/solver.o
 
 $(OBJDIR)/EMsolve3D.o:3D_MT/FWD_SP2/EMsolve3D.f90 $(OBJDIR)/sg_boundary.o $(OBJDIR)/sg_sparse_vector.o $(OBJDIR)/modelOperator3D.o $(OBJDIR)/vecTranslate.o $(OBJDIR)/solver.o $(OBJDIR)/SolnSpace.o $(OBJDIR)/sg_vector.o $(OBJDIR)/vecTranslate.o $(OBJDIR)/solver.o $(OBJDIR)/spOpTools.o $(OBJDIR)/modelOperator3D.o 

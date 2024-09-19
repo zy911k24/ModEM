@@ -2407,19 +2407,47 @@ Subroutine Worker_Job(sigma,d)
              ! end if
              ! write(6,*) 'rank_world= ', rank_world, 'rank_local= ', &
              !     rank_local, 'rank_leader = ', rank_leader
-#ifdef CUDA
+#if defined(CUDA)
              ! override the gpu setting after each regroup
              ! this is kind of awkward as even for a "gpu-aware" mpi, 
              ! the program will NOT be able to tell the gpu number
-             ! here we have to call the nvidia-ml analysis lib to get 
+             ! here we have to call the cuda libs to get 
              ! the number of devices
              ! it should be noted that this only tells you the number of GPUs
              ! on current machine, i.e. could be different for different 
              ! physical nodes 
-             size_gpu = kernelc_getDevNum()
+             size_gpuPtr = c_loc(size_gpu) ! kind of crude here
+             ierr = cudaGetDeviceCount(size_gpuPtr)
              if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
                  write(6,*) 'number of GPU devices = ', size_gpu
              end if
+             ! see if we have at least one GPU to spare in this group
+             ! note this could be problematic, if the grouping is 
+             ! not based on topology
+             if (size_gpu*cpus_per_gpu .ge. size_local) then
+                 ! everyone can get GPU acceleration
+                 cpu_only_ranks = 0
+             else
+                 cpu_only_ranks = size_local-size_gpu*cpus_per_gpu
+             end if
+             ! currently use cpus_per_gpu cpus for one GPU 
+             ! (hard coded in Declaritiion_MPI.f90)
+             ! i.e. if we have n cpus and m gpus on a physical node
+             ! the last m*cpus_per_gpu cpus will get accelerated by GPU
+#elif defined(HIP)
+             ! override the gpu setting after each regroup
+             ! this is kind of awkward as even for a "gpu-aware" mpi, 
+             ! the program will NOT be able to tell the gpu number
+             ! here we have to call the hip libs to tell
+             ! the number of devices
+             ! it should be noted that this only tells you the number of GPUs
+             ! on current machine, i.e. could be different for different 
+             ! physical nodes 
+             size_gpuPtr = c_loc(size_gpu) ! kind of crude here
+             ierr = hipGetDeviceCount(size_gpuPtr)
+             ! if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
+             write(6,*) 'number of GPU devices = ', size_gpu, 'err = ', ierr
+             ! end if
              ! see if we have at least one GPU to spare in this group
              ! note this could be problematic, if the grouping is 
              ! not based on topology

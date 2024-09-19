@@ -3,6 +3,11 @@ Module Declaration_MPI
 #ifdef MPI
 ! include 'mpif.h'
      use mpi
+#if defined(CUDA)
+     use cudaFortMap
+#elif defined(HIP)
+     use hipFortMap
+#endif
      implicit none
 
 ! Declaration of general MPI stuff
@@ -36,7 +41,15 @@ integer        :: para_method = 0
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
-integer        :: size_gpu = 0 
+#if defined(CUDA)
+   integer(c_int),target  :: size_gpu = 0 
+   type(c_ptr)            :: size_gpuPtr
+#elif defined(HIP)
+   integer(c_int),target  :: size_gpu = 0 
+   type(c_ptr)            :: size_gpuPtr
+#else
+   integer                :: size_gpu = 0 
+#endif
 ! change the cpus_per_gpu if you want to use more than one cpus to 
 ! feed one gpu, modify at your own risk! 
 integer        :: cpus_per_gpu = 3 ! hard coded here 
@@ -104,20 +117,42 @@ type :: define_worker_job
 type(define_worker_job), save :: worker_job_task
 !********************************************************************
 
-#ifdef CUDA
+#if defined(CUDA)
 
-interface
-
+!  interface
    ! kernelc_getDevNum --> call cuda c kernel code with iso_c_binding
-   integer(c_int) function kernelc_getDevNum() & 
-    &              bind (C, name="kernelc_getDevNum" )
-     ! interface to get the number of GPU devices - 
-     ! only useful if you have any!   
-     use iso_c_binding
-     implicit none
-   end function kernelc_getDevNum
-    
-end interface
+   !integer(c_int) function kernelc_getDevNum() & 
+   ! &              bind (C, name="kernelc_getDevNum" )
+   !  ! interface to get the number of GPU devices - 
+   !  ! only useful if you have any!   
+   !  use iso_c_binding
+   !  implicit none
+   ! end function kernelc_getDevNum
+
+!    ! cudaGetDevCount 
+!    integer(c_int) function cudaGetDeviceCount(device_count) & 
+!     &              bind (C, name="cudaGetDeviceCount" )
+!      use iso_c_binding
+!      implicit none
+!      integer(c_int),value ::  device_count
+!      ! get the number of devices (with Cumpute Capability > 2.0)
+!      ! on this machine
+!    end function cudaGetDeviceCount
+! end interface
+
+#elif defined(HIP)
+
+! interface
+!    ! hipGetDevCount 
+!    integer(c_int) function hipGetDeviceCount(device_count) & 
+!     &              bind (C, name="hipGetDeviceCount" )
+!      use iso_c_binding
+!      implicit none
+!      integer(c_int),value ::  device_count
+!      ! get the number of devices 
+!      ! on this machine
+!    end function hipGetDeviceCount
+! end interface
 
 #endif
 

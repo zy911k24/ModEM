@@ -1,162 +1,185 @@
-module cudaFortMap
-   ! A BAND-AID MODULE TO MAP CUDA C INTERFACES TO FORTRAN
-   ! WITH ISO_C_BINDING
-   use math_constants   ! math/ physics constants
-   use iso_c_binding
+module hipFortMap
 
+   ! A BAND-AID MODULE TO MAP HIP C INTERFACES TO FORTRAN
+   ! WITH ISO_C_BINDING
+   ! ESSENTIALLY THE HIP IS A IMATATION OF THE CUDA INTERFACE BY THE AMD
+   ! COMPANY. IT DOES HAVE SOME INCOMPATIBLE PLACES HERE AND THERE -  
+   ! PLACES THAT NEED TO BE MANUALLY MODIFIED, PLEASE USE WITH CAUTION
+   ! BUT OVERALL YOU ARE PROBABLY FINE JUST REPLACING SOME "cuda***" with 
+   ! "hip***"
+   ! 
+   ! Hao 
+   ! 2024.05
+   use iso_c_binding
    implicit none
    save
-   ! ======================= CUDA enumerators ======================== !
-   ! for C these are already setup in cudart/cublas/cusparse headers
+   ! ======================= HIP enumerators ======================== !
+   ! for C these are already setup in amdhip/hipblas/hipsparse headers
    ! however, our fortran subroutines know nothing about those
    ! as such they need to be explicitly setup here
    ! memcpy to host or to device
-   integer*8         :: cudaMemcpyDeviceToHost 
-   integer*8         :: cudaMemcpyHostToDevice
-   integer*8         :: cudaMemcpyDeviceToDevice
-   parameter (cudaMemcpyHostToDevice=1)
-   parameter (cudaMemcpyDeviceToHost=2)
-   parameter (cudaMemcpyDeviceToDevice=3)
+   integer*8         :: hipMemcpyDeviceToHost 
+   integer*8         :: hipMemcpyHostToDevice
+   integer*8         :: hipMemcpyDeviceToDevice
+   parameter (hipMemcpyHostToDevice=1)
+   parameter (hipMemcpyDeviceToHost=2)
+   parameter (hipMemcpyDeviceToDevice=3)
+   integer*4         :: hipSuccess
+   parameter (hipSuccess=1)
    ! matrix operation (whether do transpose)
    ! note this is important as the tests confirm the non-transposed
    ! operation is much faster than transposed ones on GPU
    ! need to avoid the transposed operations (that's why I didn't use QMR)
-   integer*4         :: CUSPARSE_OPERATION_NON_TRANSPOSE
-   integer*4         :: CUSPARSE_OPERATION_TRANSPOSE
-   integer*4         :: CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE
-   parameter (CUSPARSE_OPERATION_NON_TRANSPOSE=0)
-   parameter (CUSPARSE_OPERATION_TRANSPOSE=1)
-   parameter (CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE=2)
+   integer*4         :: HIPSPARSE_OPERATION_NON_TRANSPOSE
+   integer*4         :: HIPSPARSE_OPERATION_TRANSPOSE
+   integer*4         :: HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE
+   parameter (HIPSPARSE_OPERATION_NON_TRANSPOSE=0)
+   parameter (HIPSPARSE_OPERATION_TRANSPOSE=1)
+   parameter (HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE=2)
    ! matrix type (symmetric may save some spaces)
-   integer*4         :: CUSPARSE_MATRIX_TYPE_GENERAL
-   integer*4         :: CUSPARSE_MATRIX_TYPE_SYMMETRIC
-   integer*4         :: CUSPARSE_MATRIX_TYPE_HERMITIAN
-   integer*4         :: CUSPARSE_MATRIX_TYPE_TRIANGULAR
-   parameter (CUSPARSE_MATRIX_TYPE_GENERAL=0)
-   parameter (CUSPARSE_MATRIX_TYPE_SYMMETRIC=1)
-   parameter (CUSPARSE_MATRIX_TYPE_HERMITIAN=2)
-   parameter (CUSPARSE_MATRIX_TYPE_TRIANGULAR=3)
+   integer*4         :: HIPSPARSE_MATRIX_TYPE_GENERAL
+   integer*4         :: HIPSPARSE_MATRIX_TYPE_SYMMETRIC
+   integer*4         :: HIPSPARSE_MATRIX_TYPE_HERMITIAN
+   integer*4         :: HIPSPARSE_MATRIX_TYPE_TRIANGULAR
+   parameter (HIPSPARSE_MATRIX_TYPE_GENERAL=0)
+   parameter (HIPSPARSE_MATRIX_TYPE_SYMMETRIC=1)
+   parameter (HIPSPARSE_MATRIX_TYPE_HERMITIAN=2)
+   parameter (HIPSPARSE_MATRIX_TYPE_TRIANGULAR=3)
    ! index base - we all use 1 in fortran
-   integer*4         :: CUSPARSE_INDEX_BASE_ZERO, CUSPARSE_INDEX_BASE_ONE
-   parameter (CUSPARSE_INDEX_BASE_ZERO=0)
-   parameter (CUSPARSE_INDEX_BASE_ONE=1)
+   integer*4         :: HIPSPARSE_INDEX_BASE_ZERO, HIPSPARSE_INDEX_BASE_ONE
+   parameter (HIPSPARSE_INDEX_BASE_ZERO=0)
+   parameter (HIPSPARSE_INDEX_BASE_ONE=1)
    ! fill mode - upper or lower triangular 
-   integer*4         :: CUSPARSE_FILL_MODE_LOWER
-   integer*4         :: CUSPARSE_FILL_MODE_UPPER
-   parameter (CUSPARSE_FILL_MODE_LOWER=0) 
-   parameter (CUSPARSE_FILL_MODE_UPPER=1)
+   integer*4         :: HIPSPARSE_FILL_MODE_LOWER
+   integer*4         :: HIPSPARSE_FILL_MODE_UPPER
+   parameter (HIPSPARSE_FILL_MODE_LOWER=0) 
+   parameter (HIPSPARSE_FILL_MODE_UPPER=1)
    ! mat index type
-   integer*4         :: CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I
-   integer*4         :: CUSPARSE_INDEX_64I
-   parameter (CUSPARSE_INDEX_16U=1)
-   parameter (CUSPARSE_INDEX_32I=2)
-   parameter (CUSPARSE_INDEX_64I=3)
+   integer*4         :: HIPSPARSE_INDEX_16U, HIPSPARSE_INDEX_32I
+   integer*4         :: HIPSPARSE_INDEX_64I
+   parameter (HIPSPARSE_INDEX_16U=1)
+   parameter (HIPSPARSE_INDEX_32I=2)
+   parameter (HIPSPARSE_INDEX_64I=3)
    ! mat value type
-   integer*4         :: CUDA_R_32F, CUDA_C_32F, CUDA_R_64F, CUDA_C_64F
-   parameter (CUDA_R_32F=0)
-   parameter (CUDA_C_32F=4)
-   parameter (CUDA_R_64F=1)
-   parameter (CUDA_C_64F=5)
+   integer*4         :: HIP_R_32F, HIP_C_32F, HIP_R_64F, HIP_C_64F
+   parameter (HIP_R_32F=0)
+   parameter (HIP_C_32F=4)
+   parameter (HIP_R_64F=1)
+   parameter (HIP_C_64F=5)
    ! diag type  unit or not
-   integer*4         :: CUSPARSE_DIAG_TYPE_UNIT 
-   integer*4         :: CUSPARSE_DIAG_TYPE_NON_UNIT 
-   parameter (CUSPARSE_DIAG_TYPE_UNIT=1)
-   parameter (CUSPARSE_DIAG_TYPE_NON_UNIT=0)
+   integer*4         :: HIPSPARSE_DIAG_TYPE_UNIT 
+   integer*4         :: HIPSPARSE_DIAG_TYPE_NON_UNIT 
+   parameter (HIPSPARSE_DIAG_TYPE_UNIT=1)
+   parameter (HIPSPARSE_DIAG_TYPE_NON_UNIT=0)
    ! Algorithm type for SpMV
-   integer*4         :: CUSPARSE_SPMV_ALG_DEFAULT
-   integer*4         :: CUSPARSE_SPMV_CSR_ALG1
-   integer*4         :: CUSPARSE_SPMV_CSR_ALG2
-   parameter (CUSPARSE_SPMV_ALG_DEFAULT=0)
-   parameter (CUSPARSE_SPMV_CSR_ALG1=2)
-   parameter (CUSPARSE_SPMV_CSR_ALG2=3)
+   integer*4         :: HIPSPARSE_SPMV_ALG_DEFAULT
+   integer*4         :: HIPSPARSE_SPMV_COO_ALG1
+   integer*4         :: HIPSPARSE_SPMV_CSR_ALG1
+   integer*4         :: HIPSPARSE_SPMV_CSR_ALG2
+   integer*4         :: HIPSPARSE_SPMV_COO_ALG2
+   parameter (HIPSPARSE_SPMV_ALG_DEFAULT=0)
+   parameter (HIPSPARSE_SPMV_COO_ALG1=1)
+   parameter (HIPSPARSE_SPMV_CSR_ALG1=2)
+   parameter (HIPSPARSE_SPMV_CSR_ALG2=3)
+   parameter (HIPSPARSE_SPMV_COO_ALG2=4)
    ! Algorithm type for SpSV
-   integer*4         :: CUSPARSE_SPSV_ALG_DEFAULT
-   parameter (CUSPARSE_SPSV_ALG_DEFAULT=0)
-   ! policy for cusparse solve
-   integer*4         :: CUSPARSE_SOLVE_POLICY_NO_LEVEL
-   integer*4         :: CUSPARSE_SOLVE_POLICY_USE_LEVEL
-   parameter (CUSPARSE_SOLVE_POLICY_NO_LEVEL=0)
-   parameter (CUSPARSE_SOLVE_POLICY_USE_LEVEL=1)
+   integer*4         :: HIPSPARSE_SPSV_ALG_DEFAULT
+   parameter (HIPSPARSE_SPSV_ALG_DEFAULT=0)
+   ! policy for hipsparse solve
+   integer*4         :: HIPSPARSE_SOLVE_POLICY_NO_LEVEL
+   integer*4         :: HIPSPARSE_SOLVE_POLICY_USE_LEVEL
+   parameter (HIPSPARSE_SOLVE_POLICY_NO_LEVEL=0)
+   parameter (HIPSPARSE_SOLVE_POLICY_USE_LEVEL=1)
    ! matrix attributes for SpMat
-   integer*4         :: CUSPARSE_SPMAT_FILL_MODE
-   integer*4         :: CUSPARSE_SPMAT_DIAG_TYPE
-   parameter (CUSPARSE_SPMAT_FILL_MODE=0)
-   parameter (CUSPARSE_SPMAT_DIAG_TYPE=1)
-   ! cudaStream flag    
-   integer*4         :: cudaStreamNonBlocking
-   integer*4         :: cudaStreamDefault
-   parameter (cudaStreamNonBlocking=1)
-   parameter (cudaStreamDefault=0)
+   integer*4         :: HIPSPARSE_SPMAT_FILL_MODE
+   integer*4         :: HIPSPARSE_SPMAT_DIAG_TYPE
+   parameter (HIPSPARSE_SPMAT_FILL_MODE=0)
+   parameter (HIPSPARSE_SPMAT_DIAG_TYPE=1)
+   ! hipStream flag    
+   integer*4         :: hipStreamNonBlocking
+   integer*4         :: hipStreamDefault
+   parameter (hipStreamNonBlocking=1)
+   parameter (hipStreamDefault=0)
+   integer, parameter:: sp = kind(0.)
    ! additional C_ONE in FP32 - useful in mixed precision calculations
-   complex(kind=SP)  :: C_ONEs
+   complex(kind=sp)  :: C_ONEs
    parameter (C_ONEs=(1.0, 0.0))
-   ! ======================= CUDA C interfaces ======================== !
-   interface
+   ! ========================= HIP C interfaces ========================= !
    ! I only included some "might-be-useful" interfaces here...
-   ! which ranges from basic cuda memory manipulation to cublas and cusparse
+   ! which ranges from basic hip memory manipulation to hipblas and hipsparse
    ! feel free to add more if you need other interfaces, but keep the 
    ! original naming convention.
    ! Hao
    ! 
    ! ==================================================================== !
-   ! ====================== BASIC CUDA INTERFACES ======================= !
+   ! ======================= BASIC HIP INTERFACES ======================= !
    ! ==================================================================== !
-   ! cudaSetDevice
-   integer (c_int) function cudaSetDevice( device_idx ) &
-    &              bind (C, name="cudaSetDevice" ) 
+   interface
+   ! hipSetDevice
+   integer (c_int) function hipSetDevice( device_idx ) &
+    &              bind (C, name="hipSetDevice" ) 
      ! set the current working device according to device_idx
      use iso_c_binding
      implicit none
      integer (c_int), value  :: device_idx
-   end function cudaSetDevice
+   end function hipSetDevice
 
-   ! cudaGetDeviceCount
-   integer (c_int) function cudaGetDeviceCount( dev_count ) &
-    &              bind (C, name="cudaGetDeviceCount" ) 
-     ! get the number of available devices 
+   ! hipGetErrorString(err));
+   type (c_ptr) function hipGetErrorString( ierr ) &
+    &       bind (C, name="hipGetErrorString" )
+     ! get the number of available devices
+     use iso_c_binding
+     implicit none
+     integer (c_int), value           :: ierr
+   end function hipGetErrorString
+
+   ! hipGetDeviceCount
+   integer (c_int) function hipGetDeviceCount( dev_count ) &
+    &              bind (C, name="hipGetDeviceCount" )
+     ! get the number of available devices
      use iso_c_binding
      implicit none
      type(c_ptr), value  :: dev_count
-   end function cudaGetDeviceCount
+   end function hipGetDeviceCount
 
-   ! cudaMemset
-   integer (c_int) function cudaMemset( devPtr,value, count ) &
-    &              bind (C, name="cudaMemset" ) 
+   ! hipMemset
+   integer (c_int) function hipMemset( devPtr,value, count ) &
+    &              bind (C, name="hipMemset" ) 
      ! fill the count bytes of device memory pointed to by devPr with value
      ! doesn't seems quite useful unless you are filling everything with 
      ! zeros
      use iso_c_binding
      implicit none
      ! devPtr is the *device* pointer to memory 
-     type (c_ptr),value  :: devPtr
+     type (c_ptr), value  :: devPtr
      integer(c_int), value :: value
      integer(c_size_t), value :: count
-   end function cudaMemset
+   end function hipMemset
 
-   ! cudaMalloc
-   integer (c_int) function cudaMalloc ( devPtr, count ) &
-    &              bind (C, name="cudaMalloc" ) 
+   ! hipMalloc
+   integer (c_int) function hipMalloc ( devPtr, count ) &
+    &              bind (C, name="hipMalloc" ) 
      ! allocate count bytes of memory pointed by devPtr 
      use iso_c_binding
      implicit none
      ! devPtr is the *device* pointer to memory 
      type (c_ptr)  :: devPtr
      integer (c_size_t), value :: count
-   end function cudaMalloc
+   end function hipMalloc
 
-   ! cudaFree
-   integer (c_int) function cudaFree(devPtr) & 
-    &              bind(C, name="cudaFree")
+   ! hipFree
+   integer (c_int) function hipFree(devPtr) & 
+    &              bind(C, name="hipFree")
      ! free the chunk of memory used by buffer
      use iso_c_binding
      implicit none
      ! devPtr is the *device* pointer to memory that you want to free
      type (c_ptr),value :: devPtr
-   end function cudaFree
+   end function hipFree
 
-   ! cudaMemcpy
-   integer (c_int) function cudaMemcpy ( dst, src, count, kind ) & 
-    &              bind (C, name="cudaMemcpy" )
+   ! hipMemcpy
+   integer (c_int) function hipMemcpy ( dst, src, count, kind ) & 
+    &              bind (C, name="hipMemcpy" )
      use iso_c_binding
      implicit none
      ! copy a chunk of memory from *src* to *dst*
@@ -164,14 +187,14 @@ module cudaFortMap
      ! count is the size of memory (with unit of size_t)
      integer (c_size_t), value :: count, kind 
      ! kind specifies the direction 
-     ! cudaMemcpyHostToDevice = 1
-     ! cudaMemcpyDeviceToHost = 2
-     ! cudaMemcpyDeviceToDevice = 3
-   end function cudaMemcpy
+     ! hipMemcpyHostToDevice = 1
+     ! hipMemcpyDeviceToHost = 2
+     ! hipMemcpyDeviceToDevice = 3
+   end function hipMemcpy
 
-   ! cudaMemcpyAsync
-   integer (c_int) function cudaMemcpyAsync( dst, src, count, kind ) & 
-    &              bind (C, name="cudaMemcpy" )
+   ! hipMemcpyAsync
+   integer (c_int) function hipMemcpyAsync( dst, src, count, kind ) & 
+    &              bind (C, name="hipMemcpy" )
      use iso_c_binding
      implicit none
      ! copy a chunk of memory from *src* to *dst*
@@ -179,164 +202,164 @@ module cudaFortMap
      ! count is the size of memory (with unit of size_t)
      integer (c_size_t), value :: count, kind 
      ! kind specifies the direction 
-     ! cudaMemcpyHostToDevice = 1
-     ! cudaMemcpyDeviceToHost = 2
-     ! cudaMemcpyDeviceToDevice = 3
-   end function cudaMemcpyAsync
+     ! hipMemcpyHostToDevice = 1
+     ! hipMemcpyDeviceToHost = 2
+     ! hipMemcpyDeviceToDevice = 3
+   end function hipMemcpyAsync
 
-   ! cudaMemGetInfo
-   integer (c_int) function cudaMemGetInfo(free, total)  &
-    &     bind(C, name="cudaMemGetInfo")
+   ! hipMemGetInfo
+   integer (c_int) function hipMemGetInfo(free, total)  &
+    &     bind(C, name="hipMemGetInfo")
      use iso_c_binding
      implicit none
      type(c_ptr),value :: free  ! free memory in bytes
      type(c_ptr),value :: total ! total memory in bytes
-   end function cudaMemGetInfo
+   end function hipMemGetInfo
 
-   ! cudaDeviceSynchronize
-   integer(c_int) function cudaDeviceSynchronize() &
-    &            bind(C,name="cudaDeviceSynchronize")
+   ! hipDeviceSynchronize
+   integer(c_int) function hipDeviceSynchronize() &
+    &            bind(C,name="hipDeviceSynchronize")
      use iso_c_binding
      implicit none
-   end function cudaDeviceSynchronize
+   end function hipDeviceSynchronize
 
-   ! cudaStreamCreate
-   integer(c_int) function cudaStreamCreate(stream) & 
-    &            bind(C,name="cudaStreamCreate")
+   ! hipStreamCreate
+   integer(c_int) function hipStreamCreate(stream) & 
+    &            bind(C,name="hipStreamCreate")
      use iso_c_binding
      implicit none
      type(c_ptr)::stream ! streamid
-   end function cudaStreamCreate
+   end function hipStreamCreate
 
-   ! cudaStreamCreateWithFlags
-   integer(c_int) function cudaStreamCreateWithFlags(stream,flag ) & 
-    &            bind(C,name="cudaStreamCreate")
+   ! hipStreamCreateWithFlags
+   integer(c_int) function hipStreamCreateWithFlags(stream,flag ) & 
+    &            bind(C,name="hipStreamCreate")
      ! this creates cuda stream (with non-blocking flag)
      use iso_c_binding
      implicit none
      type(c_ptr)::stream ! streamid, out
      integer(c_int),value :: flag ! in
      ! can be 
-     ! cudaStreamDefault     
-     ! cudaStreamNonBlocking
-   end function cudaStreamCreateWithFlags
+     ! hipStreamDefault     
+     ! hipStreamNonBlocking
+   end function hipStreamCreateWithFlags
 
-   ! cudaStreamDestroy
-   integer(c_int) function cudaStreamDestroy(stream) & 
-    &            bind(C,name="cudaStreamDestroy")
+   ! hipStreamDestroy
+   integer(c_int) function hipStreamDestroy(stream) & 
+    &            bind(C,name="hipStreamDestroy")
      ! this eliminates a cuda stream
      use iso_c_binding
      implicit none
      type(c_ptr), value ::stream ! streamid
-   end function cudaStreamDestroy
+   end function hipStreamDestroy
 
    ! ==================================================================== !
    ! ===================== CUDA EVENT INTERFACES ======================== !
    ! ==================================================================== !
    ! not really useful for computation, needed for performance assessment
 
-   ! cudaEventCreate
-   integer(c_int) function cudaEventCreate(event) &
-    &            bind(C,name="cudaEventCreate")
+   ! hipEventCreate
+   integer(c_int) function hipEventCreate(event) &
+    &            bind(C,name="hipEventCreate")
     ! this creates a cuda event 
     use iso_c_binding
     implicit none
     type(c_ptr)           :: event ! event ID
-   end function cudaEventCreate
+   end function hipEventCreate
 
-   ! cudaEventCreateWithFlags
-   integer(c_int) function cudaEventCreateWithFlags(event, flag) &
-    &            bind(C,name="cudaEventCreateWithFlags")
+   ! hipEventCreateWithFlags
+   integer(c_int) function hipEventCreateWithFlags(event, flag) &
+    &            bind(C,name="hipEventCreateWithFlags")
     ! this creates a cuda event with given flags
     use iso_c_binding
     implicit none
     type(c_ptr)           :: event ! event ID
     integer(c_int), value :: flag  ! flag 
-    ! could be cudaEventDefault, cudaEventBlockingSync
-    ! cudaEventDisableTiming
-   end function cudaEventCreateWithFlags
+    ! could be hipEventDefault, hipEventBlockingSync
+    ! hipEventDisableTiming
+   end function hipEventCreateWithFlags
 
-   ! cudaEventRecord
-   integer(c_int) function cudaEventRecord(event, stream) &
-    &            bind(C,name="cudaEventRecord")
+   ! hipEventRecord
+   integer(c_int) function hipEventRecord(event, stream) &
+    &            bind(C,name="hipEventRecord")
     ! this records a cuda event (in a given stream)
     use iso_c_binding
     implicit none
     type(c_ptr), value    :: event ! event ID
     type(c_ptr), value    :: stream  ! cuda stream ID
-   end function cudaEventRecord
+   end function hipEventRecord
 
-   ! cudaEventElapsedTime
-   integer(c_int) function cudaEventElapsedTime(time, starts, ends) &
-    &            bind(C,name="cudaEventElapsedTime")
+   ! hipEventElapsedTime
+   integer(c_int) function hipEventElapsedTime(time, starts, ends) &
+    &            bind(C,name="hipEventElapsedTime")
     ! this calculates the time betweent two recoreded cuda events
     use iso_c_binding
     implicit none
     type(c_ptr), value    :: time  ! (pointer) in milliseconds
     type(c_ptr), value    :: starts! starting event ID
     type(c_ptr), value    :: ends  ! ending event ID
-   end function cudaEventElapsedTime
+   end function hipEventElapsedTime
 
-   ! cudaEventQuery
-   integer(c_int) function cudaEventQuery(event) &
-    &            bind(C,name="cudaEventQuery")
+   ! hipEventQuery
+   integer(c_int) function hipEventQuery(event) &
+    &            bind(C,name="hipEventQuery")
     ! this queries the status of the device preceding a cuda event 
-    ! that is recorded by cudaEventRecord
+    ! that is recorded by hipEventRecord
     use iso_c_binding
     implicit none
     type(c_ptr), value    :: event ! event ID
-   end function cudaEventQuery
+   end function hipEventQuery
 
-   ! cudaEventDestroy
-   integer(c_int) function cudaEventDestroy(event) &
-    &            bind(C,name="cudaEventDestroy")
+   ! hipEventDestroy
+   integer(c_int) function hipEventDestroy(event) &
+    &            bind(C,name="hipEventDestroy")
     ! this distroys the specified cuda event 
     use iso_c_binding
     implicit none
     type(c_ptr), value    :: event ! event ID
-   end function cudaEventDestroy
+   end function hipEventDestroy
 
    ! ==================================================================== !
-   ! ======================= CUBLAS INTERFACES ========================== !
+   ! ====================== HIPBLAS INTERFACES ========================== !
    ! ==================================================================== !
-   ! cublasCreate - need to be called to initialize cublas
-   integer(c_int) function cublasCreate(handle) &
-    &            bind(C,name="cublasCreate_v2")
+   ! hipblasCreate - need to be called to initialize hipblas
+   integer(c_int) function hipblasCreate(handle) &
+    &            bind(C,name="hipblasCreate")
      use iso_c_binding
      implicit none
      type(c_ptr):: handle
-   end function cublasCreate
+   end function hipblasCreate
 
-   ! cublasDestroy - need to be called after cublas ends
-   integer(c_int) function cublasDestroy(handle) &
-    &            bind(C,name="cublasDestroy_v2")
+   ! hipblasDestroy - need to be called after hipblas ends
+   integer(c_int) function hipblasDestroy(handle) &
+    &            bind(C,name="hipblasDestroy")
      use iso_c_binding
      implicit none
      type(c_ptr),value::handle
-   end function cublasDestroy
+   end function hipblasDestroy
 
-   ! cublasSetStream
-   integer(c_int) function cublasSetStream(handle,stream) &
-    &            bind(C,name="cublasSetStream_v2")
-     ! this sets the stream to be used by the cublas lib
+   ! hipblasSetStream
+   integer(c_int) function hipblasSetStream(handle,stream) &
+    &            bind(C,name="hipblasSetStream")
+     ! this sets the stream to be used by the hipblas lib
      use iso_c_binding
      implicit none
      type(c_ptr),value::handle
      type(c_ptr),value::stream
-   end function cublasSetStream
+   end function hipblasSetStream
 
-   ! cublasGetStream
-   integer(c_int) function cublasGetStream(handle) &
-    &            bind(C,name="cublasGetStream")
-     ! this gets the stream to be used by the cublas lib
+   ! hipblasGetStream
+   integer(c_int) function hipblasGetStream(handle) &
+    &            bind(C,name="hipblasGetStream")
+     ! this gets the stream to be used by the hipblas lib
      use iso_c_binding
      implicit none
      type(c_ptr),value::handle
-   end function cublasGetStream
+   end function hipblasGetStream
 
-   ! cublasGetVector
-   integer(c_int) function cublasGetVector(n, elemSize, x, incx, y, incy) &
-    &            bind(C,name="cublasGetVector")
+   ! hipblasGetVector
+   integer(c_int) function hipblasGetVector(n, elemSize, x, incx, y, incy) &
+    &            bind(C,name="hipblasGetVector")
      ! this copies n elements from a vector x in GPU memory space to a
      ! vector y in the host memory
      ! each element costs elemSize in the memory
@@ -346,11 +369,11 @@ module cudaFortMap
      integer(c_int), value :: n, elemSize
      type(c_ptr),    value :: x, y
      integer(c_int), value :: incx, incy !strides between elements of x/y
-   end function cublasGetVector
+   end function hipblasGetVector
 
-   ! cublasSetVector
-   integer(c_int) function cublasSetVector(n, elemSize, x, incx, y, incy) &
-    &            bind(C,name="cublasSetVector")
+   ! hipblasSetVector
+   integer(c_int) function hipblasSetVector(n, elemSize, x, incx, y, incy) &
+    &            bind(C,name="hipblasSetVector")
      ! this copies n elements from a vector x in host memory space to a
      ! vector y in the GPU memory
      ! each element costs elemSize in the memory
@@ -360,12 +383,12 @@ module cudaFortMap
      integer(c_int), value :: n, elemSize
      type(c_ptr),    value :: x, y
      integer(c_int), value :: incx, incy !strides between elements of x/y
-   end function cublasSetVector
+   end function hipblasSetVector
 
-   ! cublasSetMatrix
-   integer(c_int) function cublasSetMatrix(nrow, ncol, elemSize, &
+   ! hipblasSetMatrix
+   integer(c_int) function hipblasSetMatrix(nrow, ncol, elemSize, &
     &            A, lda, B, ldb) &
-    &            bind(C,name="cublasSetMatrix")
+    &            bind(C,name="hipblasSetMatrix")
      ! this copies nrow by ncol  elements from a matrix A in host memory 
      ! to a matrix B in the GPU memory
      ! each element costs elemSize in the memory
@@ -375,12 +398,12 @@ module cudaFortMap
      type(c_ptr),    value :: A, B ! A-> src B-> dest
      ! the lda and ldb are the size of the leading dimension (rows) of A/B 
      integer(c_int)       :: lda, ldb
-   end function cublasSetMatrix
+   end function hipblasSetMatrix
 
-   ! cublasGetMatrix
-   integer(c_int) function cublasGetMatrix(nrow, ncol, elemSize, &
+   ! hipblasGetMatrix
+   integer(c_int) function hipblasGetMatrix(nrow, ncol, elemSize, &
     &            A, lda, B, ldb) &
-    &            bind(C,name="cublasGetMatrix")
+    &            bind(C,name="hipblasGetMatrix")
      ! this copies nrow by ncol  elements from a matrix A in GPU memory 
      ! to a matrix B in the host memory
      ! each element costs elemSize in the memory
@@ -390,330 +413,330 @@ module cudaFortMap
      type(c_ptr),    value :: A, B ! A-> src B-> dest
      ! the lda and ldb are the size of the leading dimension (rows) of A/B 
      integer(c_int)        :: lda, ldb
-   end function cublasGetMatrix
+   end function hipblasGetMatrix
 
-   ! cublasDaxpy
-   integer(c_int) function cublasDaxpy(handle,n,alpha,x,incx,y,incy) &
-    &            bind(C,name="cublasDaxpy_v2")
+   ! hipblasDaxpy
+   integer(c_int) function hipblasDaxpy(handle,n,alpha,x,incx,y,incy) &
+    &            bind(C,name="hipblasDaxpy_v2")
      ! compute y = y + a*x with double precision
      ! note that x and y should be located in GPU memory
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x/y
      real(c_double)        ::alpha        ! scaler a
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: y       ! vector y in/out
      integer(c_int),value  :: incy ! strides between elements of x
-   end function cublasDaxpy
+   end function hipblasDaxpy
 
-   ! cublasZaxpy
-   integer(c_int) function cublasZaxpy(handle,n,alpha,x,incx,y,incy) &
-    &             bind(C,name="cublasZaxpy_v2")
+   ! hipblasZaxpy
+   integer(c_int) function hipblasZaxpy(handle,n,alpha,x,incx,y,incy) &
+    &             bind(C,name="hipblasZaxpy_v2")
      ! compute y = y + a*x with complex double precision
      ! note that x and y should be located in GPU memory
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x/y
      complex(c_double)::alpha        ! complex scaler a
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: y       ! vector y in/out
      integer(c_int),value  :: incy ! strides between elements of x
-   end function cublasZaxpy
+   end function hipblasZaxpy
 
-   ! cublasDcopy
-   integer(c_int) function cublasDcopy(handle,n,x,incx,y,incy) &
-    &             bind(C,name="cublasDcopy_v2")
+   ! hipblasDcopy
+   integer(c_int) function hipblasDcopy(handle,n,x,incx,y,incy) &
+    &             bind(C,name="hipblasDcopy_v2")
      ! compute y = x with double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x/y
      type(c_ptr), value    :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: y       ! vector y out
      integer(c_int),value  :: incy ! strides between elements of x
-   end function cublasDcopy
+   end function hipblasDcopy
 
-   ! cublasZaxpy
-   integer(c_int) function cublasZcopy(handle,n,x,incx,y,incy) &
-    &             bind(C,name="cublasZcopy_v2")
+   ! hipblasZcopy
+   integer(c_int) function hipblasZcopy(handle,n,x,incx,y,incy) &
+    &             bind(C,name="hipblasZcopy_v2")
      ! compute y = x with complex double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x/y
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: y       ! vector y out
      integer(c_int),value  :: incy ! strides between elements of x
-   end function cublasZcopy
+   end function hipblasZcopy
 
-   ! cublasDdot
-   integer(c_int) function cublasDdot(handle,n,x,incx,y,incy,result) &
-    &            bind(C,name="cublasDdot_v2")
+   ! hipblasDdot
+   integer(c_int) function hipblasDdot(handle,n,x,incx,y,incy,result) &
+    &            bind(C,name="hipblasDdot_v2")
      ! compute result = x dot y with double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x/y
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: y       ! vector y out
      integer(c_int),value  :: incy ! strides between elements of x
      type(c_ptr),value     :: result  ! output result (can be in host mem)
-   end function cublasDdot
+   end function hipblasDdot
 
-   ! cublasZdot
-   integer(c_int) function cublasZdot(handle,n,x,incx,y,incy,result) &
-    &            bind(C,name="cublasZdotc_v2")
+   ! hipblasZdot
+   integer(c_int) function hipblasZdot(handle,n,x,incx,y,incy,result) &
+    &            bind(C,name="hipblasZdotc_v2")
      ! compute result = x dot y with complex double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x/y
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: y       ! vector y out
      integer(c_int),value  :: incy ! strides between elements of x
      type(c_ptr),value     :: result  ! output result (can be in host mem)
-   end function cublasZdot
+   end function hipblasZdot
 
-   ! cublasDnrm2
-   integer(c_int) function cublasDnrm2(handle,n,x,incx,norm) &
-    &            bind(C,name="cublasDnrm2_v2")
+   ! hipblasDnrm2
+   integer(c_int) function hipblasDnrm2(handle,n,x,incx,norm) &
+    &            bind(C,name="hipblasDnrm2_v2")
      ! compute result = norm(x) in double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: norm    ! output result (can be in host mem)
-   end function cublasDnrm2
+   end function hipblasDnrm2
 
-   ! cublasZnrm2 there is no such thing like znrm2!
-   integer(c_int) function cublasZnrm2(handle,n,x,incx,norm) &
-    &            bind(C,name="cublasDznrm2_v2")
+   ! hipblasZnrm2 there is no such thing like znrm2!
+   integer(c_int) function hipblasZnrm2(handle,n,x,incx,norm) &
+    &            bind(C,name="hipblasDznrm2_v2")
      ! compute result = norm(x) in complex double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int),value  :: n   ! n --> size of x
      type(c_ptr),value     :: x       ! vector x
      integer(c_int),value  :: incx ! strides between elements of x
      type(c_ptr),value     :: norm    ! output result (can be in host mem)
-   end function cublasZnrm2
+   end function hipblasZnrm2
 
 
-   ! cublasDscal
-   integer(c_int) function cublasDscal(handle,n,alpha,x,incx) &
-    &            bind(C,name="cublasDscal_v2")
+   ! hipblasDscal
+   integer(c_int) function hipblasDscal(handle,n,alpha,x,incx) &
+    &            bind(C,name="hipblasDscal_v2")
      ! this scales the vector x by the scalar alpha 
      ! x = x/alpha in double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int), value :: n   ! n --> size of x
      real(c_double)        :: alpha   ! double scaler alpha
      type(c_ptr),value     :: x       ! vector x (in/out)
      integer(c_int),value  :: incx ! strides between elements of x
-   end function cublasDscal
+   end function hipblasDscal
 
-   ! cublasZscal
-   integer(c_int) function cublasZscal(handle,n,alpha,x,incx) &
-    &            bind(C,name="cublasZscal_v2")
+   ! hipblasZscal
+   integer(c_int) function hipblasZscal(handle,n,alpha,x,incx) &
+    &            bind(C,name="hipblasZscal_v2")
      ! this scales the vector x by the scalar alpha 
      ! x = x/alpha in double precision
      use iso_c_binding
      implicit none
-     type(c_ptr), value    :: handle ! cublas context
+     type(c_ptr), value    :: handle ! hipblas context
      integer(c_int), value :: n   ! n --> size of x
      complex(c_double):: alpha   ! complex double scaler alpha
      type(c_ptr),value     :: x       ! vector x (in/out)
      integer(c_int),value  :: incx ! strides between elements of x
-   end function cublasZscal
+   end function hipblasZscal
 
    ! ==================================================================== !
    ! ====================== CUSPARSE INTERFACES ========================= !
    ! ==================================================================== !
 
-   ! cusparseCreate - need to be called to initialize cusparse
-   integer(c_int) function cusparseCreate(cusparseHandle) & 
-    &            bind(C,name="cusparseCreate")
+   ! hipsparseCreate - need to be called to initialize hipsparse
+   integer(c_int) function hipsparseCreate(hipsparseHandle) & 
+    &            bind(C,name="hipsparseCreate")
      use iso_c_binding
      implicit none
-     type(c_ptr)::cusparseHandle  ! cusparse context
-   end function cusparseCreate
+     type(c_ptr)::hipsparseHandle  ! hipsparse context
+   end function hipsparseCreate
 
-   ! cusparseDestroy - need to be called after the cusparse operation ends
-   integer(c_int) function cusparseDestroy(cusparseHandle) &
-    &            bind(C,name="cusparseDestroy")
+   ! hipsparseDestroy - need to be called after the hipsparse operation ends
+   integer(c_int) function hipsparseDestroy(hipsparseHandle) &
+    &            bind(C,name="hipsparseDestroy")
      use iso_c_binding
      implicit none
-     type(c_ptr),value::cusparseHandle   ! cusparse context
-   end function cusparseDestroy
+     type(c_ptr),value::hipsparseHandle   ! hipsparse context
+   end function hipsparseDestroy
 
-   ! cusparseGetStream
-   integer(c_int) function cusparseGetStream(cusparseHandle,stream) &
-    &            bind(C,name="cusparseGetStream")
+   ! hipsparseGetStream
+   integer(c_int) function hipsparseGetStream(hipsparseHandle,stream) &
+    &            bind(C,name="hipsparseGetStream")
      use iso_c_binding
      implicit none
-     type(c_ptr),value :: cusparseHandle !handle to cuSPARSE context
+     type(c_ptr),value :: hipsparseHandle !handle to cuSPARSE context
      type(c_ptr),value :: stream !out, NULL if the stream is not set
-   end function cusparseGetStream
+   end function hipsparseGetStream
 
-   ! cusparseSetStream
-   integer(c_int) function cusparseSetStream(cusparseHandle,stream) &
-    &            bind(C,name="cusparseSetStream")
-     ! this sets the stream to be used by the cusparse lib
+   ! hipsparseSetStream
+   integer(c_int) function hipsparseSetStream(hipsparseHandle,stream) &
+    &            bind(C,name="hipsparseSetStream")
+     ! this sets the stream to be used by the hipsparse lib
      use iso_c_binding
      implicit none
-     type(c_ptr),value :: cusparseHandle !handle to cuSPARSE context
+     type(c_ptr),value :: hipsparseHandle !handle to cuSPARSE context
      type(c_ptr),value :: stream !in, stream id 
-   end function cusparseSetStream
+   end function hipsparseSetStream
 
-   ! cusparseCreateMatDescr
-   integer(c_int) function cusparseCreateMatDescr(descrA) &
-    &            bind(C,name="cusparseCreateMatDescr")
+   ! hipsparseCreateMatDescr
+   integer(c_int) function hipsparseCreateMatDescr(descrA) &
+    &            bind(C,name="hipsparseCreateMatDescr")
      ! this creates an empty sparse mat with descrA
      use iso_c_binding
      implicit none
      type(c_ptr):: descrA ! the matrix descr
-   end function cusparseCreateMatDescr
+   end function hipsparseCreateMatDescr
 
-   ! cusparseDestroyMatDescr
-   integer(c_int) function cusparseDestroyMatDescr(descrA) &
-    &            bind(C,name="cusparseDestroyMatDescr")
+   ! hipsparseDestroyMatDescr
+   integer(c_int) function hipsparseDestroyMatDescr(descrA) &
+    &            bind(C,name="hipsparseDestroyMatDescr")
      ! this distroys the mat descrA 
      use iso_c_binding
      implicit none
      type(c_ptr), value :: descrA ! the matrix descr
-   end function cusparseDestroyMatDescr
+   end function hipsparseDestroyMatDescr
 
-   ! cusparseDestroySpMat
-   integer(c_int) function cusparseDestroySpMat(SpMatA) &
-    &            bind(C,name="cusparseDestroySpMat")
+   ! hipsparseDestroySpMat
+   integer(c_int) function hipsparseDestroySpMat(SpMatA) &
+    &            bind(C,name="hipsparseDestroySpMat")
      ! this distroys the mat descrA and releases the memory
-     ! note this is different from the cusparseDestroyMatDescr...
+     ! note this is different from the hipsparseDestroyMatDescr...
      use iso_c_binding
      implicit none
      type(c_ptr), value :: SpMatA ! the matrix descr
-   end function cusparseDestroySpMat
+   end function hipsparseDestroySpMat
 
-   ! cusparseGetMatType
-   integer(c_int) function cusparseGetMatType(descrA) &
-    &            bind(C,name="cusparseGetMatType")
+   ! hipsparseGetMatType
+   integer(c_int) function hipsparseGetMatType(descrA) &
+    &            bind(C,name="hipsparseGetMatType")
      ! this gets the MatType from the mat descrA
      ! the type can be:
-     ! CUSPARSE_MATRIX_TYPE_GENERAL
-     ! CUSPARSE_MATRIX_TYPE_SYMMETRIC
-     ! CUSPARSE_MATRIX_TYPE_HERMITIAN
-     ! CUSPARSE_MATRIX_TYPE_TRIANGULAR
+     ! HIPSPARSE_MATRIX_TYPE_GENERAL
+     ! HIPSPARSE_MATRIX_TYPE_SYMMETRIC
+     ! HIPSPARSE_MATRIX_TYPE_HERMITIAN
+     ! HIPSPARSE_MATRIX_TYPE_TRIANGULAR
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
-   end function cusparseGetMatType
+   end function hipsparseGetMatType
 
-   ! cusparseSetMatType
-   integer(c_int) function cusparseSetMatType(descrA, type) &
-    &            bind(C,name="cusparseGetMatType")
+   ! hipsparseSetMatType
+   integer(c_int) function hipsparseSetMatType(descrA, type) &
+    &            bind(C,name="hipsparseGetMatType")
      ! this sets the MatType for the mat descrA
      ! the type can be:
-     ! CUSPARSE_MATRIX_TYPE_GENERAL
-     ! CUSPARSE_MATRIX_TYPE_SYMMETRIC
-     ! CUSPARSE_MATRIX_TYPE_HERMITIAN
-     ! CUSPARSE_MATRIX_TYPE_TRIANGULAR
+     ! HIPSPARSE_MATRIX_TYPE_GENERAL
+     ! HIPSPARSE_MATRIX_TYPE_SYMMETRIC
+     ! HIPSPARSE_MATRIX_TYPE_HERMITIAN
+     ! HIPSPARSE_MATRIX_TYPE_TRIANGULAR
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
      integer(c_int), value:: type !in
-   end function cusparseSetMatType
+   end function hipsparseSetMatType
 
-   ! cusparseGetMatIndexBase
-   integer(c_int) function cusparseGetMatIndexBase(descrA)             &
-    &            bind(C,name="cusparseGetMatIndexBase")
+   ! hipsparseGetMatIndexBase
+   integer(c_int) function hipsparseGetMatIndexBase(descrA)             &
+    &            bind(C,name="hipsparseGetMatIndexBase")
      ! this gets the index base for the mat descrA
      ! could be zero (c convention) or one (fortran convention)
-     ! CUSPARSE_INDEX_BASE_ZERO
-     ! CUSPARSE_INDEX_BASE_ONE
+     ! HIPSPARSE_INDEX_BASE_ZERO
+     ! HIPSPARSE_INDEX_BASE_ONE
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
-   end function cusparseGetMatIndexBase
+   end function hipsparseGetMatIndexBase
 
-   ! cusparseSetMatIndexBase
-   integer(c_int) function cusparseSetMatIndexBase(descrA,idxbase)      &
-    &            bind(C,name="cusparseSetMatIndexBase")
+   ! hipsparseSetMatIndexBase
+   integer(c_int) function hipsparseSetMatIndexBase(descrA,idxbase)      &
+    &            bind(C,name="hipsparseSetMatIndexBase")
      ! this sets the index base for the mat descrA
      ! could be zero (c convention) or one (fortran convention)
-     ! CUSPARSE_INDEX_BASE_ZERO
-     ! CUSPARSE_INDEX_BASE_ONE
+     ! HIPSPARSE_INDEX_BASE_ZERO
+     ! HIPSPARSE_INDEX_BASE_ONE
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
      integer(c_int), value:: idxbase! the matrix index base
-   end function cusparseSetMatIndexBase
+   end function hipsparseSetMatIndexBase
 
 
-   ! cusparseGetMatFillMode
-   integer(c_int) function cusparseGetMatFillMode(descrA) &
-    &            bind(C,name="cusparseGetMatFillMode")
+   ! hipsparseGetMatFillMode
+   integer(c_int) function hipsparseGetMatFillMode(descrA) &
+    &            bind(C,name="hipsparseGetMatFillMode")
      ! this gets the fill mode for the mat descrA
      ! could be 
-     ! CUSPARSE_FILL_MODE_LOWER
-     ! CUSPARSE_FILL_MODE_UPPER
+     ! HIPSPARSE_FILL_MODE_LOWER
+     ! HIPSPARSE_FILL_MODE_UPPER
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
-   end function cusparseGetMatFillMode
+   end function hipsparseGetMatFillMode
 
-   ! cusparseSetMatFillMode
-   integer(c_int) function cusparseSetMatFillMode(descrA,fillmode) &
-    &            bind(C,name="cusparseSetMatFillMode")
+   ! hipsparseSetMatFillMode
+   integer(c_int) function hipsparseSetMatFillMode(descrA,fillmode) &
+    &            bind(C,name="hipsparseSetMatFillMode")
      ! this sets the fill mode for the mat descrA
      ! could be 
-     ! CUSPARSE_FILL_MODE_LOWER
-     ! CUSPARSE_FILL_MODE_UPPER
+     ! HIPSPARSE_FILL_MODE_LOWER
+     ! HIPSPARSE_FILL_MODE_UPPER
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
      integer(c_int),value :: fillmode !in
-   end function cusparseSetMatFillMode
+   end function hipsparseSetMatFillMode
 
-   ! cusparseGetMatDiagType
-   integer(c_int) function cusparseGetMatDiagType(descrA) &
-    &            bind(C,name="cusparseGetMatDiagType")
+   ! hipsparseGetMatDiagType
+   integer(c_int) function hipsparseGetMatDiagType(descrA) &
+    &            bind(C,name="hipsparseGetMatDiagType")
      ! this gets the Mat diag type for the mat descrA
      ! could be 
-     ! CUSPARSE_DIAG_TYPE_NON_UNIT
-     ! CUSPARSE_DIAG_TYPE_UNIT
+     ! HIPSPARSE_DIAG_TYPE_NON_UNIT
+     ! HIPSPARSE_DIAG_TYPE_UNIT
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
-   end function cusparseGetMatDiagType
+   end function hipsparseGetMatDiagType
 
-   ! cusparseGetMatDiagType
-   integer(c_int) function cusparseSetMatDiagType(descrA,diagtype) &
-    &            bind(C,name="cusparseSetMatDiagType")
+   ! hipsparseGetMatDiagType
+   integer(c_int) function hipsparseSetMatDiagType(descrA,diagtype) &
+    &            bind(C,name="hipsparseSetMatDiagType")
      ! this sets the Mat diag type for the mat descrA
      ! could be 
-     ! CUSPARSE_DIAG_TYPE_NON_UNIT
-     ! CUSPARSE_DIAG_TYPE_UNIT
+     ! HIPSPARSE_DIAG_TYPE_NON_UNIT
+     ! HIPSPARSE_DIAG_TYPE_UNIT
      use iso_c_binding
      implicit none
      type(c_ptr), value:: descrA ! the matrix descr
      integer(c_int),value :: diagtype ! in
-   end function cusparseSetMatDiagType
+   end function hipsparseSetMatDiagType
 
-   ! cusparseCreateCsr
-   integer(c_int) function cusparseCreateCsr(SpMatA, &
+   ! hipsparseCreateCsr
+   integer(c_int) function hipsparseCreateCsr(SpMatA, &
     &           nRow,nCol,nnz,row,col,val,&
     &           rowIndType, ColIndType, idxbase, valueType) &
-    &           bind(C,name="cusparseCreateCsr")
+    &           bind(C,name="hipsparseCreateCsr")
      ! this creates a CSR sparse matrix with given parameters
      use iso_c_binding
      implicit none
@@ -725,19 +748,19 @@ module cudaFortMap
      type(c_ptr),value::col      ! col indices, size of nnz 
      type(c_ptr),value::val      ! values, size of nnz
      ! could be zero (c convention) or one (fortran convention)
-     ! CUSPARSE_INDEX_BASE_ZERO
-     ! CUSPARSE_INDEX_BASE_ONE
+     ! HIPSPARSE_INDEX_BASE_ZERO
+     ! HIPSPARSE_INDEX_BASE_ONE
      integer(c_int),value::rowIndType  ! data type of row
      integer(c_int),value::colIndType  ! data type of col
      integer(c_int),value::idxbase     ! base index of col and row 
      integer(c_int),value::valueType   ! datatype of val
-   end function cusparseCreateCsr
+   end function hipsparseCreateCsr
 
-   ! cusparseCsrGet
-   integer(c_int) function cusparseCsrGet(SpMatA, &
+   ! hipsparseCsrGet
+   integer(c_int) function hipsparseCsrGet(SpMatA, &
     &           nRow,nCol,nnz,row,col,val,&
     &           rowIndType, ColIndType, idxbase, valueType) &
-    &           bind(C,name="cusparseCsrGet")
+    &           bind(C,name="hipsparseCsrGet")
      ! this gets all the parameters of a CSR sparse matrix 
      use iso_c_binding
      implicit none
@@ -749,17 +772,17 @@ module cudaFortMap
      type(c_ptr),value::col      ! col indices, size of nnz 
      type(c_ptr),value::val      ! values, size of nnz
      ! could be zero (c convention) or one (fortran convention)
-     ! CUSPARSE_INDEX_BASE_ZERO
-     ! CUSPARSE_INDEX_BASE_ONE
+     ! HIPSPARSE_INDEX_BASE_ZERO
+     ! HIPSPARSE_INDEX_BASE_ONE
      integer(c_int),value::rowIndType  ! data type of row
      integer(c_int),value::colIndType  ! data type of col
      integer(c_int),value::idxbase     ! base index of col and row 
      integer(c_int),value::valueType   ! datatype of val
-   end function cusparseCsrGet
+   end function hipsparseCsrGet
    
-   ! cusparseCreateDnVec
-   integer(c_int) function cusparseCreateDnVec(vec, n, &
-    &           val, valueType) bind(C,name="cusparseCreateDnVec")
+   ! hipsparseCreateDnVec
+   integer(c_int) function hipsparseCreateDnVec(vec, n, &
+    &           val, valueType) bind(C,name="hipsparseCreateDnVec")
      ! this creates a Vec datatype used in SpMV and SpSV
      use iso_c_binding
      implicit none
@@ -767,20 +790,20 @@ module cudaFortMap
      integer(c_int),value::n      ! size of the vec (in)
      type(c_ptr),value   ::val       ! values, size of n (in) on device
      integer(c_int),value::valueType   ! datatype of val (in)
-   end function cusparseCreateDnVec
+   end function hipsparseCreateDnVec
 
-   ! cusparseDestroyDnVec
-   integer(c_int) function cusparseDestroyDnVec(vec) &
-    &             bind(C,name="cusparseDestroyDnVec")
+   ! hipsparseDestroyDnVec
+   integer(c_int) function hipsparseDestroyDnVec(vec) &
+    &             bind(C,name="hipsparseDestroyDnVec")
      ! this destroys a Vec datatype used in SpMV and SpSV
      use iso_c_binding
      implicit none
      type(c_ptr), value  ::  vec    ! the vec descr (in)
-   end function cusparseDestroyDnVec
+   end function hipsparseDestroyDnVec
 
-   ! cusparseDnVecGet
-   integer(c_int) function cusparseDnVecGet(vec, n, &
-    &           val, valueType) bind(C,name="cusparseDnVecGet")
+   ! hipsparseDnVecGet
+   integer(c_int) function hipsparseDnVecGet(vec, n, &
+    &           val, valueType) bind(C,name="hipsparseDnVecGet")
      ! this gets all the field of the Vec datatype used in SpMV and SpSV
      use iso_c_binding
      implicit none
@@ -788,32 +811,32 @@ module cudaFortMap
      integer(c_int),value::n      ! size of the vec (out)
      type(c_ptr)         ::val       ! values, size of n (out)
      integer(c_int),value::valueType   ! datatype of val (out)
-   end function cusparseDnVecGet
+   end function hipsparseDnVecGet
 
-   ! cusparseDnVecGetValues
-   integer(c_int) function cusparseDnVecGetValues(vec,  &
-    &           val) bind(C,name="cusparseDnVecGetValues")
+   ! hipsparseDnVecGetValues
+   integer(c_int) function hipsparseDnVecGetValues(vec,  &
+    &           val) bind(C,name="hipsparseDnVecGetValues")
      ! this gets the Vec datatype values used in SpMV and SpSV
      use iso_c_binding
      implicit none
      type(c_ptr), value::vec    ! the vec descr (in)
      type(c_ptr)       ::val    ! values, size of n (out)
-   end function cusparseDnVecGetValues
+   end function hipsparseDnVecGetValues
 
-   ! cusparseDnVecSetValues
-   integer(c_int) function cusparseDnVecSetValues(vec,  &
-    &           val) bind(C,name="cusparseDnVecSetValues")
+   ! hipsparseDnVecSetValues
+   integer(c_int) function hipsparseDnVecSetValues(vec,  &
+    &           val) bind(C,name="hipsparseDnVecSetValues")
      ! this sets the Vec datatype values used in SpMV and SpSV
      use iso_c_binding
      implicit none
      type(c_ptr), value :: vec    ! the vec descr (in)
      type(c_ptr), value :: val    ! values, size of n (in)
-   end function cusparseDnVecSetValues
+   end function hipsparseDnVecSetValues
 
 
-   ! cusparseSpMatGetSize
-   integer(c_int) function cusparseSpMatGetSize(SpMatA, &
-    &           nRow,nCol,nnz)  bind(C,name="cusparseSpMatGetSize")
+   ! hipsparseSpMatGetSize
+   integer(c_int) function hipsparseSpMatGetSize(SpMatA, &
+    &           nRow,nCol,nnz)  bind(C,name="hipsparseSpMatGetSize")
      ! this gets the size of a sparse matrix 
      use iso_c_binding
      implicit none
@@ -821,49 +844,49 @@ module cudaFortMap
      integer(c_int),value::nRow  ! number of rows 
      integer(c_int),value::nCol  ! number of cols
      integer(c_int),value::nnz   ! number of none zero elements
-   end function cusparseSpMatGetSize
+   end function hipsparseSpMatGetSize
 
-   ! cusparseSpMatGetValues
-   integer(c_int) function cusparseSpMatGetValues(SpMatA, &
-    &           val) bind(C,name="cusparseSpMatGetValues")
+   ! hipsparseSpMatGetValues
+   integer(c_int) function hipsparseSpMatGetValues(SpMatA, &
+    &           val) bind(C,name="hipsparseSpMatGetValues")
      ! this gets the val of a sparse matrix
      use iso_c_binding
      implicit none
      type(c_ptr), value:: SpMatA ! the matrix descr (input)
      type(c_ptr),value::val      ! values, size of nnz (output)
-   end function cusparseSpMatGetValues
+   end function hipsparseSpMatGetValues
 
-   ! cusparseSpMatSetValues
-   integer(c_int) function cusparseSpMatSetValues(SpMatA, &
-    &           val) bind(C,name="cusparseSpMatSetValues")
+   ! hipsparseSpMatSetValues
+   integer(c_int) function hipsparseSpMatSetValues(SpMatA, &
+    &           val) bind(C,name="hipsparseSpMatSetValues")
      ! this gets the val of a sparse matrix
      use iso_c_binding
      implicit none
      type(c_ptr), value:: SpMatA ! the matrix descr (input)
      type(c_ptr),value::val      ! values, size of nnz (input)
-   end function cusparseSpMatSetValues
+   end function hipsparseSpMatSetValues
 
-   ! cusparseSpMatSetAttribute
-   integer(c_int) function cusparseSpMatSetAttribute(SpMatA, attribute, &
-    &           data,dataSize) bind(C,name="cusparseSpMatSetAttribute")
+   ! hipsparseSpMatSetAttribute
+   integer(c_int) function hipsparseSpMatSetAttribute(SpMatA, attribute, &
+    &           data,dataSize) bind(C,name="hipsparseSpMatSetAttribute")
      ! this gets the val of a sparse matrix
      use iso_c_binding
      implicit none
      type(c_ptr), value:: SpMatA ! the matrix descr (input)
      integer(c_int), value:: attribute! parameter type
      ! can be
-     ! CUSPARSE_SPMAT_FILL_MODE or CUSPARSE_SPMAT_DIAG_TYPE
+     ! HIPSPARSE_SPMAT_FILL_MODE or HIPSPARSE_SPMAT_DIAG_TYPE
      integer (c_int)        :: data     ! parameter value
      ! can be 
-     ! CUSPARSE_FILL_MODE_LOWER   CUSPARSE_FILL_MODE_UPPER
-     ! CUSPARSE_DIAG_TYPE_NON_UNIT   CUSPARSE_DIAG_TYPE_UNIT
+     ! HIPSPARSE_FILL_MODE_LOWER   HIPSPARSE_FILL_MODE_UPPER
+     ! HIPSPARSE_DIAG_TYPE_NON_UNIT   HIPSPARSE_DIAG_TYPE_UNIT
      integer (c_int), value :: dataSize ! parameter value size
-   end function cusparseSpMatSetAttribute
+   end function hipsparseSpMatSetAttribute
 
-   ! cusparseSpMV_bufferSize
-   integer(c_int) function cusparseSpMV_bufferSize(handle,opA,    &
+   ! hipsparseSpMV_bufferSize
+   integer(c_int) function hipsparseSpMV_bufferSize(handle,opA,    &
     &            alpha, matA, vecX, beta, vecY, computeType,      &
-    &            alg, bufferSize) bind(C,name="cusparseSpMV_bufferSize")
+    &            alg, bufferSize) bind(C,name="hipsparseSpMV_bufferSize")
      ! this returns the buffersize needed for matrix-vector multiplition
      ! note that we need to manually allocate the pBuffer 
      ! according to the size
@@ -879,12 +902,12 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseSpMV_bufferSize
+   end function hipsparseSpMV_bufferSize
 
-   ! cusparseSpMV_bufferSize_c
-   integer(c_int) function cusparseSpMV_bufferSize_cmplx(handle,opA, &
+   ! hipsparseSpMV_bufferSize_c
+   integer(c_int) function hipsparseSpMV_bufferSize_cmplx(handle,opA, &
     &            alpha, matA, vecX, beta, vecY, computeType,      &
-    &            alg, bufferSize) bind(C,name="cusparseSpMV_bufferSize")
+    &            alg, bufferSize) bind(C,name="hipsparseSpMV_bufferSize")
      ! this returns the buffersize needed for matrix-vector multiplition
      ! note that we need to manually allocate the pBuffer 
      ! according to the size
@@ -900,16 +923,16 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseSpMV_bufferSize_cmplx
+   end function hipsparseSpMV_bufferSize_cmplx
    
-   ! cusparseSpMV
-   integer(c_int) function cusparseSpMV(handle,opA, &
+   ! hipsparseSpMV
+   integer(c_int) function hipsparseSpMV(handle,opA, &
     &            alpha, matA, vecX, beta, vecY, computeType,      &
-    &            alg, pBuffer) bind(C,name="cusparseSpMV")
+    &            alg, pBuffer) bind(C,name="hipsparseSpMV")
      ! this calculates the matrix-vector multiplition
      ! y = alpha*A*x + beta*y (this is called Axpy in most libs)
      ! note that we need to manually allocate the pBuffer 
-     ! according to the size calculated by cusparseSpMV_bufferSize
+     ! according to the size calculated by hipsparseSpMV_bufferSize
      use iso_c_binding
      implicit none
      type(c_ptr),value :: handle !handle to cuSPARSE context
@@ -922,16 +945,16 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value   :: pBuffer
-   end function cusparseSpMV
+   end function hipsparseSpMV
 
-   ! cusparseSpMV_cmplx
-   integer(c_int) function cusparseSpMV_cmplx(handle,opA, &
+   ! hipsparseSpMV_cmplx
+   integer(c_int) function hipsparseSpMV_cmplx(handle,opA, &
     &            alpha, matA, vecX, beta, vecY, computeType,      &
-    &            alg, pBuffer) bind(C,name="cusparseSpMV")
+    &            alg, pBuffer) bind(C,name="hipsparseSpMV")
      ! this calculates the matrix-vector multiplition
      ! y = alpha*A*x + beta*y (this is called Axpy in most libs)
      ! note that we need to manually allocate the pBuffer 
-     ! according to the size calculated by cusparseSpMV_bufferSize
+     ! according to the size calculated by hipsparseSpMV_bufferSize
      use iso_c_binding
      implicit none
      type(c_ptr),value :: handle !handle to cuSPARSE context
@@ -944,33 +967,33 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value   :: pBuffer
-   end function cusparseSpMV_cmplx
+   end function hipsparseSpMV_cmplx
 
-   ! cusparseSpSV_createDescr
-   integer(c_int) function cusparseSpSV_createDescr(spsvDescr  &
-    &            ) bind(C,name="cusparseSpSV_createDescr")
-     ! this creates a handle for the triangle solver cusparseSpSV
+   ! hipsparseSpSV_createDescr
+   integer(c_int) function hipsparseSpSV_createDescr(spsvDescr  &
+    &            ) bind(C,name="hipsparseSpSV_createDescr")
+     ! this creates a handle for the triangle solver hipsparseSpSV
      use iso_c_binding
      implicit none
      type(c_ptr):: spsvDescr ! spsv context handle
-   end function cusparseSpSV_createDescr
+   end function hipsparseSpSV_createDescr
 
-   ! cusparseSpSV_destroyDescr
-   integer(c_int) function cusparseSpSV_destroyDescr(spsvDescr &
-    &            ) bind(C,name="cusparseSpSV_destroyDescr")
-     ! this destroys a handle for the triangle solver cusparseSpSV
+   ! hipsparseSpSV_destroyDescr
+   integer(c_int) function hipsparseSpSV_destroyDescr(spsvDescr &
+    &            ) bind(C,name="hipsparseSpSV_destroyDescr")
+     ! this destroys a handle for the triangle solver hipsparseSpSV
      ! and releases the memory associated
      use iso_c_binding
      implicit none
      type(c_ptr), value :: spsvDescr ! spsv context handle
-   end function cusparseSpSV_destroyDescr
+   end function hipsparseSpSV_destroyDescr
 
-   ! cusparseSpSV_buffersize
-   integer(c_int) function cusparseSpSV_bufferSize(handle,opA, &
+   ! hipsparseSpSV_buffersize
+   integer(c_int) function hipsparseSpSV_bufferSize(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, spsvDescr, &
-    &            bufferSize) bind(C,name="cusparseSpSV_bufferSize")
+    &            bufferSize) bind(C,name="hipsparseSpSV_bufferSize")
      ! this computes the buffersize needed by the triangle solver 
-     ! cusparseSpSV
+     ! hipsparseSpSV
      ! note that we need to manually allocate the pBuffer 
      ! according to the size
      use iso_c_binding
@@ -983,15 +1006,15 @@ module cudaFortMap
      type(c_ptr), value:: vecY ! vector Y (output)
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
-     type(c_ptr),value:: spsvDescr ! spsv context handle
+     type(c_ptr),value   :: spsvDescr ! spsv context handle
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseSpSV_bufferSize
+   end function hipsparseSpSV_bufferSize
 
-   ! cusparseSpSV_buffersize_cmplx
-   integer(c_int) function cusparseSpSV_bufferSize_cmplx(handle,opA, &
+   ! hipsparseSpSV_buffersize_cmplx
+   integer(c_int) function hipsparseSpSV_bufferSize_cmplx(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, spsvDescr, &
-    &            bufferSize) bind(C,name="cusparseSpSV_bufferSize")
-     ! this computes the buffersize needed by the triangle solver cusparseSpSV
+    &            bufferSize) bind(C,name="hipsparseSpSV_bufferSize")
+     ! this computes the buffersize needed by the triangle solver hipsparseSpSV
      ! note that we need to manually allocate the pBuffer 
      ! according to the size
      use iso_c_binding
@@ -1005,15 +1028,15 @@ module cudaFortMap
      type(c_ptr), value:: vecY ! vector Y (output)
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
-     type(c_ptr),value:: spsvDescr ! spsv context handle
+     type(c_ptr),value   :: spsvDescr ! spsv context handle
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseSpSV_bufferSize_cmplx
+   end function hipsparseSpSV_bufferSize_cmplx
 
-   ! cusparseSpSV_buffersize_dcmplx
-   integer(c_int) function cusparseSpSV_bufferSize_dcmplx(handle,opA, &
+   ! hipsparseSpSV_buffersize_dcmplx
+   integer(c_int) function hipsparseSpSV_bufferSize_dcmplx(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, spsvDescr, &
-    &            bufferSize) bind(C,name="cusparseSpSV_bufferSize")
-     ! this computes the buffersize needed by the triangle solver cusparseSpSV
+    &            bufferSize) bind(C,name="hipsparseSpSV_bufferSize")
+     ! this computes the buffersize needed by the triangle solver hipsparseSpSV
      ! note that we need to manually allocate the pBuffer 
      ! according to the size
      use iso_c_binding
@@ -1027,17 +1050,17 @@ module cudaFortMap
      type(c_ptr), value:: vecY ! vector Y (output)
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
-     type(c_ptr),value:: spsvDescr ! spsv context handle
+     type(c_ptr),value   :: spsvDescr ! spsv context handle
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseSpSV_bufferSize_dcmplx
+   end function hipsparseSpSV_bufferSize_dcmplx
 
-   ! cusparseSpSV_analysis
-   integer(c_int) function cusparseSpSV_analysis(handle,opA, &
+   ! hipsparseSpSV_analysis
+   integer(c_int) function hipsparseSpSV_analysis(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, spsvDescr, &
-    &            pBuffer ) bind(C,name="cusparseSpSV_analysis")
-     ! this does the analysis phase needed by the triangle solver cusparseSpSV
+    &            pBuffer ) bind(C,name="hipsparseSpSV_analysis")
+     ! this does the analysis phase needed by the triangle solver hipsparseSpSV
      ! note that we need to manually allocate the pBuffer 
-     ! according to the size calculated by cusparseSpMV_bufferSize
+     ! according to the size calculated by hipsparseSpMV_bufferSize
      ! double version
      use iso_c_binding
      implicit none
@@ -1051,15 +1074,15 @@ module cudaFortMap
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value:: spsvDescr ! spsv context handle
      type(c_ptr),value:: pBuffer ! external buffer
-   end function cusparseSpSV_analysis
+   end function hipsparseSpSV_analysis
 
-   ! cusparseSpSV_analysis_cmplx
-   integer(c_int) function cusparseSpSV_analysis_cmplx(handle,opA, &
+   ! hipsparseSpSV_analysis_cmplx
+   integer(c_int) function hipsparseSpSV_analysis_cmplx(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, spsvDescr, &
-    &            pBuffer ) bind(C,name="cusparseSpSV_analysis")
-     ! this does the analysis phase needed by the triangle solver cusparseSpSV
+    &            pBuffer ) bind(C,name="hipsparseSpSV_analysis")
+     ! this does the analysis phase needed by the triangle solver hipsparseSpSV
      ! note that we need to manually allocate the pBuffer 
-     ! according to the size calculated by cusparseSpMV_bufferSize
+     ! according to the size calculated by hipsparseSpMV_bufferSize
      ! complex double version
      use iso_c_binding
      implicit none
@@ -1073,15 +1096,15 @@ module cudaFortMap
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value:: spsvDescr ! spsv context handle
      type(c_ptr),value:: pBuffer ! external buffer
-   end function cusparseSpSV_analysis_cmplx
+   end function hipsparseSpSV_analysis_cmplx
 
-   ! cusparseSpSV_analysis_dcmplx
-   integer(c_int) function cusparseSpSV_analysis_dcmplx(handle,opA, &
+   ! hipsparseSpSV_analysis_dcmplx
+   integer(c_int) function hipsparseSpSV_analysis_dcmplx(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, spsvDescr, &
-    &            pBuffer ) bind(C,name="cusparseSpSV_analysis")
-     ! this does the analysis phase needed by the triangle solver cusparseSpSV
+    &            pBuffer ) bind(C,name="hipsparseSpSV_analysis")
+     ! this does the analysis phase needed by the triangle solver hipsparseSpSV
      ! note that we need to manually allocate the pBuffer 
-     ! according to the size calculated by cusparseSpMV_bufferSize
+     ! according to the size calculated by hipsparseSpSV_bufferSize
      ! complex float version
      use iso_c_binding
      implicit none
@@ -1095,12 +1118,12 @@ module cudaFortMap
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value:: spsvDescr ! spsv context handle
      type(c_ptr),value:: pBuffer ! external buffer
-   end function cusparseSpSV_analysis_dcmplx
+   end function hipsparseSpSV_analysis_dcmplx
 
-   ! cusparseSpSV_solve
-   integer(c_int) function cusparseSpSV_solve(handle,opA, &
+   ! hipsparseSpSV_solve
+   integer(c_int) function hipsparseSpSV_solve(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, &
-    &            spsvDescr) bind(C,name="cusparseSpSV_solve")
+    &            spsvDescr) bind(C,name="hipsparseSpSV_solve")
      ! this solves the triangle system 
      ! y = Lx or y = Ux
      ! double version
@@ -1115,12 +1138,12 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value:: spsvDescr ! spsv context handle
-   end function cusparseSpSV_solve
+   end function hipsparseSpSV_solve
 
-   ! cusparseSpSV_solve_cmplx
-   integer(c_int) function cusparseSpSV_solve_cmplx(handle,opA, &
+   ! hipsparseSpSV_solve_cmplx
+   integer(c_int) function hipsparseSpSV_solve_cmplx(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, &
-    &            spsvDescr) bind(C,name="cusparseSpSV_solve")
+    &            spsvDescr) bind(C,name="hipsparseSpSV_solve")
      ! this solves the triangle system 
      ! y = Lx or y = Ux
      ! complex float version
@@ -1135,12 +1158,12 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value:: spsvDescr ! spsv context handle
-   end function cusparseSpSV_solve_cmplx
+   end function hipsparseSpSV_solve_cmplx
 
-   ! cusparseSpSV_solve_dcmplx
-   integer(c_int) function cusparseSpSV_solve_dcmplx(handle,opA, &
+   ! hipsparseSpSV_solve_dcmplx
+   integer(c_int) function hipsparseSpSV_solve_dcmplx(handle,opA, &
     &            alpha, matA, vecX, vecY, computeType, alg, &
-    &            spsvDescr) bind(C,name="cusparseSpSV_solve")
+    &            spsvDescr) bind(C,name="hipsparseSpSV_solve")
      ! this solves the triangle system 
      ! y = Lx or y = Ux 
      ! complex double version
@@ -1155,32 +1178,32 @@ module cudaFortMap
      integer(c_int),value:: computeType
      integer(c_int),value:: alg ! algorithm
      type(c_ptr),value:: spsvDescr ! spsv context handle
-   end function cusparseSpSV_solve_dcmplx
+   end function hipsparseSpSV_solve_dcmplx
    
    
-   ! cusparseCreateCsrilu0Info
-   integer(c_int) function cusparseCreateCsrilu0Info(info) &
-    &           bind(C,name="cusparseCreateCsrilu02Info")
+   ! hipsparseCreateCsrilu0Info
+   integer(c_int) function hipsparseCreateCsrilu0Info(info) &
+    &           bind(C,name="hipsparseCreateCsrilu02Info")
      ! this create the info pointer for the ilu0 context
      use iso_c_binding
      implicit none
      type(c_ptr)::info
-   end function cusparseCreateCsrilu0Info
+   end function hipsparseCreateCsrilu0Info
 
-   ! cusparseDestroyCsrilu0Info
-   integer(c_int) function cusparseDestroyCsrilu0Info(info) &
-    &           bind(C,name="cusparseDestroyCsrilu02Info")
+   ! hipsparseDestroyCsrilu0Info
+   integer(c_int) function hipsparseDestroyCsrilu0Info(info) &
+    &           bind(C,name="hipsparseDestroyCsrilu02Info")
      ! this destroys the info pointer for the ilu0 context
      ! and frees its memory
      use iso_c_binding
      implicit none
      type(c_ptr), value ::info
-   end function cusparseDestroyCsrilu0Info
+   end function hipsparseDestroyCsrilu0Info
 
-   ! cusparseDcsrilu0_bufferSize
-   integer(c_int) function cusparseDcsrilu0_bufferSize(handle,m,nnz,descrA,&
+   ! hipsparseDcsrilu0_bufferSize
+   integer(c_int) function hipsparseDcsrilu0_bufferSize(handle,m,nnz,descrA,&
     &           valA,rowA,colA,info,bufferSize) &
-    &           bind(C,name="cusparseDcsrilu02_bufferSize")
+    &           bind(C,name="hipsparseDcsrilu02_bufferSize")
      ! this calculate the buffersize needed for ilu0 operation 
      use iso_c_binding
      implicit none
@@ -1193,12 +1216,12 @@ module cudaFortMap
      type(c_ptr), value::colA
      type(c_ptr),value::info
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseDcsrilu0_bufferSize
+   end function hipsparseDcsrilu0_bufferSize
 
-   ! cusparseZcsrilu0_bufferSize
-   integer(c_int) function cusparseZcsrilu0_bufferSize(handle,m,nnz,descrA,&
+   ! hipsparseZcsrilu0_bufferSize
+   integer(c_int) function hipsparseZcsrilu0_bufferSize(handle,m,nnz,descrA,&
     &           valA,rowA,colA,info,bufferSize) &
-    &           bind(C,name="cusparseZcsrilu02_bufferSize")
+    &           bind(C,name="hipsparseZcsrilu02_bufferSize")
      ! this calculate the buffersize needed for ilu0 operation 
      use iso_c_binding
      implicit none
@@ -1211,12 +1234,12 @@ module cudaFortMap
      type(c_ptr), value::colA
      type(c_ptr),value::info
      integer(c_size_t)   :: bufferSize ! output the buffer size (in bytes)
-   end function cusparseZcsrilu0_bufferSize
+   end function hipsparseZcsrilu0_bufferSize
 
-   ! cusparseDcsrilu0_analysis
-   integer(c_int) function cusparseDcsrilu0_analysis(handle,n,nnz,descrA,&
+   ! hipsparseDcsrilu0_analysis
+   integer(c_int) function hipsparseDcsrilu0_analysis(handle,n,nnz,descrA,&
     &           valA,rowA,colA,info,policy,pBuffer) &
-    &           bind(C,name="cusparseDcsrilu02_analysis")
+    &           bind(C,name="hipsparseDcsrilu02_analysis")
      use iso_c_binding
      implicit none
      type(c_ptr),value::handle
@@ -1229,12 +1252,12 @@ module cudaFortMap
      type(c_ptr), value::info
      integer(c_int),value::policy
      type(c_ptr),value   ::pBuffer
-   end function cusparseDcsrilu0_analysis
+   end function hipsparseDcsrilu0_analysis
 
-   ! cusparseZcsrilu0_analysis
-   integer(c_int) function cusparseZcsrilu0_analysis(handle,n,nnz,descrA,&
+   ! hipsparseZcsrilu0_analysis
+   integer(c_int) function hipsparseZcsrilu0_analysis(handle,n,nnz,descrA,&
     &           valA,rowA,colA,info,policy,pBuffer) &
-    &           bind(C,name="cusparseZcsrilu02_analysis")
+    &           bind(C,name="hipsparseZcsrilu02_analysis")
      use iso_c_binding
      implicit none
      type(c_ptr),value::handle
@@ -1247,12 +1270,12 @@ module cudaFortMap
      type(c_ptr), value::info
      integer(c_int),value::policy
      type(c_ptr),value   ::pBuffer
-   end function cusparseZcsrilu0_analysis
+   end function hipsparseZcsrilu0_analysis
 
-   ! cusparseDcsrilu0
-   integer(c_int) function cusparseDcsrilu0(handle,m,nnz, &
+   ! hipsparseDcsrilu0
+   integer(c_int) function hipsparseDcsrilu0(handle,m,nnz, &
     &           descrA,valA,rowA,colA,info, policy, pBuffer) &
-    &           bind(C,name="cusparseDcsrilu02")
+    &           bind(C,name="hipsparseDcsrilu02")
      ! this performs the incomplete LU factorization A = LU 
      use iso_c_binding
      implicit none
@@ -1267,12 +1290,12 @@ module cudaFortMap
      integer(c_int),value::policy
      ! in - note this is the address (ptr) to the buffer
      type(c_ptr),value   ::pBuffer 
-   end function cusparseDcsrilu0
+   end function hipsparseDcsrilu0
 
-   ! cusparseZcsrilu0
-   integer(c_int) function cusparseZcsrilu0(handle,m,nnz, &
+   ! hipsparseZcsrilu0
+   integer(c_int) function hipsparseZcsrilu0(handle,m,nnz, &
     &           descrA,valA,rowA,colA,info, policy, pBuffer) &
-    &           bind(C,name="cusparseZcsrilu02")
+    &           bind(C,name="hipsparseZcsrilu02")
      ! this performs the incomplete LU factorization A = LU 
      use iso_c_binding
      implicit none
@@ -1287,17 +1310,17 @@ module cudaFortMap
      integer(c_int),value::policy
      ! in - note this is the address (ptr) to the buffer
      type(c_ptr),value   ::pBuffer 
-   end function cusparseZcsrilu0
+   end function hipsparseZcsrilu0
 
-   ! cusparseDcsrilu0_zeroPivot
-   integer(c_int) function cusparseXcsrilu0_zeroPivot(handle,info,loc) &
-    &           bind(C,name="cusparseXcsrilu02_zeroPivot")
+   ! hipsparseXcsrilu0_zeroPivot
+   integer(c_int) function hipsparseXcsrilu0_zeroPivot(handle,info,loc) &
+    &           bind(C,name="hipsparseXcsrilu02_zeroPivot")
      use iso_c_binding
      implicit none
      type(c_ptr),value::handle
      type(c_ptr),value::info
      type(c_ptr),value::loc !output, in hostmem
-   end function cusparseXcsrilu0_zeroPivot
+   end function hipsparseXcsrilu0_zeroPivot
 
    ! =========================================================================!
    ! ====================== CUSTOM KERNEL INTERFACES =========================!
@@ -1319,7 +1342,7 @@ module cudaFortMap
     &              bind (C, name="kernelc_d2s" )
      use iso_c_binding
      implicit none
-     ! force convert a chunk of memory from *single* to *double*
+     ! force convert a chunk of memory from *double* to *single*
      type (c_ptr),value   :: double, single ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
@@ -1354,7 +1377,6 @@ module cudaFortMap
      use iso_c_binding
      implicit none
      ! perform y = x + by, (complex)
-     ! force convert a chunk of memory from *single* to *double*
      type (c_ptr),value          :: a, c ! pointers
      complex(c_double), value    :: b ! scaler b
      ! count is the size of memory (with unit of size_t)
@@ -1398,18 +1420,7 @@ module cudaFortMap
      type (c_ptr),value          :: ptr 
    end subroutine cf_free
 
-   ! cf_resetFlags
-   integer(c_int) function cf_resetFlags(device_idx) &
-                   bind (C, name="cf_resetFlags" )
-     ! reset the device flag (to a certain value)
-     ! see the c code in kernel_c for details
-     use iso_c_binding
-     implicit none
-     integer(c_int),value ::  device_idx
-     ! this calls resetflags from the c side
-   end function cf_resetFlags
-
-   ! kernelc_hookDev
+  ! cf_hookCtx
    integer(c_int) function cf_hookDev(device_idx) & 
     &              bind (C, name="cf_hookDev" )
      ! bind the current context to a given device
@@ -1419,8 +1430,8 @@ module cudaFortMap
      ! equivalents of NVML
      use iso_c_binding
      implicit none
+     ! the current device idx
      integer(c_int),value ::  device_idx
-     ! get the current device idx
    end function cf_hookDev
 
   ! cf_resetFlag
@@ -1435,21 +1446,6 @@ module cudaFortMap
      integer(c_int),value ::  device_idx
    end function cf_resetFlag
 
-   ! TODO
-   ! currently do not need it here, since we already defined this at 
-   ! Declarition_MPI.f90
-   ! since currently the GPU version is bind to MPI - I don't see 
-   ! why we need it here
-   ! still - we may need this at some stage when I find the time to
-   ! peel GPU from MPI...
-   ! kernelc_getDevNum
-   ! integer(c_int) function kernelc_getDevNum() & 
-   !  &              bind (C, name="kernelc_getDevNum" )
-   !   use iso_c_binding
-   !   implicit none
-   !   ! get the number of GPU devices  
-   ! end function kernelc_getDevNum
-
    end interface  
 
-end module
+end module hipFortMap
