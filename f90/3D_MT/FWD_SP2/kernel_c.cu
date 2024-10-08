@@ -3,7 +3,7 @@
 #include <string.h>
 #include <complex.h>
 #include <cuda.h>
-#include <nvml.h>
+// #include <nvml.h>
 #include <cuda_runtime.h>
 
 // simple kernel function that converts double vectors to single

@@ -362,7 +362,7 @@ Contains
 
 	integer	:: i, istat
 
-    write(0,*) 'Cleaning up...'
+    write(6,*) 'Cleaning up...'
 
 	! Deallocate global variables that have been allocated by InitGlobalData()
 	if (output_level > 3) then

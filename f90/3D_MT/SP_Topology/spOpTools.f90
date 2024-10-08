@@ -1540,7 +1540,8 @@ Contains
    subroutine splitRMAT(A,i,np,B,isizes)
    ! automaticly split a matrix A into row submatrices 
    ! and take only the corresponding row submatrice of B
-   ! for the (i+1)th process in n parallel threads
+   ! taking isizes(i) rows for the (i+1)th process in n parallel 
+   ! threads
    ! this is used to prepare PETSc AIJ type matrix
    !
    ! Note: this can be easily changed to be split according to the
@@ -1603,7 +1604,8 @@ Contains
    subroutine splitCMAT(A,i,np,B,isizes)
    ! automaticly split a matrix A into row submatrices 
    ! and take only the corresponding row submatrice of B
-   ! for the (i+1)th process in n parallel threads
+   ! taking isizes(i) rows for the (i+1)th process in n parallel 
+   ! threads
    ! this is used to prepare PETSc AIJ type matrix
    !
    ! Note: this can be easily changed to be split according to the

@@ -530,7 +530,7 @@ Contains
       end do  ! receivers
 
       if (output_level > 4) then
-	write(0,*) 'Written ',countData,' data values of type ',tx_type_name(iTxt),': ',trim(typeDict(iDt)%name),' to file'
+	write(6,*) 'Written ',countData,' data values of type ',tx_type_name(iTxt),': ',trim(typeDict(iDt)%name),' to file'
       end if
       deallocate(value, error, exist, STAT=istat)
 
@@ -1104,7 +1104,7 @@ Contains
 
         end do READ_DATA_LINE
 
-	write(0,*) 'Read ',countData,' data values of ',trim(tx_type_name(iTxt)),' type ',trim(typeDict(iDt)%name),' from file'
+	write(6,*) 'Read ',countData,' data values of ',trim(tx_type_name(iTxt)),' type ',trim(typeDict(iDt)%name),' from file'
 	call create_dataVectorMTX(nTx,newData)
 	newData%allocated = .TRUE.
 	errorBar = .TRUE.

@@ -49,13 +49,13 @@ F90 = mpif90
 FFLAGS = -O3 -mavx2 -ffree-line-length-none -fPIC 
 #-fallow-argument-mismatch
 # FFLAGS = -g -fbacktrace -fbounds-check -ffpe-trap=zero -ffree-line-length-none
-NCC = /usr/local/cuda/bin/nvcc
+NCC = /usr/local/cuda-12.4/bin/nvcc
 CFLAGS = -O3
 # CFLAGS = -g 
 MPIFLAGS = -cpp -DMPI -DCUDA 
 MODULE = -J $(OBJDIR)
 CUDA_INC = -I/usr/local/cuda/include
-LIBS_PATH = -L/usr/lib64 -L/usr/local/cuda/lib64 
+LIBS_PATH = -L/usr/lib64 -L/usr/local/cuda-12.4/lib64 
 LIBS = -lblas -llapack -ldl -lcudart -lcublas -lcusparse -lnvidia-ml -lcuda -lstdc++
 
 # -------------------End-macro-Defs---------------------------

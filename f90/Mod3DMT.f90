@@ -437,10 +437,10 @@ program Mod3DMT
 
 
 #ifdef MPI
-      write(0,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
+      write(6,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
       call destructor_MPI
 #else
-      write(0,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
+      write(6,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
 #endif
 
 end program

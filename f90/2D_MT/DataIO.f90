@@ -210,7 +210,7 @@ Contains
       end do  ! receivers
 
       if (output_level > 4) then
-        write(0,*) 'Written ',countData,' data values of type ',trim(typeDict(iDt)%name),' to file'
+        write(6,*) 'Written ',countData,' data values of type ',trim(typeDict(iDt)%name),' to file'
       end if
       deallocate(value, error, exist, STAT=istat)
 
@@ -428,7 +428,7 @@ case(Rho_Phs_TM)
         end do                  
            
 end select
-    write(0,*) 'Read ',countData,' data values of type ',trim(typeDict(iDt)%name),' from file'
+    write(6,*) 'Read ',countData,' data values of type ',trim(typeDict(iDt)%name),' from file'
 
     ! Create a single-type data vector from the new values
     call create_dataVectorMTX(nTx,newData)
