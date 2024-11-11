@@ -9,8 +9,6 @@
 ! distribution of CPU power.
 module Main_MPI
 #ifdef MPI
-
-  use math_constants
   use file_units
   use utilities
   use datasens
@@ -85,7 +83,6 @@ End Subroutine Constructor_MPI
 !----------------------------------------------------------------------------
 
 !#######################  split MPI groups   ######################
-
 Subroutine split_MPI_groups(nTx,nPol,group_sizes)
 ! split global MPI_COMM to a series of LOCAL communicators to implement
 ! two-layered (hierarchical) parallelization
@@ -105,7 +102,8 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
 ! so be careful when you use your own setup of groups
      implicit none
      integer, intent(in)    :: nTx, nPol
-     integer, intent(inout) :: group_sizes(nTx*nPol+1) !maximum group needed
+     ! cannot use numbers > nTx*nPol+1
+     integer, intent(inout), pointer, dimension(:)  :: group_sizes 
      ! Local
      integer ::  Ngroup, Ntask, igroup
      integer ::  total_nTx_nPol, resultlen
@@ -114,58 +112,54 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
 ! comment from Naser
 ! Following the same prosedure as the parallelization over periods and 
 ! polarizations, 
-! we would like to have the number of groups equal to nTx*nPol + 1
+! we would like to have the number of groups smaller than nTx*nPol + 1
 ! (this includes the master itself)
 ! The total number of worker is then distributed among these groups.
-!
-! first reset previous branch and local communicators
+! this subroutine is thread-safe
+! 
+     ! check the basic input parameters
+     if (size(group_sizes) .gt. (nTx*nPol+1)) then
+         write(0,*) 'ERROR: number of groups incompatible with the problem' 
+         stop
+     else ! just group according to the input sizes
+         ! start splitting here
+         total_nTx_nPol = nTx*nPol ! total number of independent tasks
+         ! firstly see how many groups we have here
+         Ngroup = size(group_sizes)
+     endif
+     ! now reset previous branch and local communicators
      if (comm_leader .ne. MPI_COMM_NULL) then
          if (comm_leader .ne. MPI_COMM_WORLD) then
              call MPI_COMM_FREE(comm_leader,ierr)
-         end if
-     end if 
+         endif
+     endif 
+     ! free the local communicators 
      if (comm_local .ne. MPI_COMM_NULL) then
          call MPI_COMM_FREE(comm_local,ierr)
-     end if 
-     ! start splitting here
-     total_nTx_nPol = nTx*nPol ! total number of independent tasks
-     ! the simplest idea is to group according to the group_sizes
-     Ngroup = 0
-     ! firstly see how many groups we have here
-     if (group_sizes(1) .ne. 0) then ! group according to size
-         do igroup = 1, total_nTx_nPol + 1 
-             if (group_sizes(igroup) .ne. 0) then 
-                 Ngroup = Ngroup + 1
-             end if
-         end do
-     else
-         ! default mode
-         ! total_nTx_nPol + 1 groups
-         if (number_of_workers .gt. total_nTx_nPol) then 
-             Ngroup = total_nTx_nPol + 1
-         else
+     endif 
+     ! now start to see if we have enough workers 
+     if (number_of_workers .lt. (Ngroup-1)) then 
          ! we do not have enough workers, each one is in its own group now
-             Ngroup = number_of_workers + 1
-         end if
-     end if 
-     allocate(leaders(Ngroup))
-     if (group_sizes(1) .eq. 0) then
-         ! default mode
-         ! master is the only member of group 0
-         group_sizes(1) = 1
-         if (number_of_workers .gt. total_nTx_nPol) then 
-             do igroup = 2, Ngroup    ! automaticly divide the groups evenly
-                 Ntask=igroup-1
-                 group_sizes(igroup) = number_of_workers/(Ngroup-1)
-                 if (Ntask .le. MOD(number_of_workers,Ngroup-1)) then
-                     group_sizes(igroup) = group_sizes(igroup)+1
-                 end if 
-             end do 
+         Ngroup = number_of_workers+1
+         ! re-allocate the groups
+         deallocate(group_sizes)
+         allocate(group_sizes(Ngroup))
+         group_sizes = 1
+         allocate(leaders(Ngroup))
+     else
+         if (sum(group_sizes) .gt. (number_of_workers+1)) then
+         ! see if the sizes are compatiable
+             write(0,*) 'ERROR: grouping incompatible with the workers' 
+             stop
+         else if (group_sizes(1) .ne. 1) then 
+         ! the master should always be by itself 
+             write(0,*) 'ERROR: master group incompatible with the workers' 
+             stop
          else
-             group_sizes(1:number_of_workers+1) = 1
-         end if
-     end if 
-     !
+         ! try allocate the leader group
+             allocate(leaders(Ngroup))
+         endif
+     endif 
      ! start dividing groups accordingly...
      ! master is also treated a leader, of course
      leaders(1) = 0
@@ -191,17 +185,18 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
      call MPI_COMM_SIZE(comm_local, size_local, ierr)
      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 !    for debug
-     ! write(6,100) rank_world, rank_local, igroup, size_local
-100  format("Global rank: ",i4," local rank: ",i4,                      &
+     !if (output_level .ge. 3) then 
+         write(6,100) rank_world, rank_local, igroup, size_local
+100      format("Global rank: ",i4," local rank: ",i4,                      &
     &          " size of group #"  i4, " is ",i4)
+     !endif
      call reset_MPI_leader_group(comm_world, group_world, Ngroup,   &
     &       leaders, comm_leader, group_leader)
      if (rank_local .eq. 0) then
          call MPI_COMM_RANK(comm_leader, rank_leader, ierr)
          call MPI_COMM_SIZE(comm_leader, size_leader, ierr)
      end if 
-
-End Subroutine split_MPI_groups
+end subroutine split_MPI_groups
 !----------------------------------------------------------------------------
 
 !#########################  reset MPI leader group  ###########################
@@ -253,103 +248,135 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
 ! def = 1 - topology-based settings, maps procs from a certain physical node 
 !           in a group - efficient when you have a lot of nodes at service. 
 !           use one entire node (many procs) to calculate one FWD problem
-!           currently through PETSc only. In this case only the leaders
+!           currently through PETSc, or FG only. In this case only the leaders
 !           communicate with the master, or:
-! def = 2 - equal group settings - use a same number of
-!           procs per task - currently through PETSc only. 
+! def = 2 - equal group settings - the idea is to use a same number of
+!           Lprocs per task - let's say we have 3 processes per Tx/pol, 
+!           we will group Nworkers into  Nworkers/3 groups
+!           currently through PETSc or FG only. 
 ! def = 3 - dynamic group settings - dynamicly distribute the
 !           procs to different tasks (consider removing
-!           this) - currently through PETSc only. 
+!           this) - currently through PETSc or FG only. 
      implicit none
      integer, intent(in)                     :: nTx,nPol,comm_current
-     integer, intent(inout)                  :: group_sizes(nTx*nPol+1)
-     double precision, optional, pointer, dimension(:), intent(in) :: walltime
+     integer, intent(inout),pointer,dimension(:)                 :: group_sizes
+     real(kind=prec), optional, pointer, dimension(:), intent(in):: walltime
      ! local variables
      integer                                 :: i,j,k,a_size,nG,nMore,midx
      integer                                 :: nBand,nS,nM,nL,root=0
      real(kind=prec)                         :: time_sort(nTx*nPol)
-     integer                                 :: idx(nTx*nPol), def, ncpu
-     real(kind=prec)                         :: cputime(nTx*nPol),workload
+     integer                                 :: def, ncpu, total, diff
+     integer, allocatable, dimension(:)      :: idx
+     real(kind=prec), pointer, dimension(:)  :: cputime
+     real(kind=prec)                         :: workload
      real(kind=prec)                         :: ratio
-     nG = nPol*nTx
+     integer, pointer, dimension(:)          :: host_sizes
      ! currently just read from the hard-coded preference
      def = para_method
-     if (def.le.1) then ! group according to topography
-         ! this is useful for "production" setups with
-         ! hybrid CPU-GPU calculations
-         if ((rank_world .eq. 0) .and. (output_level .gt. 3)) then
-             write(6,*) ' determine the system topology...'
-             write(6,*) ' and group the processes by physical nodes...'
-         end if
-         ! reset the group_sizes array
-         group_sizes = 0
-         call set_size_with_topology(nTx,nPol,group_sizes)
-         call MPI_BCAST(group_sizes,nG+1,MPI_INTEGER,root,comm_current,ierr)
-         if ((rank_world .eq. 0) .and. (output_level .gt. 3)) then 
-             ! master 
-             write(6,*) 'group sizes are: ', group_sizes
-         end if
-         return
+     ! get the topology array
+     if ((rank_world .eq. 0) .and. (output_level .gt. 2)) then
+         write(6,*) ' determine the system topology...'
+         write(6,*) ' and group the processes by physical nodes...'
      end if
-     ! else --> conventional grouping
+     ! this is useful for "production" setups with
+     ! hybrid CPU-GPU calculations
+     call get_host_topology(nTx,nPol,host_sizes)
+     ! need to firstly decide how many groups do we have 
      if (rank_world.eq.0) then ! the root process determine the grouping
-         if (present(walltime)) then ! dynamicly grouping...
+         ! try to find the slowest groups
+         if (present(walltime).and.(size(walltime).eq.size(group_sizes))) then 
+             ! overide the default settings
              ! calculate the appoximate workload for each group
              ! NOTE: 
              ! here we try to deduce the time supposed to be consumed 
-             ! with one CPU - stored in cputime array
-             ! 
-             idx = (/(i,i=1,nG,1)/)
-             if (size(walltime).eq.nG+1) then
+             ! with one CPU process - stored in cputime array
+             if (walltime(2).eq.-1.0) then 
+                 ! first run
+                 ! procs are divided into equal-sized groups
+                 def = 2 
+             elseif (size(walltime) .lt. nTx*nPol) then
+                 ! no need to do dynamic, not enough groups
+                 def = 0 ! only 1 proc per group
+             else
+                 def = 3 ! dynamic
+                 nG = size(walltime)
+                 allocate(idx(nG))
+                 idx = (/(i,i=1,nG,1)/)
+                 allocate(cputime(nG))
                  ! cputime - unit is core second
-                 do i = 1,nG
-                     cputime(i) = log(2.0+group_sizes(i+1))/log(3.0)
+                 cputime = 0
+                 do i = 2,nG
+                      cputime(i) = log(2.0+group_sizes(i))/log(3.0)
                  end do
-                 cputime = walltime(2:nG+1)*cputime
-                 ! write(6,*) 'previous group_size =', group_sizes(2:nG+1)
-                 ! write(6,*) 'cputime =', cputime
+                 cputime = walltime*cputime
                  ! estimate the unit workload - 
                  call QSort(cputime,idx) ! in ascend order 
                  ! fast <-----------------------> slow
                  ! write(6,*) 'sorted cputime =', cputime
+                 ! total workload
+                 workload=sum(cputime(2:nG))
+                 ! average workload
+                 workload=workload/sum(log(2.0+group_sizes(2:nG))/log(3.0))
              endif
-             ! midx = nG/2
-             ! midtime = walltime(midx) ! median value of walltime
-             if (walltime(2).eq.-1.0) then ! first run...
-                 def = 2 ! procs are divided into equal-sized groups
-             elseif (number_of_workers.le.nG) then ! don't have enough workers
-                 def = 2 ! procs are divided into equal-sized groups
+         endif
+         if (def.eq.0) then 
+             ! just put each one in its own group, default 
+             nG = number_of_workers+1
+         elseif (def.eq.1) then  
+             ! group according to topography - put all procs from one host in 
+             ! a group, useful for GPU 
+             nG = size(host_sizes)
+         elseif (def.eq.2) then  
+             ! equal group, but also consider the topology, i.e. one group 
+             ! should not be distributed to more than one host
+             ! for simplicity, we use groups of 3 for each per/pol
+             if ((number_of_workers/3) .ge. 1) then
+                 nG = ceiling(float(number_of_workers)/3.0) + 1
              else
-                 def = 3 ! procs are divided to dynamic groups for 
-                         ! load balancing
-                 ! for debug
-!                 write(6,*) 'effective cpus =', &
-!    &                     log(2.0+group_sizes(2:nG+1))/log(3.0)
-                 workload = sum(cputime)/sum(log(2.0+group_sizes(2:nG+1))/log(3.0))
+                 ! we don't have that many workers
+                 nG = size(walltime)
              endif
-         end if
-         if (def.eq.2) then ! equally distribute the workers
+         elseif (def.eq.3) then
+             ! dynamic - give more procs to harder jobs
+             ! note this is only possible when nG > number_of_workers+1
+             nG = size(walltime)
+         endif
+     endif
+     ! now distribute the number of groups to everybody
+     call MPI_BCAST(nG, 1, MPI_INTEGER, root, comm_current, ierr)
+     if ((rank_world .eq. 0) .and. (output_level .gt. 2)) then 
+         ! master 
+         write(6,*) 'current grouping strategy is: #', def
+     endif
+     call MPI_BCAST(def, 1, MPI_INTEGER, root, comm_current, ierr)
+     if ((rank_world .eq. 0) .and. (output_level .gt. 3)) then 
+         ! master 
+         write(6,*) 'current group number is: ', nG
+     endif
+     allocate(group_sizes(nG))
+     ! now determine the detailed grouping
+     if (rank_world.eq.0) then ! the root process determine the grouping
+         if (def.eq.0) then ! 1 group for everyone
+             group_sizes = 1
+         elseif (def.eq.1) then ! 1 group for each machine
+             group_sizes = 1 
+             group_sizes(2:nG) = host_sizes(2:nG)
+         elseif (def.eq.2) then ! equally distribute the workers
              ! evenly distribute...
-             a_size = number_of_workers/nG 
+             a_size = number_of_workers/(nG-1)
              ! note that a_size is an integer
              if (a_size.ge.1) then
                  ! we have enough workers for each task 
-                 idx = (/(i,i=1,nG,1)/)
-                 if (present(walltime).and.walltime(2).ne.-1.0) then 
-                     cputime = walltime(2:nG+1)
-                     call QSort(cputime,idx) ! ascend 
-                 endif
-                 nMore = number_of_workers-(nG*a_size) ! number of workers 
+                 nMore = number_of_workers-((nG-1)*a_size) ! number of workers 
                  group_sizes = a_size ! every group gets a few workers...
-                 ! some periods get more (+1) procs
+                 ! some periods (hopefully the longer ones) get more (+1) procs
                  group_sizes(1) = 1
                  do j = nG-nMore+1,nG 
-                     group_sizes(idx(j)+1) = group_sizes(idx(j)+1) + 1 
+                     group_sizes(j) = group_sizes(j) + 1 
                  end do
-             else ! we have few workers than tasks
+             else ! we have fewer workers than tasks
                  ! each task gets one worker 
-                 group_sizes = 0
-                 group_sizes(1:number_of_workers+1) = 1
+                 group_sizes = 1
              endif !asize
          elseif (def.eq.3) then ! dynamic balancing the workers
              group_sizes = 0
@@ -360,6 +387,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              ! write(6,*) 'cputime = ', cputime
              ! write(6,*) 'workload= ', workload
              do i = 1,nG
+                 ! ratio should always larger (or equal) than 1 
                  ratio = cputime(i)/workload
                  ! for debug
                  ! write(6,*) 'group ', idx(i), 'ratio =', ratio
@@ -372,8 +400,9 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  endif
              enddo
              ! now start a bang-bang control procedure
-             ! the idea is always aiming at the slowest tasks
+             ! the idea is always giving more cpus to the slowest tasks
              nMore = number_of_workers - sum(group_sizes(2:nG+1))
+             ! if we happend to come across no extra workers, then go on
              if (nMore.lt.0) then ! we don't have that many workers
                  ! debug 
                  do i = 1,nG
@@ -397,70 +426,68 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                      endif
                  enddo
              endif
+             ! now do a final check of compatibility
+             if (sum(group_sizes(2:nG)).ne.number_of_workers) then
+                 ! throw an error 
+                 write(0,*) 'ERROR: incompatible grouping settings'
+                 write(0,*) 'check your grouping settings'
+                 STOP
+             endif
+             deallocate(cputime)
+             deallocate(idx)
          else
-             write(6,*) 'ERROR: unknown grouping settings'
+             write(0,*) 'ERROR: unknown grouping strategy'
              STOP
-         endif !def = 2
-         ! for debug
-         ! write(6,*) 'now group sizes as follows:',group_sizes 
+         endif !def = 0
+         ! here we also check the host topology
+         ! should avoid splitting a group onto two physical machines
+         if (def.gt.1) then
+             k = 2 !this includes the master group
+             do j = 2,nG
+             ! FIXME: there is a possiblity that one group is larger 
+             ! than the number of procs of a host - should avoid that
+                 total = sum(group_sizes(1:j)) 
+                 if (total .lt. sum(host_sizes(1:k))) then
+                     ! do nothing and continue  
+                 elseif (total .eq. sum(host_sizes(1:k))) then
+                     ! go to the next host
+                     k = k + 1
+                 else ! we have one group spliting into two hosts 
+                     diff = total - sum(host_sizes(1:k))
+                     ! this is kind of brutal
+                     group_sizes(j) = group_sizes(j) - diff
+                     if (host_sizes(j) .le. 0) then
+                         host_sizes(j) = 1
+                         diff = total - sum(host_sizes(1:k-1)) - 1
+                     endif
+                     if ((diff.gt.0).and.(k+1 .gt. size(host_sizes))) then
+                         ! already the last host
+                         ! throw an error
+                         write(0,*) 'ERROR: not enough workers' 
+                     endif
+                     if (diff .gt. host_sizes(k+1)) then
+                         ! group is larger than the next host
+                         group_sizes(j+1) = host_sizes(k+1)
+                     else
+                         group_sizes(j+1) = host_sizes(k+1) + diff
+                     endif
+                     if (j+1 .gt. nG) then
+                         ! already the last group
+                         ! just let it go
+                         exit
+                     endif
+                     ! go to the next host
+                     k = k + 1
+                 endif
+             end do
+         endif
      endif ! rank = 0
-     call MPI_BCAST(group_sizes,nG+1,MPI_INTEGER,root,comm_current,ierr)
+     call MPI_BCAST(group_sizes,nG,MPI_INTEGER,root,comm_current,ierr)
+     ! for debug
+     ! write(6,*) 'current group sizes are as follows:',group_sizes 
+     deallocate(host_sizes)
      return
 end subroutine set_group_sizes
-!----------------------------------------------------------------------------
-
-Subroutine set_size_with_topology(nTx, nPol, group_sizes)
-    ! a silly subroutine to set group sizes according to the hostnames
-    ! the master node is always in group 0
-    ! the other nodes with the same hostname, are grouped togather. 
-    ! e.g. if we have a set-up like this:
-    ! machine1 1 2 3 4 
-    ! machine2 5 6 7 8  
-    ! machine3 9 10    
-    ! the group size will be determined as 1 3 4 2 (4 groups)
-    ! note we didn't use the MPI-3.0 features (MPI_GET/PUT)
-    ! for compatiblity considerations
-     implicit none
-     integer, intent(in)                     :: nTx,nPol
-     integer, intent(inout)                  :: group_sizes(nTx*nPol+1)
-    ! local variables 
-     integer                                 :: nTask, iProc, ierr
-     integer                                 :: current_group, procs_in_group
-     character *(40)                         :: current_host, previous_host
-     nTask = nPol*nTx
-     if (rank_world.eq.0) then ! the root process determines the grouping
-         ! the first group always has a size of 1
-         group_sizes(1) = 1 
-         ! start from the second group (should have least 1 proc)
-         current_group = 2
-         procs_in_group = 1
-         ! receive the host name from all workers
-         call MPI_RECV(previous_host, 40, MPI_CHARACTER, 1,  &
-    &        FROM_WORKER, comm_world, STATUS, ierr)
-         ! loop through all workers
-         do iProc = 2, number_of_workers
-             call MPI_RECV(current_host, 40, MPI_CHARACTER, iProc,  &
-    &            FROM_WORKER, comm_world, STATUS, ierr)
-             if (trim(current_host).eq. trim(previous_host)) then
-                 procs_in_group = procs_in_group + 1
-             else
-                 previous_host = current_host
-                 group_sizes(current_group) = procs_in_group
-                 current_group = current_group + 1
-                 procs_in_group = 1
-             end if
-         end do
-         ! last group 
-         group_sizes(current_group) = procs_in_group
-     else
-         ! workers - send the host name to MASTER
-         call MPI_SEND(hostname_MPI, 40, MPI_CHARACTER, 0,     &
-    &        FROM_WORKER, comm_world, ierr)
-
-     endif
-     return
-end subroutine set_size_with_topology
-
 !########################   Master_Job_Regroup   ############################
 Subroutine Master_Job_Regroup(nTx, nPol, comm)
      implicit none
@@ -483,12 +510,12 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      end if
      call MPI_COMM_SIZE( comm_current, size_current, ierr )
 
-     if (.not.allocated(prev_group_sizes)) then
-         allocate(prev_group_sizes(nTx*nPol+1))
-     elseif (size(prev_group_sizes).ne.nTx*nPol+1) then
-         deallocate(prev_group_sizes)
-         allocate(prev_group_sizes(nTx*nPol+1))
-     endif ! prev_group_sizes(1) = 0
+     ! if (.not.associated(group_sizes)) then
+     !     allocate(group_sizes(nTx*nPol+1))
+     ! elseif (size(group_sizes).ne.nTx*nPol+1) then
+     !     deallocate(group_sizes)
+     !     allocate(group_sizes(nTx*nPol+1))
+     ! endif ! group_sizes(1) = 0
      now = MPI_Wtime()
      time_passed = now - previous_time
      previous_time =  now
@@ -503,9 +530,8 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      enddo
      call gather_runtime(comm_current,time_passed,time_buff)
      !===== add the time_buff variable to test the dynamic load balancer=====!
-     call set_group_sizes(nTx,nPol,comm_world,prev_group_sizes,time_buff)
-     ! write(6,*) 'prev_group_sizes= ', prev_group_sizes
-     call split_MPI_groups(nTx,nPol,prev_group_sizes)
+     call set_group_sizes(nTx,nPol,comm_world,group_sizes,time_buff)
+     call split_MPI_groups(nTx,nPol,group_sizes)
      ! for debug
      ! do i = 1,nTx
      !    do j = 1,nPol
@@ -515,7 +541,7 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      !        endif
      !        write(6,*) 'Tx:', i, 'Pol:', j,  'time elapsed:',            &
      !            time_buff((i-1)*nPol+j+1), 's'
-     !        write(6,*)  prev_group_sizes((i-1)*nPol+j+1), 'process(es) ',&
+     !        write(6,*)  group_sizes((i-1)*nPol+j+1), 'process(es) ',&
      !            'will be used in the next stage.'
      !    end do
      ! end do
@@ -1732,7 +1758,7 @@ Subroutine Worker_Job(sigma,d)
      Integer                                :: eAll_vec_size
      Integer                                :: comm_current, rank_current
      Integer                                :: cpu_only_ranks
-     Integer,allocatable,dimension(:)       :: group_sizes
+     Integer,pointer,dimension(:)           :: group_sizes
      character(20)                          :: which_proc
      character(80)                          :: paramType,previous_message
    
@@ -1829,7 +1855,7 @@ Subroutine Worker_Job(sigma,d)
              end if
              if ((rank_local.eq.0) .or. (para_method.eq.0)) then
                  ! leader prepares the basic data structure
-                 call initSolver(per_index,sigma,grid,e0)
+                 call initSolver(per_index,sigma,grid,e0,size_local)
                  call set_e_soln(pol_index,e0)
                  call fwdSetup(per_index,e0,b0)
              else
@@ -1837,7 +1863,7 @@ Subroutine Worker_Job(sigma,d)
                  iTx = 1
                  call create_solnVector(grid,iTx,e0)
                  call set_e_soln(pol_index,e0)
-                 call zero_rhsVector(b0)
+                 call create_rhsVector(grid,iTx,b0)
              end if
              if (rank_local.ge.cpu_only_ranks) then
                  ! assign the GPU(s) to the last leaders
@@ -1853,6 +1879,8 @@ Subroutine Worker_Job(sigma,d)
              else
 #ifdef PETSC
                  call fwdSolve(per_index,e0,b0,device_id,comm_local) 
+#elif defined(FG)
+                 call fwdSolve(per_index,e0,b0,device_id,comm_local) 
 #else
                  if (rank_local.eq.0) then
                      call fwdSolve(per_index,e0,b0,device_id) 
@@ -1860,7 +1888,7 @@ Subroutine Worker_Job(sigma,d)
                      write(6,'(a12,a18)') node_info, ' hanging around...'
                      write(6,*) ' WARNING: more than enough CPU(s) detected'
                      write(6,*) ' Please consider recompiling with PETSC   '
-                     write(6,*) ' configurations '
+                     write(6,*) ' or FG configurations '
                  endif
 #endif
              end if
@@ -1932,14 +1960,14 @@ Subroutine Worker_Job(sigma,d)
              ! initialize solver  
              if ((rank_local.eq.0) .or. (para_method.eq.0)) then
                  ! leader prepares the basic data structure
-                 call initSolver(per_index,sigma,grid,e0,e,comb) 
+                 call initSolver(per_index,sigma,grid,e0,size_local,e,comb)
                  call get_nPol_MPI(e0)
              else
                  ! worker just fills in some dummy parameters
                  iTx = 1
                  call create_solnVector(grid,iTx,e0)
                  call set_e_soln(pol_index,e0)
-                 call zero_rhsVector(comb)
+                 call create_rhsVector(grid,iTx,comb)
              end if
              if ((rank_local.eq.0) .or. (para_method.eq.0)) then !leader
                  write(6,'(a12,a18,i5,a12)') node_info,' Start Receiving ',&
@@ -1967,8 +1995,8 @@ Subroutine Worker_Job(sigma,d)
                  Call FaceArea(e0%grid, S_F)
                  ! compute linearized data functional(s) : L
                  !call Lrows(e0,sigma,dt,stn_index,L)
-		 ! 2022.10.06, Liu Zhongyin, Add Azimuth
-		 call Lrows(e0,sigma,dt,stn_index,orient,L)
+                 ! 2022.10.06, Liu Zhongyin, Add Azimuth
+                 call Lrows(e0,sigma,dt,stn_index,orient,L)
                  ! compute linearized data functional(s) : Q
                  call Qrows(e0,sigma,dt,stn_index,Qzero,Qreal,Qimag)
                  ! clean up the grid elements stored in GridCalc on the 
@@ -1998,6 +2026,8 @@ Subroutine Worker_Job(sigma,d)
                  else
 #ifdef PETSC
                    call sensSolve(per_index,TRN,e,comb,device_id,comm_local)
+#elif defined(FG)
+                   call sensSolve(per_index,TRN,e,comb,device_id,comm_local)
 #else
                    if (rank_local.eq.0) then
                      call sensSolve(per_index,TRN,e,comb,device_id)
@@ -2005,7 +2035,7 @@ Subroutine Worker_Job(sigma,d)
                      write(6,'(a12,a18)') node_info, ' hanging around...'
                      write(6,*) ' WARNING: more than enough CPU(s) detected'
                      write(6,*) ' Please consider recompiling with PETSC   '
-                     write(6,*) ' configurations '
+                     write(6,*) ' or FG configurations '
                    endif
 #endif
                  end if
@@ -2087,7 +2117,8 @@ Subroutine Worker_Job(sigma,d)
     &                    FROM_MASTER,comm_current, STATUS, ierr)
                      call Unpack_e_para_vec(e0)
                  end do
-                 call initSolverWithOutE0(per_index,sigma,grid,e,comb)   
+                 call initSolverWithOutE0(per_index,sigma,grid,size_local,&
+                     e,comb)
                  write(6,'(a12,a18,i5,a12)') node_info,                   &
     &                ' Finished Receiving ', orginal_nPol, ' from Master'
                  call LmultT(e0,sigma,d%d(per_index),comb)
@@ -2114,6 +2145,8 @@ Subroutine Worker_Job(sigma,d)
              else
 #ifdef PETSC
                  call sensSolve(per_index,TRN,e,comb,device_id,comm_local) 
+#elif defined(FG)
+                 call sensSolve(per_index,TRN,e,comb,device_id,comm_local) 
 #else
                  if (rank_local.eq.0) then 
                      call sensSolve(per_index,TRN,e,comb,device_id)
@@ -2121,7 +2154,7 @@ Subroutine Worker_Job(sigma,d)
                      write(6,'(a12,a18)') node_info, ' hanging around...'
                      write(6,*) ' WARNING: more than enough CPU(s) detected'
                      write(6,*) ' Please consider recompiling with PETSC   '
-                     write(6,*) ' configurations '
+                     write(6,*) ' or FG configurations '
                  end if
 #endif
              end if
@@ -2144,7 +2177,6 @@ Subroutine Worker_Job(sigma,d)
              now = MPI_Wtime()
              time_passed = now - previous_time
              previous_time = now
-
                     
          elseif (trim(worker_job_task%what_to_do) .eq. 'Jmult') then
 
@@ -2165,7 +2197,7 @@ Subroutine Worker_Job(sigma,d)
 
              if ((rank_local.eq.0) .or. (para_method.eq.0)) then
                  ! leader prepares the basic data structure
-                 call initSolver(per_index,sigma,grid,e0,e,comb) 
+                 call initSolver(per_index,sigma,grid,e0,size_local,e,comb)
                  write(6,'(a12,a18,i5,a12)') node_info,                  &
     &                ' Start Receiving    ' , orginal_nPol, ' from Master'
                  do ipol=1,orginal_nPol 
@@ -2198,6 +2230,8 @@ Subroutine Worker_Job(sigma,d)
              else
 #ifdef PETSC
                  call sensSolve(per_index,FWD,e,comb,device_id,comm_local) 
+#elif defined(FG)
+                 call sensSolve(per_index,TRN,e,comb,device_id,comm_local) 
 #else
                  if (rank_local.eq.0) then
                      call sensSolve(per_index,FWD,e,comb,device_id)
@@ -2205,7 +2239,7 @@ Subroutine Worker_Job(sigma,d)
                      write(6,'(a12,a18)') node_info, ' hanging around...'
                      write(6,*) ' WARNING: more than enough CPU(s) detected'
                      write(6,*) ' Please consider recompiling with PETSC   '
-                     write(6,*) ' configurations '
+                     write(6,*) ' or FG configurations '
                  end if
 #endif
              end if
@@ -2397,14 +2431,10 @@ Subroutine Worker_Job(sigma,d)
              ! number of periods and polarizations
              which_per=worker_job_task%per_index
              which_pol=worker_job_task%pol_index
-             allocate(group_sizes(which_per*which_pol+1))
              ! the following commands are always called with comm_world
              call set_group_sizes(which_per,which_pol,comm_world,group_sizes)
              call split_MPI_groups(which_per,which_pol,group_sizes)
              ! for debug
-             ! if (rank_local.eq.0) then
-             !     write(6,*) group_sizes
-             ! end if
              ! write(6,*) 'rank_world= ', rank_world, 'rank_local= ', &
              !     rank_local, 'rank_leader = ', rank_leader
 #if defined(CUDA)
@@ -2470,7 +2500,7 @@ Subroutine Worker_Job(sigma,d)
              if (associated(time_buff)) then 
                  deallocate(time_buff) 
              endif
-             if (allocated(group_sizes)) then 
+             if (associated(group_sizes)) then 
                  deallocate(group_sizes) 
              endif
          elseif (trim(worker_job_task%what_to_do) .eq. 'STOP' ) then

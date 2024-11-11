@@ -68,6 +68,8 @@ logical, save, public   :: PRIMARY_E_FROM_FILE = .false.
    type(cvector), save, private :: E_p         ! Primary field
 public initSolver
 
+public initSolverWithOutE0
+
 !  cleanup/deallocation routines
 public exitSolver
 
@@ -77,6 +79,15 @@ public fwdSolve, sensSolve
 logical, save, private		:: modelDataInitialized = .false.
 logical, save, private		:: BC_from_file_Initialized = .false.
 !  logical, save, private		:: sigmaNotCurrent = .true.
+interface initSolver
+      module procedure initSolver
+      module procedure initMSolver
+end interface 
+
+interface initSolverWithOutE0
+      module procedure initSolverWithOutE0
+      module procedure initMSolverWithOutE0
+end interface 
 
 Contains
 
@@ -190,22 +201,20 @@ end subroutine unpack_BC_from_file
    !   NOTE: e and comb are optional calling arguments;
    !     both should be present if one is
 
-   integer, intent(in)				            :: iTx
-   type(modelParam_t),intent(in), target		:: sigma
+   integer, intent(in)                          :: iTx
+   type(modelParam_t),intent(in), target        :: sigma
    type(grid_t), intent(in), target             :: grid
    !  following structures are initialized
    !	solution vector for forward problem
-   type(solnVector_t), intent(inout)			:: e0
+   type(solnVector_t), intent(inout)            :: e0
    !	solution vector for sensitivity
-   type(solnVector_t), intent(inout), optional	:: e
+   type(solnVector_t), intent(inout), optional  :: e
    !	forcing for sensitivity
    type(rhsVector_t), intent(inout), optional   :: comb
-
    !  local variables
-   integer		:: IER,k
-   character*80 :: gridType
-   logical		:: initForSens,sigmaNotCurrent
-
+   integer                                      :: IER,k
+   character*80                                 :: gridType
+   logical                                      :: initForSens,sigmaNotCurrent
 
    initForSens = present(comb)
 
@@ -233,7 +242,7 @@ end subroutine unpack_BC_from_file
       call ModelDataInit(grid)
       call ModelOperatorSetup()
       modelDataInitialized = .true.
-	  
+  
    !=======================================================================
    !Mar. 13, 2011================================= Use for CSEM Calculation
    !=======================================================================
@@ -277,10 +286,121 @@ end subroutine unpack_BC_from_file
    end if
    ! This needs to be called before solving for a different frequency
    !!!!!!!  BUT AFTER UPDATECOND !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! number of procs
    call UpdateFreq(txDict(iTx)%omega)
-
    end subroutine initSolver
 
+   subroutine initMSolver(iTx,sigma,grid,e0,nproc,e,comb)
+   !   Initializes forward solver for transmitter iTx.
+   !     Idea is to call this before calling fwdSolve or sensSolve,
+   !     in particular before the first solution for each transmitter
+   !     (frequency).  If called for the first time (in a program run,
+   !     or after a call to exitSolver), full initialization
+   !     (after deallocation/cleanup if required) is performed.
+   !
+   !   iTx defines transmitter: for 2D MT, this provides info about
+   !       frequency and TE/TM mode; for 3D frequency and number
+   !       of polarizations
+   !
+   !   This now does all setup (including matrix factorization) for
+   !     the appropriate mode/frequency
+   !   NOTE: e and comb are optional calling arguments;
+   !     both should be present if one is
+
+   integer, intent(in)                          :: iTx
+   type(modelParam_t),intent(in), target        :: sigma
+   type(grid_t), intent(in), target             :: grid
+   !  following structures are initialized
+   !	solution vector for forward problem
+   type(solnVector_t), intent(inout)            :: e0
+   !   number of procs
+   integer                                      :: nproc
+   !	solution vector for sensitivity
+   type(solnVector_t), intent(inout), optional  :: e
+   !	forcing for sensitivity
+   type(rhsVector_t), intent(inout), optional   :: comb
+   !  local variables
+   integer                                      :: IER,k
+   character*80                                 :: gridType
+   logical                                      :: initForSens,sigmaNotCurrent
+
+   initForSens = present(comb)
+
+   !  allocate for background solution
+   call create_solnVector(grid,iTx,e0)
+
+   if(initForSens) then
+      !  allocate for sensitivity solution, RHS - same for all TX types
+      !  assuming here that we don't use sparse storage ... we could!
+      call create_solnVector(grid,iTx,e)
+      comb%nonzero_source = .true.
+      comb%sparse_source = .false.
+      comb%nonzero_bc = .false.
+      call create_rhsVector(grid,iTx,comb)
+!      do k = 1,comb%nPol
+!        comb%b(k)%sparse_Source = .false.
+!        comb%b(k)%adj = ''
+!        !  using all this information, reallocate storage for each polarization
+!        call create_RHS(grid,iTx,comb%b(k))
+!      enddo
+   endif
+
+   if(.NOT.modelDataInitialized) then
+   !   Initialize modelData, setup model operators
+      call ModelDataInit(grid)
+      call ModelOperatorSetup()
+      modelDataInitialized = .true.
+  
+   !=======================================================================
+   !Mar. 13, 2011================================= Use for CSEM Calculation
+   !=======================================================================
+   !  call setPrimaryCond(sigma, .true.) ! Originally created by Aihua;
+   ! This subroutine can create the primary model by averaging Sigma
+   ! or read it from file. If the second argument is true, this routine
+   ! will read Primary model from file.
+   endif
+   !if (txDict(iTx)%Tx_type=='CSEM') then	
+   !   xTx1D = txDict(iTx)%xyzTx(1)
+   !   yTx1D = txDict(iTx)%xyzTx(2)   
+   !   Call set1DModel(sigma,xTx1D,yTx1D)
+   !end if
+   
+
+!    the following needs work ... want to avoid reinitializing
+!     operator coefficients when conductivity does not change;
+!     need to have a way to reset sigmaNotCurrent to false when
+!     conductivity changes (one idea: assign a random number whenever
+!     a conductivity parameter is modified (by any of the routines in
+!     module ModelSpace); store this in the modelOperator module (which
+!     is where updateCond sits) and have updateCond compare the random key
+!     with what is stored)
+!  if(sigmaNotCurrent) then
+       call updateCond(sigma)
+!      sigmaNotCurrent = .false.
+!   endif
+
+   if (txDict(iTx)%Tx_type=='SFF') then
+      ! compute sigma-sigma1D for the source... NOT PHYSICAL!
+      !Call linComb_modelParam(ONE,sigma,MinusONE,sigmaPrimary,sigmaTemp)
+      ! sigmaTemp is the anomalous conductivity, map it onto edges
+      !Call ModelParamToEdge(sigmaTemp,condAnomaly)
+      ! sigmaTemp is the anomalous conductivity, map it onto edges
+      Call ModelParamToEdge(sigma,edgeCond)
+      Call ModelParamToEdge(sigmaPrimary,condAnomaly)
+      ! compute sigma-sigma1D for the source... NOT PHYSICAL!
+      Call linComb_rvector(ONE,edgeCond,MinusONE,condAnomaly,condAnomaly)
+
+      write(0,'(a35,3i5,a2)') 'Conductivity anomaly dimensions: [',condAnomaly%nx,condAnomaly%ny,condAnomaly%nz,' ]'
+   end if
+   ! This needs to be called before solving for a different frequency
+   !!!!!!!  BUT AFTER UPDATECOND !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   ! number of procs
+   if (nproc.gt.1) then
+       call UpdateFreq(txDict(iTx)%omega, nproc)
+   else
+       call UpdateFreq(txDict(iTx)%omega)
+   endif
+   end subroutine initMSolver
    !**********************************************************************
    subroutine initSolverWithOutE0(iTx,sigma,grid,e,comb)
    !   Initializes forward solver for transmitter iTx.
@@ -301,12 +421,12 @@ end subroutine unpack_BC_from_file
    !   NOTE: e and comb are optional calling arguments;
    !     both should be present if one is
 
-   integer, intent(in)				            :: iTx
-   type(modelParam_t),intent(in), target		:: sigma
+   integer, intent(in)                          :: iTx
+   type(modelParam_t),intent(in), target        :: sigma
    type(grid_t), intent(in), target             :: grid
    !  following structures are initialized
    !	solution vector for sensitivity
-   type(solnVector_t), intent(inout), optional	:: e
+   type(solnVector_t), intent(inout), optional  :: e
    !	forcing for sensitivity
    type(rhsVector_t), intent(inout), optional   :: comb
 
@@ -342,7 +462,6 @@ end subroutine unpack_BC_from_file
       call ModelDataInit(grid)
       call ModelOperatorSetup()
       modelDataInitialized = .true.
-	  
    !=======================================================================
    !Mar. 13, 2011================================= Use for CSEM Calculation
    !=======================================================================
@@ -389,6 +508,117 @@ end subroutine unpack_BC_from_file
    call UpdateFreq(txDict(iTx)%omega)
    end subroutine initSolverWithOutE0
 
+   subroutine initMSolverWithOutE0(iTx,sigma,grid,nproc,e,comb)
+   !   Initializes forward solver for transmitter iTx.
+   !     but without initializing the e0 
+   ! 
+   !     Idea is to call this before calling fwdSolve or sensSolve,
+   !     in particular before the first solution for each transmitter
+   !     (frequency).  If called for the first time (in a program run,
+   !     or after a call to exitSolver), full initialization
+   !     (after deallocation/cleanup if required) is performed.
+   !
+   !   iTx defines transmitter: for 2D MT, this provides info about
+   !       frequency and TE/TM mode; for 3D frequency and number
+   !       of polarizations
+   !
+   !   This now does all setup (including matrix factorization) for
+   !     the appropriate mode/frequency
+   !   NOTE: e and comb are optional calling arguments;
+   !     both should be present if one is
+
+   integer, intent(in)                          :: iTx
+   type(modelParam_t),intent(in), target        :: sigma
+   type(grid_t), intent(in), target             :: grid
+   !   number of procs
+   integer                                      :: nproc
+   !  following structures are initialized
+   !	solution vector for sensitivity
+   type(solnVector_t), intent(inout), optional  :: e
+   !	forcing for sensitivity
+   type(rhsVector_t), intent(inout), optional   :: comb
+
+   !  local variables
+   integer		:: IER,k
+   character*80 :: gridType
+   logical		:: initForSens,sigmaNotCurrent
+
+
+   initForSens = present(comb)
+
+   !  allocate for background solution
+   ! call create_solnVector(grid,iTx,e0)
+
+   if(initForSens) then
+      !  allocate for sensitivity solution, RHS - same for all TX types
+      !  assuming here that we don't use sparse storage ... we could!
+      call create_solnVector(grid,iTx,e)
+      comb%nonzero_source = .true.
+      comb%sparse_source = .false.
+      comb%nonzero_bc = .false.
+      call create_rhsVector(grid,iTx,comb)
+!      do k = 1,comb%nPol
+!        comb%b(k)%sparse_Source = .false.
+!        comb%b(k)%adj = ''
+!        !  using all this information, reallocate storage for each polarization
+!        call create_RHS(grid,iTx,comb%b(k))
+!      enddo
+   endif
+
+   if(.NOT.modelDataInitialized) then
+   !   Initialize modelData, setup model operators
+      call ModelDataInit(grid)
+      call ModelOperatorSetup()
+      modelDataInitialized = .true.
+   !=======================================================================
+   !Mar. 13, 2011================================= Use for CSEM Calculation
+   !=======================================================================
+   !  call setPrimaryCond(sigma, .true.) ! Originally created by Aihua;
+   ! This subroutine can create the primary model by averaging Sigma
+   ! or read it from file. If the second argument is true, this routine
+   ! will read Primary model from file.
+   endif
+   !if (txDict(iTx)%Tx_type=='CSEM') then	
+   !   xTx1D = txDict(iTx)%xyzTx(1)
+   !   yTx1D = txDict(iTx)%xyzTx(2)   
+   !   Call set1DModel(sigma,xTx1D,yTx1D)
+   !end if
+   
+
+!    the following needs work ... want to avoid reinitializing
+!     operator coefficients when conductivity does not change;
+!     need to have a way to reset sigmaNotCurrent to false when
+!     conductivity changes (one idea: assign a random number whenever
+!     a conductivity parameter is modified (by any of the routines in
+!     module ModelSpace); store this in the modelOperator module (which
+!     is where updateCond sits) and have updateCond compare the random key
+!     with what is stored)
+!  if(sigmaNotCurrent) then
+       call updateCond(sigma)
+!      sigmaNotCurrent = .false.
+!   endif
+
+   if (txDict(iTx)%Tx_type=='SFF') then
+      ! compute sigma-sigma1D for the source... NOT PHYSICAL!
+      !Call linComb_modelParam(ONE,sigma,MinusONE,sigmaPrimary,sigmaTemp)
+      ! sigmaTemp is the anomalous conductivity, map it onto edges
+      !Call ModelParamToEdge(sigmaTemp,condAnomaly)
+      ! sigmaTemp is the anomalous conductivity, map it onto edges
+      Call ModelParamToEdge(sigma,edgeCond)
+      Call ModelParamToEdge(sigmaPrimary,condAnomaly)
+      ! compute sigma-sigma1D for the source... NOT PHYSICAL!
+      Call linComb_rvector(ONE,edgeCond,MinusONE,condAnomaly,condAnomaly)
+
+      write(0,'(a35,3i5,a2)') 'Conductivity anomaly dimensions: [',condAnomaly%nx,condAnomaly%ny,condAnomaly%nz,' ]'
+   end if
+   ! This needs to be called before solving for a different frequency
+   !!!!!!!  BUT AFTER UPDATECOND !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+   if (nproc.gt.1) then
+       call UpdateFreq(txDict(iTx)%omega, nproc)
+   else
+       call UpdateFreq(txDict(iTx)%omega)
+   endif
+   end subroutine initMSolverWithOutE0
    !**********************************************************************
    subroutine exitSolver(e0,e,comb)
    !   deallocates b0, comb, e0, e and solver arrays

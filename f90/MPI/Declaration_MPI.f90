@@ -1,5 +1,6 @@
 
 Module Declaration_MPI
+     use math_constants
 #ifdef MPI
 ! include 'mpif.h'
      use mpi
@@ -37,26 +38,37 @@ integer        :: hostname_len, ngroup
 ! 2 : equal grouping, n procs per each fwd/trn task
 ! 3 : dynamic grouping, variable number of procs per each fwd/trn task, 
 !     for load-balancing
+#if defined(FG)
+integer        :: para_method = 2
+#elif defined(PETSC) 
+integer        :: para_method = 2
+#else
 integer        :: para_method = 0
+#endif
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
 #if defined(CUDA)
    integer(c_int),target  :: size_gpu = 0 
-   type(c_ptr)            :: size_gpuPtr
+   integer(c_int),target  :: size_gpu_total = 0 
+   type(c_ptr)            :: size_gpuPtr = 0
+   type(c_ptr)            :: size_gpu_totalPtr = 0
 #elif defined(HIP)
    integer(c_int),target  :: size_gpu = 0 
-   type(c_ptr)            :: size_gpuPtr
+   integer(c_int),target  :: size_gpu_total = 0 
+   type(c_ptr)            :: size_gpuPtr = 0
+   type(c_ptr)            :: size_gpu_totalPtr = 0
 #else
    integer                :: size_gpu = 0 
+   integer                :: size_gpu_total = 0 
 #endif
 ! change the cpus_per_gpu if you want to use more than one cpus to 
 ! feed one gpu, modify at your own risk! 
-integer        :: cpus_per_gpu = 3 ! hard coded here 
-integer        :: device_id = -1
+integer                   :: cpus_per_gpu = 3 ! hard coded here 
+integer                   :: device_id = -1
 ! this is used to store the timer of each mpi sub-process
-DOUBLE PRECISION    :: previous_time
-integer, allocatable, dimension(:) :: prev_group_sizes
+DOUBLE PRECISION          :: previous_time
+integer, pointer, dimension(:) :: group_sizes
 
 !********************************************************************
 ! Parameters required to create an MPI derived data types.
@@ -229,9 +241,9 @@ subroutine gather_runtime(comm_current,time_passed,time_buff)
 ! parallel efficiency 
 ! collective on comm_current
       implicit none
-      double precision,intent(in)                :: time_passed
+      real(kind=prec), intent(in)                :: time_passed
       integer,intent(in)                         :: comm_current
-      double precision,intent(out),pointer,dimension(:)   :: time_buff
+      real(kind=prec), intent(out),pointer,dimension(:)   :: time_buff
       integer                                    :: current_rank
       integer                                    :: current_size,root=0
       call MPI_COMM_RANK(comm_current,current_rank,ierr)
@@ -241,6 +253,88 @@ subroutine gather_runtime(comm_current,time_passed,time_buff)
      &     MPI_DOUBLE_PRECISION, root,comm_current,ierr) 
       return
 end subroutine gather_runtime
+
+subroutine get_host_topology(nTx, nPol, host_sizes)
+    ! a silly subroutine to set get topology according to the hostnames
+    ! the worker procs with the same hostname, are grouped togather. 
+    ! e.g. if we have a set-up like this:
+    ! machine1 0 1 2 3 
+    ! machine2 4 5 6 7  
+    ! machine3 8 9   
+    ! here we consider the master should be in a seperate host, so
+    ! the host topology size will be determined as 1 3 4 2 (1+3 hosts)
+    ! collective on comm_world
+    ! note we didn't use the MPI-3.0 features (MPI_GET/PUT)
+    ! for compatiblity considerations
+    ! NOTE: one should only use this with comm_world
+     implicit none
+     integer, intent(in)                        :: nTx,nPol
+     integer, intent(out),pointer,dimension(:)  :: host_sizes
+    ! local variables 
+     integer                                 :: temp_sizes(nTx*nPol+1)
+     integer                                 :: iProc, ierr, nHost
+     integer                                 :: current_host, procs_in_host
+     character *(40)                         :: crnt_hostname, prev_hostname
+
+     ! of course we cannot have more hosts than the number of workers
+     if (rank_world.eq.0) then ! the root process determines the grouping
+         ! the first group always has a size of 1
+         temp_sizes(1) = 1 
+         ! start from the second group (should have least 1 proc)
+         current_host = 2
+         procs_in_host = 1
+         ! receive the host name from all workers
+         call MPI_RECV(prev_hostname, 40, MPI_CHARACTER, 1,  &
+    &        FROM_WORKER, comm_world, STATUS, ierr)
+         ! loop through all workers
+         do iProc = 2, number_of_workers
+             call MPI_RECV(crnt_hostname, 40, MPI_CHARACTER, iProc,  &
+    &            FROM_WORKER, comm_world, STATUS, ierr)
+             if (trim(crnt_hostname).eq. trim(prev_hostname)) then
+                 procs_in_host = procs_in_host + 1
+             else
+                 prev_hostname = crnt_hostname
+                 temp_sizes(current_host) = procs_in_host
+                 current_host = current_host + 1
+                 procs_in_host = 1
+             end if
+         end do
+         ! last host
+         temp_sizes(current_host) = procs_in_host
+         ! now allocate the new 
+         nHost = current_host
+         call MPI_BCAST(nHost, 1, MPI_INTEGER, 0, comm_world, ierr)
+         allocate(host_sizes(nHost))
+         host_sizes = temp_sizes(1:nHost)
+     else
+         ! workers - only send the host name to MASTER
+         call MPI_SEND(hostname_MPI, 40, MPI_CHARACTER, 0,     &
+    &        FROM_WORKER, comm_world, ierr)
+         call MPI_BCAST(nHost, 1, MPI_INTEGER, 0, comm_world, ierr)
+         allocate(host_sizes(nHost))
+     endif
+     call MPI_BCAST(host_sizes,nHost,MPI_INTEGER, 0,comm_world,ierr)
+end subroutine get_host_topology
+
+! stub, reserved for multi-gpu
+! I am not yet sure how to convert the current, ad-hoc setup to a 
+! more reasonale configuration
+! subroutine get_gpu_affinity(host_sizes, gpu_sizes, comm_current)
+!      ! a silly subroutine to get to know the number of gpus in 
+!      ! each group/host - useful for multi-machine, multi-card setup
+!      integer, intent(in),pointer,dimension(:)     :: host_sizes
+!      integer, intent(inout),pointer,dimension(:)  :: gpu_sizes
+!      integer, intent(in)                          :: comm_current
+!      ! local variables
+!      integer                                      :: size_gpu
+!      integer                                      :: nHost
+!      nHost = size(host_sizes)
+!      size_gpuPtr = c_loc(size_gpu) ! kind of crude here
+!      ierr = hipGetDeviceCount(size_gpuPtr)
+!      if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
+!          write(6,*) 'number of GPU devices = ', size_gpu, 'err = ', ierr
+!      endif
+! end subroutine get_gpu_affinity
 
 #endif
 

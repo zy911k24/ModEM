@@ -1132,4 +1132,146 @@ Contains
    deallocate(Eearth)
    deallocate(Eair)
    end subroutine airNIndex
+
+   !*************************************************************************
+   ! * calculate the parallel data structure distribution among the processes
+   ! * basically this is trying to figure out how you are going to split 
+   ! * a matrix into a number of row-matrices to distribute onto different 
+   ! * processes
+   ! *
+   ! * the preconditioner (Diagnol Block ILU) will always divide the 
+   ! * matrix into 3 blocks, according to the iedges(x,y,z) length
+   ! * 
+   ! * the basic idea is to assign these 3 blocks to different processors
+   ! * 
+   ! * a new feature in petsc is more than one processor can be assigned 
+   ! * for one single block
+   ! *
+   ! * the actual partition of row-matrices should follow this rule
+   ! * for example: 
+   ! * 1 processor -> 3 blocks
+   ! * block x p1 
+   ! * block y p1
+   ! * block z p1
+   ! * 2 processors -> 3 blocks
+   ! * block x p1 
+   ! * block y p1,p2
+   ! * block z p2
+   ! * 3 processors -> 3 blocks
+   ! * block x p1 
+   ! * block y p2
+   ! * block z p3
+   ! * 4 processors -> 3 blocks
+   ! * block x p1
+   ! * block y p2,p3
+   ! * block z p4
+   ! * 5 processors -> 3 blocks
+   ! * block x p1 
+   ! * block y p2,p3
+   ! * block z p4,p5
+   ! * 6 processors -> 3 blocks
+   ! * block x p1,p2 
+   ! * block y p3,p4
+   ! * block z p5,p6
+   ! * 7 processors -> 3 blocks
+   ! * block x p1,p2 
+   ! * block y p3,p4,p5
+   ! * block z p6,p7
+   !......
+   subroutine calc_dist(Nproc,iedges,isizes,isubs)
+     implicit none
+     integer,intent(in)                            :: Nproc
+     integer,intent(in), dimension(3)              :: iedges
+     integer,intent(out), pointer,dimension(:)     :: isizes
+     integer,intent(out), pointer,dimension(:)     :: isubs
+     ! local variables
+     integer                                       :: Nsub=1
+     integer                                       :: i,j,k
+     allocate(isizes(Nproc))
+
+     if (Nproc.eq. 1) then ! 1 proc, 3 sub blocks
+         k = 0
+         allocate(isubs(3*Nproc))
+         Nsub = 1
+         do i = 1,3  ! loop through x/y/z
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs(k+j) = iedges(i)/Nsub
+             end do
+             isubs((k+Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+             k = k + Nsub
+         end do
+         isizes = sum(iedges)
+    ! else if (Nproc.eq.2) then ! 2 proc, 3+3 sub blocks
+    !     Nsub = 2
+    !     allocate(isubs(3*Nsub))
+    !     do i= 1,3 ! loop for x,y,z
+    !         do j = 1,Nsub !loop through these sub blocks (if any)
+    !             isubs((i-1)*Nsub+j) = iedges(i)/Nsub
+    !         end do
+    !         isubs((i*Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+    !     end do
+    !     isizes(1) = sum(isubs(1:3))
+    !     isizes(2) = sum(isubs(4:6))
+     else if (Nproc.eq.2) then ! 2 proc, 1+2 sub blocks
+         Nsub = 1
+         allocate(isubs(3*Nsub))
+         do i= 1,3
+            do j = 1,Nsub !loop through these sub blocks (if any)
+                  isubs((i-1)*Nsub+j) = iedges(i)/Nsub
+              end do
+            isubs((i*Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+         end do
+         isizes(1) = isubs(1)
+         isizes(2) = sum(isubs(2:3))
+     else if (MOD(Nproc,3).eq.0) then ! 3 6 9...
+         ! each side of edges (x,y,z) has Nsub blocks
+         ! each process has exactly 1 block
+         allocate(isubs(Nproc))
+         Nsub = Nproc/3
+         do i = 1,3  ! loop through x/y/z
+             do j = 1,Nsub-1 !loop through these sub blocks (if any)
+                 isubs((i-1)*Nsub+j) = iedges(i)/Nsub
+             end do
+             isubs(i*Nsub) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+         end do
+         isizes = isubs
+
+     elseif (MOD(Nproc,3).eq.1) then ! 4 7 10...
+         ! x edges have Nsub+1 processes, while y and z have Nsub blocks
+         k = 0
+         allocate(isubs(Nproc))
+         do i = 1,3  ! loop through x/y/z
+             if (i .eq. 1) then ! x
+                 Nsub = Nproc/3+1 
+             else
+                 Nsub = Nproc/3 
+             endif
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs(k+j) = iedges(i)/Nsub
+             end do
+             isubs((k+Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+             k = k + Nsub
+         end do
+         isizes = isubs
+
+     elseif (MOD(Nproc,3).eq.2) then ! 5 8 11...
+         ! each process has exactly one sub block
+         ! x and y have Nsub+1 processes, while z has Nsub processes
+         k = 0
+         allocate(isubs(Nproc))
+         do i = 1,3  ! loop through x/y/z
+             if ((i .eq. 1).or.(i.eq.3)) then ! x
+                 Nsub = Nproc/3+1 
+             else
+                 Nsub = Nproc/3 
+             endif
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs(k+j) = iedges(i)/Nsub
+             end do
+             isubs((k+Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+             k = k + Nsub
+         end do
+         isizes = isubs
+     endif
+   end subroutine calc_dist
 end module modelOperator3D

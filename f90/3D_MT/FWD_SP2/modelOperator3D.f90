@@ -38,11 +38,14 @@ module modelOperator3D
                                          !  interior/interior and int./bdry
    real(kind=prec),allocatable  :: VomegaMuSig(:) !  diagonal component of
                                                   !  symetrized operator
+   real(kind=prec),allocatable  :: VomegaMuSigLoc(:) ! local equivalent
    type(spMatCSR_Cmplx)         :: L, U  !   upper and lower triangular
    type(spMatCSR_Cmplx)         :: LH,UH !  matrices for preconditioner
                                          !   based on interior edges only
                                          !   LH, UH are Hermitian Conjugate
                                          !   transpose of L and  U
+   type(spMatCSR_Cmplx)         :: Llocal, Ulocal    !  local equivalent
+   type(spMatCSR_Cmplx)         :: LHlocal, UHlocal  !  local equivalent
    !   used for modified system equation
    type(spMatCSR_Real)          :: AAii  !  sparse matrix representation
                                          !  of the modified system equation
@@ -50,6 +53,7 @@ module modelOperator3D
    type(spMatCSR_Real)          :: GDii  !  save only the Earth part of GD
                                          !  as the Air part should be zero?
                                          !  int.-int.
+   type(spMatCSR_Real)          :: Alocal!  local equivalent
    !   divergence correction operators
    !   these are (should) not allocated in modified system of equations.
    type(spMatCSR_Real)         ::  Gai   ! grad: all nodes -> inner edges 
@@ -62,7 +66,8 @@ module modelOperator3D
 
    public       :: ModelDataInit,ModelDataCleanup,UpdateFreq,   &
                    UpdateCond, UpdateFreqCond, DivCgrad, Grad, Div, &
-                   DivC , Mult_Aii, Mult_Aib, PC_Lsolve, PC_Usolve, DivCgradILU
+                   DivC , Mult_Aii, Mult_Aib, PC_Lsolve, PC_Usolve, &
+                   Mult_Alcl, PC_LsolveLcl, PC_UsolveLcl, DivCgradILU
 
 Contains
 
@@ -110,7 +115,7 @@ Contains
       ! set a default omega
       omega = 0.0
       !  specific model operators
-      call CurlCurlSetup()
+      call CurlCurlSetUp()
       ! uncomment the following line to do divergence correction in CCGD 
       ! call DivCorInit()
 
@@ -152,12 +157,17 @@ Contains
    end subroutine ModelDataCleanUp
    ! **************************************************************************
    ! * UpdateFreq updates the frequency that is currently being use
-   subroutine UpdateFreq(inOmega)
+   subroutine UpdateFreq(inOmega, nproc)
 
       real (kind=prec), intent (in)             :: inOmega
+      integer, optional                         :: nproc
 
       call updateOmegaMuSig(inOmega)
-      call PC_setup()
+      if (present(nproc)) then
+          call PC_setup(nproc)
+      else
+          call PC_setup()
+      endif
       ! uncomment the following line to do divergence correction in CCGD 
       ! call DivCorSetup()
 
@@ -213,14 +223,19 @@ Contains
    end subroutine UpdateCond  ! UpdateCond
    ! **************************************************************************
    ! * UpdateFreqCond updates fequency and conductivity  on edges
-   subroutine UpdateFreqCond(inOmega,CondParam)
+   subroutine UpdateFreqCond(inOmega,CondParam,nproc)
 
       implicit none
       type(modelParam_t), intent(in)      :: CondParam      ! input conductivity
       real (kind=prec), intent (in)       :: inOmega
+      integer, optional                   :: nproc
 
       call updateOmegaMuSig(inOmega,CondParam)
-      call PC_setup()
+      if (present(nproc)) then
+          call PC_setup(nproc)
+      else
+          call PC_setup()
+      endif
       ! uncomment the following line to do divergence correction in CCGD 
       ! call DivCorSetup()
 
@@ -410,6 +425,9 @@ Contains
       call deall_spMatCSR(CCib)
       call deall_spMatCSR(AAii)
       call deall_spMatCSR(GDii)
+      if (Alocal%allocated) then
+          call deall_spMatCSR(Alocal)
+      endif
    end subroutine
 !*****************************************************************************
    subroutine Mult_Aii(x,adjt,y)
@@ -431,6 +449,33 @@ Contains
       else
          call RMATxCVEC(AAii,x,y)
          y = y+cmplx(0,1,8)*ISIGN*VomegaMuSig*x
+      endif
+
+   end subroutine
+!*****************************************************************************
+   subroutine Mult_Alcl(x,xloc,adjt,y)
+   !   implement the sparse matrix multiply for curl-curl operator
+   !   for interior elements
+   !   local version for distributed matrices and vectors
+   !   for fine(r) grain parallel computation
+   !   assume output y is already allocated
+   !   local version for parallel calculation
+   complex(kind=prec),intent(in), dimension(:)       :: x
+   complex(kind=prec),intent(in), dimension(:)       :: xloc
+   complex(kind=prec),intent(inout), dimension(:)    :: y
+   logical                                           :: adjt
+   ! local variable
+   type(spMatCSR_Real)                               :: Alocalt
+
+      if(adjt) then
+         ! write(6,*)  'A^T x = y called here!'
+         call RMATtrans(Alocal,Alocalt)
+         call RMATxCVEC(Alocalt,x,y)
+         call deall_spMATcsr(Alocalt)
+         y = y-cmplx(0,1,8)*ISIGN*VomegaMuSigLoc*xloc
+      else
+         call RMATxCVEC(Alocal,x,y)
+         y = y+cmplx(0,1,8)*ISIGN*VomegaMuSigLoc*xloc
       endif
 
    end subroutine
@@ -509,15 +554,17 @@ Contains
       return
    end subroutine
 !*****************************************************************************
-   subroutine PC_setup()
-   !   block DILU preconditioner for CC operator, should be
-   !    comparable to what is implemented for matrix-free verson
+   subroutine PC_setupBILU()
+   !   block DILU preconditioner (or BILU) for CC operator, should be 
+   !   comparable to what is implemented for matrix-free verson
 
        implicit none
+       ! local variables
        integer, allocatable, dimension(:)               :: ix,iy,iz
        real(kind=prec), allocatable, dimension(:)       :: d
        integer                                          :: nx,ny,na,nz,fid
        integer                                          :: nEdge,nEdgeT,n,j
+       integer                                          :: nb
        type(spMatCSR_real)                ::  CCxx
        type(spMatCSR_Cmplx)               ::  Axx
        type(spMatCSR_Cmplx),pointer       ::  Lblk(:),Ublk(:)
@@ -553,6 +600,7 @@ Contains
       allocate(d(n))
       d = VomegaMuSig(ix)
       call CSR_R2Cdiag(CCxx,d,Axx)
+      ! asymmetric version of Dilu
       call Dilu_Cmplx_AS(Axx,Lblk(1),Ublk(1))
       deallocate(d)
 
@@ -609,6 +657,103 @@ Contains
       deallocate(Ublk)
       return
    end subroutine
+
+!*****************************************************************************
+   subroutine PC_setup(nproc)
+   !   Multi-block DILU preconditioner for CC operator, should be comparable 
+   !   to what is implemented for matrix-free verson
+   !   here generalized to be break the original matrix into n diagonal
+   !   blocks, to be used in fine-grained parallel methods
+   !   
+   !   this version is different from the default DILU where the matrix always 
+   !   break into 3 sub-blocks (corresponding to x, y and z edges)  
+   !
+   !   still, nblock = 3 for default
+   !   note that the efficiency of MILU preconditioner detoriates with the 
+   !   increase of nblock (personally I don't recommend a nblock > 9)
+
+       implicit none
+       integer, optional, intent(in)                    :: nproc
+       ! local variables
+       integer, allocatable, dimension(:)               :: idx
+       real(kind=prec), allocatable, dimension(:)       :: d
+       integer                                          :: nx,ny,na,nz,fid
+       integer                                          :: nEdge,nEdgeT,n,j
+       integer                                          :: nb,np,ib
+       integer                                          :: iedges(3)
+       integer, dimension(:), pointer     ::  isizes, isubs
+       type(spMatCSR_real)                ::  CCxx
+       type(spMatCSR_Cmplx)               ::  Axx
+       type(spMatCSR_Cmplx),pointer       ::  Lblk(:),Ublk(:)
+       character(80)                      ::  cfile
+
+       if (present(nproc)) then
+           np = nproc
+       else
+           np = 1
+       endif
+
+      !   find indicies of x, y, z elements
+      call setLimits(XEDGE,mGrid,nx,ny,nz)
+      nEdge = nx*(ny-2)*(nz-2)
+      iedges(1) = nEdge
+
+      nEdgeT = nEdgeT+nEdge
+      call setLimits(YEDGE,mGrid,nx,ny,nz)
+      nEdge = (nx-2)*ny*(nz-2)
+      iedges(2) = nEdge
+
+      nEdgeT = nEdgeT+nEdge
+      call setLimits(ZEDGE,mGrid,nx,ny,nz)
+      nEdge = (nx-2)*(ny-2)*nz
+      iedges(3) = nEdge
+
+      ! now find out how we should divide the blocks (see the description
+      ! of the calc_dist for more details on the strategy)
+      ! isubs stores the size arry of each sub-block 
+      call calc_dist(np,iedges,isizes,isubs)
+      ! get the number of blocks
+      nb = size(isizes)
+    !    construct submatrices for x, y, z components
+      allocate(Lblk(nb))
+      allocate(Ublk(nb))
+      nEdgeT = 0
+      ! now loop through all the nb blocks
+      do ib=1,nb
+          nEdge = isizes(ib)
+          ! write(6,*) 'current block size is ', nEdge
+          allocate(idx(nEdge))
+          !   this generates indicies (in list of interior edges)
+          !   for each sub-block
+          idx = (/ (j,j=nEdgeT+1,nEdgeT+nEdge) /)
+          nEdgeT = nEdgeT + nEdge
+          call SubMatrix_Real(AAii,idx,idx,CCxx)
+          allocate(d(nEdge))
+          d = VomegaMuSig(idx)
+          deallocate(idx)
+          call CSR_R2Cdiag(CCxx,d,Axx)
+          ! asymmetric version of Dilu
+          call Dilu_Cmplx_AS(Axx,Lblk(ib),Ublk(ib))
+          ! do the cleaning works
+          deallocate(d)
+          call deall_spMatCSR(CCxx)
+          call deall_spMatCSR(Axx)
+      enddo
+   !  could merge into a single LT and UT matrix, or solve systems
+   !      individually
+      call BlkDiag_Cmplx(Lblk,L)
+      call BlkDiag_Cmplx(Ublk,U)
+      call CMATtrans(L,LH)
+      call CMATtrans(U,UH)
+      do ib=1,nb
+          call deall_spMatCSR(Lblk(ib))
+          call deall_spMatCSR(Ublk(ib))
+      enddo
+      deallocate(Lblk)
+      deallocate(Ublk)
+      return
+   end subroutine
+
 !*****************************************************************************
    subroutine deall_PC()
    !   implement the sparse matrix multiply for curl-curl operator
@@ -616,6 +761,18 @@ Contains
       call deall_spMatCSR(U)
       call deall_spMatCSR(LH)
       call deall_spMatCSR(UH)
+      if (LHlocal%allocated) then
+          call deall_spMatCSR(LHlocal)
+      endif
+      if (UHlocal%allocated) then
+          call deall_spMatCSR(UHlocal)
+      endif
+      if (Llocal%allocated) then
+          call deall_spMatCSR(Llocal)
+      endif
+      if (Ulocal%allocated) then
+          call deall_spMatCSR(Ulocal)
+      endif
       return
    end subroutine
 !*****************************************************************************
@@ -640,6 +797,34 @@ Contains
          call LTsolve_Cmplx(UH,x,y)
       else
          call UTsolve_Cmplx(U,x,y)
+      endif
+   end subroutine
+!*****************************************************************************
+   subroutine PC_LsolveLcl(x,adjt,y)
+   !   implement the sparse matrix solve for curl-curl operator
+   !   local version for distributed matrices and vectors
+   !   for fine(r) grain parallel computation
+      complex(kind=prec), intent(in), dimension(:) :: x
+      logical, intent(in)             :: adjt
+      complex(kind=prec), intent(inout), dimension(:) :: y
+      if(adjt) then
+         call UTsolve_Cmplx(LHlocal,x,y)
+      else
+         call LTsolve_Cmplx(Llocal,x,y)
+      endif
+   end subroutine
+!*****************************************************************************
+   subroutine PC_UsolveLcl(x,adjt,y)
+   !   implement the sparse matrix solve for curl-curl operator
+   !   local version for distributed matrices and vectors
+   !   for fine(r) grain parallel computation
+      complex(kind=prec), intent(in), dimension(:) :: x
+      logical, intent(in)             :: adjt
+      complex(kind=prec), intent(inout), dimension(:) :: y
+      if(adjt) then
+         call LTsolve_Cmplx(UHlocal,x,y)
+      else
+         call UTsolve_Cmplx(Ulocal,x,y)
       endif
    end subroutine
 !*****************************************************************************
@@ -1134,4 +1319,156 @@ Contains
    deallocate(Eearth)
    deallocate(Eair)
    end subroutine airNIndex
+
+   !*************************************************************************
+   ! * calculate the parallel data structure distribution among the processes
+   ! * basically this is trying to figure out how you are going to split 
+   ! * a matrix into a number of row/block matrices to distribute onto
+   ! * different processes
+   ! *
+   ! * Note that the preconditioner (Diagnol Block ILU) consists of 3 parts
+   ! * according to the iedges(x,y,z) length
+   ! * 
+   ! * the basic idea is to divide L/U matrix into smaller diagonal blocks, 
+   ! * to be distributed to different processors
+   ! * in the case of A matrix that will be row matrices, but in a
+   ! * similar sense. 
+   ! * 
+   ! * apparently we don't really want to distribute one part (x,y, or z)to
+   ! # more than one processors, to avoid cutting out the connections
+   ! *
+   ! * the actual partition of row/block matrices should follow this rule
+   ! * for example: 
+   ! * 1 processor -> 1 submatrix
+   ! * block x p1 
+   ! * block y p1
+   ! * block z p1
+   ! * 2 processors -> 2 submatrices
+   ! * block x p1 
+   ! * block y p2
+   ! * block z p2
+   ! * 3 processors -> 3 submatrices
+   ! * block x p1 
+   ! * block y p2
+   ! * block z p3
+   ! * 4 processors -> 4 submatrices
+   ! * block x p1,p2
+   ! * block y p3
+   ! * block z p4
+   ! * 5 processors -> 5 submatrices
+   ! * block x p1,p2 
+   ! * block y p3,p4
+   ! * block z p5
+   ! * 6 processors -> 6 submatrices
+   ! * block x p1,p2 
+   ! * block y p3,p4
+   ! * block z p5,p6
+   ! * 7 processors -> 7 submatrices
+   ! * block x p1,p2,p3 
+   ! * block y p4,p5
+   ! * block z p6,p7
+   !......
+   ! * TODO: test if we can do the same as the PETSc version
+   ! * i.e. try to distribute the elements from one edge group into
+   ! * multiple processors
+   subroutine calc_dist(Nproc,iedges,isizes,isubs)
+     implicit none
+     integer,intent(in)                            :: Nproc
+     integer,intent(in), dimension(3)              :: iedges
+     integer,intent(out), pointer,dimension(:)     :: isizes
+     integer,intent(out), pointer,dimension(:)     :: isubs
+     ! local variables
+     integer                                       :: Nsub=1
+     integer                                       :: i,j,k
+     ! note: isizes stores the size array for each process
+     !       isubs stores the size array for each block
+     allocate(isizes(Nproc))
+
+     if (Nproc.eq. 1) then ! 1 proc, 3 sub blocks
+         k = 0
+         allocate(isubs(3*Nproc))
+         Nsub = 1
+         do i = 1,3  ! loop through x/y/z
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs(k+j) = iedges(i)/Nsub
+             end do
+             isubs((k+Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+             k = k + Nsub
+         end do
+         isizes = sum(iedges)
+    ! weird setup to test...
+    ! else if (Nproc.eq.2) then ! 2 proc, 6 subblocks, 3+3 distribution
+    !     Nsub = 2
+    !     allocate(isubs(3*Nsub))
+    !     do i= 1,3 ! loop for x,y,z
+    !         do j = 1,Nsub !loop through these sub blocks (if any)
+    !             isubs((i-1)*Nsub+j) = iedges(i)/Nsub
+    !         end do
+    !         isubs((i*Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+    !     end do
+    !     isizes(1) = sum(isubs(1:3))
+    !     isizes(2) = sum(isubs(4:6))
+     else if (Nproc.eq.2) then ! 2 proc, 3 subblocks, 1+2 distribution 
+         Nsub = 1
+         allocate(isubs(3*Nsub))
+         do i= 1,3
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs((i-1)*Nsub+j) = iedges(i)/Nsub
+             end do
+             isubs((i*Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+         end do
+         isizes(1) = isubs(1)
+         isizes(2) = sum(isubs(2:3))
+     else if (MOD(Nproc,3).eq.0) then ! 3 6 9 procs...
+         ! each side of edges (x,y,z) has Nsub blocks
+         ! each block has exactly Nproc/3 processors
+         allocate(isubs(Nproc))
+         Nsub = Nproc/3 !number of subblocks per processor
+         do i = 1,3  ! loop through x/y/z
+             do j = 1,Nsub-1 !loop through these sub blocks (if any)
+                 isubs((i-1)*Nsub+j) = iedges(i)/Nsub
+             end do
+             isubs(i*Nsub) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+         end do
+         isizes = isubs
+
+     elseif (MOD(Nproc,3).eq.1) then ! 4 7 10 procs...
+         ! x edges have Nsub+1 processes, while y and z have Nsub blocks
+         k = 0
+         allocate(isubs(Nproc))
+         do i = 1,3  ! loop through x/y/z
+             if (i .eq. 3)then ! z
+                 Nsub = Nproc/3+1 
+             else
+                 Nsub = Nproc/3 
+             endif
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs(k+j) = iedges(i)/Nsub
+             end do
+             isubs((k+Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+             k = k + Nsub
+         end do
+         isizes = isubs
+
+     elseif (MOD(Nproc,3).eq.2) then ! 5 8 11 procs...
+         ! each process has exactly one sub block
+         ! x and y have Nsub+1 processes, while z has Nsub processes
+         k = 0
+         allocate(isubs(Nproc))
+         do i = 1,3  ! loop through x/y/z
+             if ((i .eq. 1).or.(i.eq.3)) then ! x, z
+                 Nsub = Nproc/3+1 
+             else
+                 Nsub = Nproc/3 
+             endif
+             do j = 1,Nsub !loop through these sub blocks (if any)
+                 isubs(k+j) = iedges(i)/Nsub
+             end do
+             isubs((k+Nsub)) = iedges(i)-(iedges(i)/Nsub)*(Nsub-1)
+             k = k + Nsub
+         end do
+         isizes = isubs
+     endif
+   end subroutine calc_dist
+
 end module modelOperator3D

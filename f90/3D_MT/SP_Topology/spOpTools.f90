@@ -93,6 +93,14 @@ module spOpTools
      module procedure splitRMAT
      module procedure splitCMAT
   END INTERFACE
+  INTERFACE splitVEC
+     module procedure splitRVEC
+     module procedure splitCVEC
+  END INTERFACE
+  INTERFACE splitBlkMAT
+     module procedure splitBlkRMAT
+     module procedure splitBlkCMAT
+  END INTERFACE
   INTERFACE RMATxVEC
      module procedure RMATxCVEC
      module procedure RMATxRVEC
@@ -1663,6 +1671,285 @@ Contains
       deallocate(colT)
       deallocate(rowT)
    end subroutine splitCMAT   
+!********************************************************************
+   subroutine splitRVEC(X,i,np,Y,isizes)
+   ! automaticly split a real (row) vector X into subvectors
+   ! and take only the corresponding rows of Y
+   ! taking isizes(i) rows for the (i+1)th process in n parallel 
+   ! threads
+   ! 
+   ! well, I understand that this is not really sparse matrix, 
+   ! but it's indeed used for sparse matrix fine-grain parallelization
+   !
+   ! Note: this can be easily changed to be split according to the
+   ! number of non-zero elements in each submatrix 
+      real(kind=prec), intent(in), dimension(:)     :: X
+      real(kind=prec), allocatable, intent(out), dimension(:)    :: Y
+      integer, intent(in)                   ::  i,np
+      integer, intent(in), pointer, dimension(:), optional ::  isizes
+      integer                               ::  istart,iend,j,k
+      integer                               ::  nrow_l,nsub
+      real                                  ::  nrow
+      integer, allocatable, dimension(:)    ::  rowT
+
+      nrow = size(X)
+      if (nrow .lt. np) then
+          write(6,*) 'number of process is larger than number of rows!'
+          stop
+      elseif (np.eq.1) then
+          !write(6,*) 'only one process, returning the original vector'
+          allocate(Y(size(X)))
+          Y = X
+          return
+      end if
+      !nz_l = floor((A%row(nrow+1)-1)/np)
+      if (present(isizes)) then ! split into given sizes
+          istart = 1
+          do k = 1,i 
+              istart = istart+ isizes(k)
+          enddo
+          iend = istart+isizes(k)-1
+      else
+          nrow_l = floor(nrow/np)
+          istart=i*nrow_l+1
+          if (i+1 .eq. np)  then! the last sub-matrix
+              iend=nrow
+          else
+              iend=i*nrow_l+nrow_l
+          end if
+      endif
+      allocate(rowT(iend-istart+1))
+      rowT = (/ (j,j=istart,iend) /)
+      allocate(Y(nrow_l))
+      Y = X(rowT)
+      deallocate(rowT)
+   end subroutine splitRVEC  
+!********************************************************************
+   subroutine splitCVEC(X,i,np,Y,isizes)
+   ! automaticly split a complex (row) vector X into subvectors
+   ! and take only the corresponding rows of Y
+   ! taking isizes(i) rows for the (i+1)th process in n parallel 
+   ! threads
+   ! 
+   ! well, I understand that this is not really sparse matrix, 
+   ! but it's indeed used for sparse matrix fine-grain parallelization
+   !
+   ! Note: this can be easily changed to be split according to the
+   ! number of non-zero elements in each submatrix 
+      complex(kind=prec), intent(in), dimension(:)     :: X
+      complex(kind=prec), allocatable, intent(inout), dimension(:)  :: Y
+      integer, intent(in)                   ::  i,np
+      integer, intent(in), pointer, dimension(:), optional ::  isizes
+      integer                               ::  istart,iend,j,k
+      integer                               ::  nrow_l,nsub
+      real                                  ::  nrow
+      integer, allocatable, dimension(:)    ::  rowT
+
+      nrow = size(X)
+      if (nrow .lt. np) then
+          write(6,*) 'number of process is larger than number of rows!'
+          stop
+      elseif (np.eq.1) then
+          !write(6,*) 'only one process, returning the original vector'
+          allocate(Y(size(X)))
+          Y = X
+          return
+      end if
+      !nz_l = floor((A%row(nrow+1)-1)/np)
+      if (present(isizes)) then ! split into given sizes
+          istart = 1
+          do k = 1,i 
+              istart = istart+ isizes(k)
+          enddo
+          iend = istart+isizes(k)-1
+      else
+          nrow_l = floor(nrow/np)
+          istart=i*nrow_l+1
+          if (i+1 .eq. np)  then! the last sub-matrix
+              iend=nrow
+          else
+              iend=i*nrow_l+nrow_l
+          end if
+      endif
+      allocate(rowT(iend-istart+1))
+      rowT = (/ (j,j=istart,iend) /)
+      allocate(Y(nrow_l))
+      Y = X(rowT)
+      deallocate(rowT)
+   end subroutine splitCVEC  
+!********************************************************************
+   subroutine splitBlkRMAT(A,i,np,B,isizes)
+   ! automaticly split a matrix A into block diagnal submatrices 
+   ! and take only the corresponding block diagnol submatrice of B
+   ! taking isizes(i) cols by isizes(i) rows for the (i+1)th process 
+   ! in n parallel threads
+   ! this is useful for fine-grain parallel computation 
+   ! specifically, in parallel Triangular solve
+   !
+   ! Note: this can be easily changed to be split according to the
+   ! number of non-zero elements in each submatrix 
+   ! NOTE the submatrix B is not modified to use zero-based index 
+   ! (different from splitRMAT, as we are now developing our own
+   ! parallel KSP solver)
+      type(spMatCSR_real),intent(in)        ::  A  ! original matrix
+      type(spMatCSR_real),intent(inout)     ::  B  ! submatrix
+      integer, intent(in)                   ::  i,np
+      integer, intent(in), pointer, dimension(:), optional ::  isizes
+      integer                               ::  istart,iend,nrow_l,j,k
+      integer                               ::  m,n,nz,nz_l,nsub
+      real                                  ::  nrow
+      integer, allocatable, dimension(:)    ::  rowT,colT
+
+      ! see if A is square, need not to proceed if it isn't 
+      if (A%nrow .ne. A%ncol) then
+          write(6,*) 'blkdiagRMAT: input matrix is not square!'
+          stop
+      endif
+      if (A%nrow .lt. np) then
+          write(6,*) 'number of process is larger than number of rows!'
+          stop
+      elseif (np.eq.1) then
+          !write(6,*) 'only one process, returning the original Matrix'
+          m = A%nRow
+          n = A%nCol
+          nz = A%row(m+1)-1
+          call create_spMatCSR_Real(m,n,nz,B)
+          B%nRow=m
+          B%nCol=n
+          B%row=A%row-1
+          B%col=A%col-1
+          B%val=A%val
+          if(A%lower) then
+              B%lower = A%lower
+          endif
+          if(A%upper) then
+              B%upper = A%upper
+          endif
+          return
+      end if
+      nrow = A%nRow
+      !nz_l = floor((A%row(nrow+1)-1)/np)
+      if (present(isizes)) then ! split into given sizes
+          !check if the sizes are compatitive to the number of rows
+          if (sum(isizes) .ne. nrow) then
+              write(6,*) 'blkdiagRMAT: input sizes not consistent with matrix!'
+              stop
+          endif
+          istart = 1
+          do k = 1,i
+              istart = istart+ isizes(k)
+          enddo
+          iend = istart+isizes(k)-1
+      else
+          nrow_l = floor(nrow/np)
+          istart=i*nrow_l+1
+          if (i+1 .eq. np)  then! the last sub-matrix
+              iend=nrow
+          else
+              iend=i*nrow_l+nrow_l
+          end if
+      endif
+      allocate(rowT(iend-istart+1))
+      rowT = (/ (j,j=istart,iend) /)
+      allocate(colT(iend-istart+1))
+      colT = (/ (j,j=istart,iend) /)
+      call subMatrix_Real(A,rowT,colT,B)
+      if(A%lower) then
+          B%lower = A%lower
+      endif
+      if(A%upper) then
+          B%upper = A%upper
+      endif
+      deallocate(colT)
+      deallocate(rowT)
+   end subroutine splitBlkRMAT
+!********************************************************************
+ subroutine splitBlkCMAT(A,i,np,B,isizes)
+   ! automaticly split a (complex) matrix A into block diagnal submatrices
+   ! and take only the corresponding block diagnol submatrice of B
+   ! taking isizes(i) cols by isizes(i) rows for the (i+1)th process
+   ! in n parallel threads
+   ! this is useful for fine-grain parallel computation
+   ! specifically, in parallel Triangular solve
+   !
+   ! Note: this can be easily changed to be split according to the
+   ! number of non-zero elements in each submatrix
+   ! NOTE the submatrix B is not modified to use zero-based index
+   ! (different from splitCMAT, as we are now developing our own
+   ! parallel KSP solver)
+      type(spMatCSR_cmplx),intent(in)       ::  A  ! original matrix
+      type(spMatCSR_cmplx),intent(inout)    ::  B  ! submatrix
+      integer, intent(in)                   ::  i,np
+      integer, intent(in), pointer, dimension(:), optional ::  isizes
+      integer                               ::  istart,iend,nrow_l,j,k
+      integer                               ::  m,n,nz,nz_l,nsub
+      real                                  ::  nrow
+      integer, allocatable, dimension(:)    ::  rowT,colT
+
+      ! see if A is square, need not to proceed if it isn't
+      if (A%nrow .ne. A%ncol) then
+          write(6,*) 'blkdiagCMAT: input matrix is not square!'
+          stop
+      endif
+      if (A%nrow .lt. np) then
+          write(6,*) 'number of process is larger than number of rows!'
+          stop
+      elseif (np.eq.1) then
+          !write(6,*) 'only one process, returning the original Matrix'
+          m = A%nRow
+          n = A%nCol
+          nz = A%row(m+1)-1
+          call create_spMatCSR_Cmplx(m,n,nz,B)
+          B%nRow=m
+          B%nCol=n
+          B%row=A%row-1
+          B%col=A%col-1
+          B%val=A%val
+          if(A%lower) then
+              B%lower = A%lower
+          endif
+          if(A%upper) then
+              B%upper = A%upper
+          endif
+          return
+      end if
+      nrow = A%nRow
+      !nz_l = floor((A%row(nrow+1)-1)/np)
+      if (present(isizes)) then ! split into given sizes
+          !check if the sizes are compatitive to the number of rows
+          if (sum(isizes) .ne. nrow) then
+              write(6,*) 'blkdiagCMAT: input sizes not consistent with matrix!'
+              stop
+          endif
+          istart = 1
+          do k = 1,i
+              istart = istart+ isizes(k)
+          enddo
+          iend = istart+isizes(k)-1
+      else
+          nrow_l = floor(nrow/np)
+          istart=i*nrow_l+1
+          if (i+1 .eq. np)  then! the last sub-matrix
+              iend=nrow
+          else
+              iend=i*nrow_l+nrow_l
+          end if
+      endif
+      allocate(rowT(iend-istart+1))
+      rowT = (/ (j,j=istart,iend) /)
+      allocate(colT(iend-istart+1))
+      colT = (/ (j,j=istart,iend) /)
+      call subMatrix_Cmplx(A,rowT,colT,B)
+      if(A%lower) then
+          B%lower = A%lower
+      endif
+      if(A%upper) then
+          B%upper = A%upper
+      endif
+      deallocate(colT)
+      deallocate(rowT)
+   end subroutine splitBlkCMAT
+
 !********************************************************************
    subroutine LTsolve_Cmplx(L,b,x)
       ! solve system Lx = b for complex vector x, lower triangular L

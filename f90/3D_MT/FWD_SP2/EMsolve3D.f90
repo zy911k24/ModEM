@@ -19,6 +19,11 @@ module EMsolve3D
   public        :: createSolverDiag, getEMsolveDiag, setEMsolveControl
   private       :: SdivCorr
 
+  interface FWDSolve3D
+     MODULE PROCEDURE FWDSolve3Ds
+     MODULE PROCEDURE FWDSolve3Dp
+  end interface
+
   type :: emsolve_control
     ! Values of solver control parameters, e.g., read in from file
     ! plus other information on how the solver is to be initialized, 
@@ -37,8 +42,8 @@ module EMsolve3D
     real(kind = 8)            ::      AirLayersMaxHeight, AirLayersAlpha, AirLayersMinTopDz
     real(kind = 8), pointer, dimension(:)   :: AirLayersDz
     logical                   ::      AirLayersPresent=.false.
-    character (len=10)        ::      solver_name="BICG"		
-    character (len=50) , public      ::   get_1D_from="Geometric_mean"	
+    character (len=10)        ::      solver_name="BICG"
+    character (len=50) , public      ::   get_1D_from="Geometric_mean"
   end type emsolve_control
 
   type :: emsolve_diag
@@ -126,7 +131,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0;
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3D(bRHS,omega,eSol,device_id,comm_local)
+  subroutine FWDsolve3Ds(bRHS,omega,eSol,device_id)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -143,7 +148,6 @@ Contains
     real(kind=prec), intent(in)   :: omega
     !dummy parameter for compatibiliy
     integer, intent(in),optional  :: device_id
-    integer, intent(in),optional  :: comm_local 
     !  OUTPUTS:
     !  eSol must be allocated before calling this routine
     type (cvector), intent(inout) :: eSol
@@ -563,12 +567,647 @@ Contains
     Call deall(tvec)
     deallocate(KSSiter%rerr)
 
-  end subroutine FWDsolve3D
+  end subroutine FWDsolve3Ds
+
+  ! fine-grained parallel version
+  subroutine FWDsolve3Dp(bRHS,omega,eSol,device_id,comm_local)
+!----------------------------------------------------------------------
+     ! redefine some of the interfaces (locally) for our convenience
+     use sg_vector !, only: copy => copy_cvector, &
+     use vectranslate     ! translate back and forth between Cvec and vec
+     use solver
+     use spoptools
+     ! generic routines for vector operations on the edge/face nodes
+     ! in a staggered grid
+     ! in cvec copy, remember the order is copy(new, old) i.e new = old
+     implicit none
+!----------------------------------------------------------------------
+!               variables related to parallel computation
+!----------------------------------------------------------------------
+     integer, dimension(:), allocatable :: idx
+     integer, dimension(:), pointer     :: isizes, isubs, displs
+     integer, dimension(3)              :: iedges
+     integer                            :: nrow, ncol, nnz ! spMAT parameter
+     integer                            :: block_size
+     integer                            :: rank_local,size_local
+     integer                            :: ierr
+     integer                            :: Nsub,Ntotal,istart,iend,csize
+     integer, allocatable, dimension(:) :: ilocal,jlocal
+     real(kind=prec)   , dimension (:), allocatable :: vlocal
+     complex(kind=prec), dimension (:), allocatable :: clocal
+     complex(kind=prec), dimension (:), allocatable :: xlocal
+     complex(kind=prec), dimension (:), allocatable :: blocal
+     real(kind=prec)                    :: ptol=1e-2
+     real                               :: normu
+     !  INPUTS:
+     type (RHS_t), intent(in)           :: bRHS
+     real(kind=prec), intent(in)        :: omega
+     integer, intent(in)                :: device_id
+     integer, intent(in)                :: comm_local
+     !  OUTPUTS:
+     !  eSol must be allocated before calling this routine
+     type (cvector), intent(inout)      :: eSol
+!----------------------------------------------------------------------
+     ! LOCAL VARIABLES
+     logical                                        :: converged,trans
+     integer                                        :: iter, fid
+     integer                                        :: Ne,Nei,Neb
+     integer                                        :: Nn,Nni,Nnb,i
+     complex(kind=prec)                             :: iOmegaMuInv
+     ! e(lectric field) s(ource) b(rhs) phi0(div(s))
+     complex(kind=prec), pointer, dimension (:)     :: e,s
+     complex(kind=prec), allocatable, dimension (:) :: ei,b,si,phi0,phii
+     complex(kind=prec), allocatable, dimension (:) :: temp,stemp
+     
+     character(80)                                  :: cfile
+     ! band-aid cvector ...
+     type (cvector)                                 :: tmpvec
+     ! diagnostic structure for Krylov Subspace Solvers(KSS)
+     type (solverControl_t)                         :: KSSiter
+     ! initialize solver diagnostic variables
+     ! now initialize solver diagnostic variables
+     nIterTotal = 0
+     nDivCor = 0
+     EMrelErr = R_ZERO
+     divJ = R_ZERO
+     DivCorRelErr = R_ZERO
+     failed = .false.
+     iOmegaMuInv = C_ONE/cmplx(0.0,1.0d0*ISIGN*omega*MU_0,kind=prec)
+     ! now see how many workers do we have
+     call MPI_COMM_RANK(comm_local,rank_local,ierr)
+     call MPI_COMM_SIZE(comm_local,size_local,ierr)
+     !------------------------------------------------------------------------
+     !     check the input variables
+     !------------------------------------------------------------------------
+     if (rank_local.eq.0) then ! leader
+         trans = (bRHS%adj .eq. TRN)
+         if (.not.eSol%allocated) then
+             write(0,*) 'eSol in EMsolve not allocated yet'
+             stop
+         end if 
+         ! determine the edge numbers of the mesh
+         ! need to write a interface for these
+         ! since these will be private after debugging
+         Nei = size(EDGEi,1)
+         Neb = size(EDGEb,1)
+         Ne = Nei+Neb
+         if(bRHS%nonZero_Source) then ! source (TRN)
+             !   this is for *all* nodes
+             Nni = size(NODEi,1)
+             Nnb = size(NODEb,1)
+             Nn = Nni+Nnb
+             if (output_level > 3) then
+                 write(*,'(a36,i8,a4,i8)')                         &
+    &              'FWDsolve3D source grid #nodes:           Nni=',&
+    &              Nni,' Nn=',Nn
+             end if
+         ! uncomment the following line to try divergence correction in CCGD
+         ! allocate(phi0(Nn)) ! make sure you *WANT* to do this, first!
+         endif
+         iedges(1) = eSol%Nx*(eSol%Ny-1)*(eSol%Nz-1)
+         iedges(2) = eSol%Ny*(eSol%Nx-1)*(eSol%Nz-1)
+         iedges(3) = eSol%Nz*(eSol%Nx-1)*(eSol%Ny-1)
+     end if
+     ! common part for leader and workers
+     ! broadcast those parameters to all workers
+     call MPI_BCAST(trans,1, MPI_LOGICAL,0, comm_local,ierr)
+     call MPI_BCAST(Nei,1, MPI_INTEGER,0, comm_local,ierr)
+     call MPI_BCAST(Neb,1, MPI_INTEGER,0, comm_local,ierr)
+     call MPI_BCAST(Ne ,1, MPI_INTEGER,0, comm_local,ierr)
+     call MPI_BCAST(Nni,1, MPI_INTEGER,0, comm_local,ierr)
+     call MPI_BCAST(Nnb,1, MPI_INTEGER,0, comm_local,ierr)
+     call MPI_BCAST(Nn ,1, MPI_INTEGER,0, comm_local,ierr)
+     call MPI_BCAST(iedges ,3, MPI_INTEGER,0, comm_local,ierr)
+     ! calculate the sizes of each local row matrix
+     ! as well as the size of block preconditioners
+     ! *note* every process knows about this
+     call calc_dist(size_local,iedges,isizes,isubs)
+     ! now setup the displacement to send to each process 
+     allocate(displs(size_local))
+     displs = 0
+     do i=2,size_local
+         displs(i) = sum(isizes(1:i-1))
+     end do
+     ! output information for debug
+     Ntotal = size(isubs)
+     csize = 0
+     Nsub = 0
+     istart = 1
+     do i=1,Ntotal
+         csize = csize + isubs(i)
+         if (csize.le.sum(isizes(1:rank_local))) then ! go on
+             istart = istart + 1
+         elseif (csize.le.sum(isizes(1:rank_local+1))) then 
+             ! count sub-blocks in the local block
+             Nsub = Nsub + 1
+         else 
+             exit
+         end if
+     end do
+     iend = istart+Nsub-1
+     if (output_level > 3) then
+         ! for debug
+         write(6,*) 'number of sub blocks =', Nsub, rank_local
+         write(6,*) 'from #', istart, 'to #', iend, rank_local
+     end if
+     if (rank_local .eq. 0) then !leader
+         ! leader does all the works to allocate/initialize 
+         ! local data structures
+         if (output_level > 3) then
+             ! for debug
+             write(6,*) 'system iedges =', iedges
+             write(6,*) 'system isubs =', isubs
+             write(6,*) 'system isizes =', isizes
+         endif 
+         ! cboundary is a quite complex type...
+         ! *essentially it should be e(EDGEb)
+         ! for now we don't have an interface to deal with cboundary
+         ! so just use cvectors to deliver the value...
+         call create_cvector(bRHS%grid, tmpvec, eSol%gridtype)
+         allocate(e(Ne))
+         allocate(ei(Nei))
+         allocate(s(Ne))
+         allocate(si(Nei))
+         allocate(b(Nei))
+         allocate(temp(Ne))
+         allocate(stemp(Nei))
+         ! at this point e should be all zeros if there's no initial guess
+         call getCVector(eSol,e)
+         ! Using boundary condition and sources from rHS data structure
+         ! construct vector b (defined only on interior nodes) for rHS of
+         ! reduced (interior nodes only) linear system of equations
+         if (trans) then ! TRN, trans=.true.
+             !  In this case boundary conditions do not enter into forcing
+             !  for reduced (interior node) linear system; solution on
+             !  boundary is determined after solving for interior nodes
+             if (bRHS%nonZero_Source) then
+                 if (bRHS%sparse_Source) then
+                     ! sparse source
+                     ! not sure how to do it efficiently with normal array
+                     ! for now it is just a walkaround, probably not going to
+                     ! be used by most
+                     call add_scvector(C_ONE,bRHS%sSparse,tmpvec)
+                     call getVector(tmpvec,s)
+                 else
+                     ! normal source
+                     call getVector(bRHS%s,s)
+                 endif
+             else
+                 ! doesn't need to tamper with this part for sparse matrix
+                 ! let it go with cvectors...
+                 call zero(eSol)
+                 write(0,*) 'Warning: no sources for adjoint problem'
+                 write(0,*) 'Solution is identically zero'
+                 if (bRHS%nonzero_BC) then
+                     ! just copy input BC into boundary nodes of solution 
+                     ! and return
+                     Call setBC(bRHS%bc, eSol)
+                 endif ! otherwise the eSol should be all zeros
+                 return
+             endif
+             ! NOTE that here we DO NOT divide the source by volume weights
+             ! before the Div as the divcorr operation in SP is using VDiv
+             ! instead of Div
+             si = s(EDGEi) ! taking only the interior edges
+             ! note that Div is formed from inner edges to all nodes
+             ! uncomment the following line, to do divergence correction
+             ! call Div(si,phi0)
+             ! divide by iOmegaMu and Volume weight to get the source term j
+             si = si * iOmegaMuInv / Vedge(EDGEi)
+             ! calculate the modification term V_E GD_II j
+             call RMATxCVEC(GDii,si,stemp)
+             ! now i\omega\mu_0 V_E j + V_E GD_II j
+             b = s(EDGEi) + stemp * Vedge(EDGEi)
+         else ! trans = .false.
+             ! In the usual forward model case BC does enter into forcing
+             ! First compute contribution of BC term to RHS of reduced 
+             ! interior node system of equations : - A_IB*b
+             if (bRHS%nonzero_BC) then
+                 !   copy from rHS structure into zeroed complex edge vector
+                 !   note that bRHS%bc is a cboundary type
+                 Call setBC(bRHS%bc, tmpvec) ! setBC -> copy_bcvector
+                 !   get info form BC
+                 call getVector(tmpvec,s)
+                 !   but only the boundary parts
+                 e(EDGEb) = s(EDGEb)
+                 !   Then multiply by curl_curl operator (use Mult_Aib ...
+                 !   Note that Mult_Aib already multiplies by volume weights
+                 !   required to symetrize problem, so the result is V*A_IB*b)
+                 !   essentially b = A(i,b)*e(b)
+                 Call Mult_Aib(e(EDGEb), trans, b)
+             endif
+             ! Add internal sources if appropriate: 
+             ! Note that these must be multiplied explictly by volume weights
+             !     [V_E^{-1} C_II^T V_F] C_II e + i\omega\mu_0\sigma e
+             !   = - i\omega\mu_0  j - V_E^{-1} G_IA \Lambda D_AI j
+             !     - [V_E^{-1} C_II^T V_F] C_IB b
+             ! here we multiply by V_E throughout to obtain a symmetric system:
+             !      V_E A_II e = - i\omega\mu_0 V_E j - V_E GD_II j - V_E A_IB b
+             ! where
+             !      A_II = V_E^{-1} C_II^T V_F C_II + i\omega\mu_0 \sigma,
+             ! while
+             !      A_IB = V_E^{-1} C_II^T V_F C_IB,
+             ! and
+             !      GD_II = V_E{-1} G_IA \Lambda D_AI.
+             if (bRHS%nonzero_Source) then
+                 if (bRHS%sparse_Source) then
+                     ! sparse source
+                     call zero(tmpvec)
+                     call add_scvector(C_ONE,bRHS%sSparse,tmpvec)
+                     call getVector(tmpvec,s)
+                 else
+                     ! normal source
+                     call getVector(bRHS%s, s)
+                 endif
+                 ! At this point, s = - ISIGN * i\omega\mu_0 j
+                 ! Now Div(s) - will later divide by i_omega_mu to get the 
+                 ! general divergence correction (j)
+                 temp = s*Vedge
+                 ! now temp = - ISIGN * i\omega\mu_0 V_E j
+                 ! divide by iOmegaMu to get the source (j)
+                 si = s(EDGEi) * iOmegaMuInv
+                 ! calculate the modification term GD_II j
+                 call RMATxCVEC(GDii,si,stemp)
+                 ! i\omega\mu_0 V_E j + V_E GD_II j
+                 stemp = temp(EDGEi) + stemp * Vedge(EDGEi)
+                 ! now add the V_E A_IB b term
+                 if(bRHS%nonzero_BC) then
+                     b = stemp - b
+                 else
+                     b = stemp
+                 endif
+             else! there is no source
+                 b = -b
+             endif
+         endif ! trans 
+     endif ! if rank == 0
+     !-------------------------------------------------------------------------
+     !    now start to disassemble the system matrix
+     !-------------------------------------------------------------------------
+     if (rank_local.eq.0) then ! leader
+         if (output_level > 2) then
+             write (*,'(a12,a25,a15,i8)') node_info,'sending sub-systems to', &
+   &                 ' workers...', rank_local
+         endif
+         ! firstly leader split the system matrix AAii (real)
+         ! now calculate the rows that should be stored locally...
+         ! AAii (Nei x Nei)
+         do i = 2,size_local !now send those to your fellow workers
+             call splitMAT(AAii,i-1,size_local,Alocal,isizes)
+             nrow = size(Alocal%row)
+             ncol = size(Alocal%col)
+             nnz = ncol
+             ! send the info to workers
+             call MPI_SEND(nrow,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             call MPI_SEND(ncol,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             call MPI_SEND(nnz,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             ! now send the local matrix (in CSR format) that will be 
+             ! stored in that worker process
+             call MPI_SEND(Alocal%row,nrow, MPI_INTEGER,i-1,2, comm_local,ierr)
+             call MPI_SEND(Alocal%col,ncol, MPI_INTEGER,i-1,2, comm_local,ierr)
+             call MPI_SEND(Alocal%val,nnz, MPI_DOUBLE,i-1,2,         &
+    &             comm_local, ierr)
+             call deall_spMatCSR(Alocal) ! and release the temp sp matrix
+         end do
+         ! now deal with the local rows in leader
+         call splitMAT(AAii,rank_local,size_local,Alocal,isizes)
+         ! this is required as the original splitMAT is designed for PETSc
+         ! (c index that starts from 0)
+         Alocal%col = Alocal%col+1
+         Alocal%row = Alocal%row+1
+     else !workers
+         if (output_level > 2) then
+             write (*,'(a12,a25,a15,i8)') node_info,'receiving sub-systems', &
+    &              ' from leader...', rank_local
+         endif
+         ! get the info from leader
+         call MPI_RECV(nrow,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(ncol,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(nnz,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         ! now get the local matrix (in CSR format) 
+         allocate(ilocal(nrow))
+         allocate(jlocal(ncol))
+         allocate(vlocal(nnz))
+         call MPI_RECV(ilocal,nrow, MPI_INTEGER,0,2, comm_local,       &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(jlocal,ncol, MPI_INTEGER,0,2, comm_local,       & 
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(vlocal,nnz, MPI_DOUBLE,0,2, comm_local,&
+    &        MPI_STATUS_IGNORE,ierr)
+         ! now assemble the matrix manually
+         call create_spMatCSR_Real(isizes(rank_local+1),Nei,nnz,Alocal)
+         ! this is required as the original splitMAT is designed for PETSc
+         ! (c index that starts from 0)
+         Alocal%row=ilocal+1
+         Alocal%col=jlocal+1
+         Alocal%val=vlocal
+         Alocal%allocated=.true.
+         deallocate(ilocal)
+         deallocate(jlocal)
+         deallocate(vlocal)
+     end if
+     !-------------------------------------------------------------------------
+     !    now start to disassemble the L/U matrix
+     !-------------------------------------------------------------------------
+     if (rank_local.eq.0) then ! leader
+         ! firstly leader split the system matrix L/U (complex)
+         ! now calculate the blocks that should be stored locally...
+         ! L/U (Nei x Nei)
+         do i = 2,size_local !now send those to your fellow workers
+             ! L matrix
+             call splitBlkMAT(L,i-1,size_local,Llocal,isizes)
+             nrow = size(Llocal%row)
+             ncol = size(Llocal%col)
+             nnz = ncol
+             ! send the info to workers
+             call MPI_SEND(nrow,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             call MPI_SEND(ncol,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             call MPI_SEND(nnz,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             ! now send the local matrix (in CSR format) that will be 
+             ! stored in that worker process
+             call MPI_SEND(Llocal%row,nrow, MPI_INTEGER,i-1,2, comm_local,ierr)
+             call MPI_SEND(Llocal%col,ncol, MPI_INTEGER,i-1,2, comm_local,ierr)
+             call MPI_SEND(Llocal%val,nnz, MPI_DOUBLE_COMPLEX,i-1,2,         &
+    &             comm_local, ierr)
+             call deall_spMatCSR(Llocal) ! and release the temp sp matrix
+             ! U matrix
+             call splitBlkMAT(U,i-1,size_local,Ulocal,isizes)
+             nrow = size(Ulocal%row)
+             ncol = size(Ulocal%col)
+             nnz = ncol
+             ! send the info to workers
+             call MPI_SEND(nrow,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             call MPI_SEND(ncol,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             call MPI_SEND(nnz,1,MPI_INTEGER,i-1, 1,comm_local,ierr)
+             ! now send the local matrix (in CSR format) that will be 
+             ! stored in that worker process
+             call MPI_SEND(Ulocal%row,nrow, MPI_INTEGER,i-1,2, comm_local,ierr)
+             call MPI_SEND(Ulocal%col,ncol, MPI_INTEGER,i-1,2, comm_local,ierr)
+             call MPI_SEND(Ulocal%val,nnz, MPI_DOUBLE_COMPLEX,i-1,2,         &
+    &             comm_local, ierr)
+             call deall_spMatCSR(Ulocal) ! and release the temp sp matrix
+         end do
+         ! now deal with the local rows in leader
+         call splitBlkMAT(L,rank_local,size_local,Llocal,isizes)
+         call splitBlkMAT(U,rank_local,size_local,Ulocal,isizes)
+     else !workers
+         ! L 
+         ! get the info from leader
+         call MPI_RECV(nrow,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(ncol,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(nnz,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         ! now get the local matrix (in CSR format) 
+         allocate(ilocal(nrow))
+         allocate(jlocal(ncol))
+         allocate(clocal(nnz))
+         call MPI_RECV(ilocal,nrow, MPI_INTEGER,0,2, comm_local,       &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(jlocal,ncol, MPI_INTEGER,0,2, comm_local,       & 
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(clocal,nnz, MPI_DOUBLE_COMPLEX,0,2, comm_local,&
+    &        MPI_STATUS_IGNORE,ierr)
+         ! now assemble the matrix manually
+         call create_spMatCSR_Cmplx(isizes(rank_local+1),isizes(rank_local+1),&
+    &        nnz,Llocal)
+         Llocal%row=ilocal
+         Llocal%col=jlocal
+         Llocal%val=clocal
+         Llocal%allocated=.true.
+         ! setup the triangular flags
+         Llocal%lower=.true.
+         deallocate(ilocal)
+         deallocate(jlocal)
+         deallocate(clocal)
+         ! U 
+         ! get the info from leader
+         call MPI_RECV(nrow,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(ncol,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(nnz,1, MPI_INTEGER,0,1, comm_local,            &
+    &        MPI_STATUS_IGNORE,ierr)
+         ! now get the local matrix (in CSR format) 
+         allocate(ilocal(nrow))
+         allocate(jlocal(ncol))
+         allocate(clocal(nnz))
+         call MPI_RECV(ilocal,nrow, MPI_INTEGER,0,2, comm_local,       &
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(jlocal,ncol, MPI_INTEGER,0,2, comm_local,       & 
+    &        MPI_STATUS_IGNORE,ierr)
+         call MPI_RECV(clocal,nnz, MPI_DOUBLE_COMPLEX,0,2, comm_local,&
+    &        MPI_STATUS_IGNORE,ierr)
+         ! now assemble the matrix manually
+         call create_spMatCSR_Cmplx(isizes(rank_local+1),isizes(rank_local+1),&
+    &        ncol,Ulocal)
+         Ulocal%row=ilocal
+         Ulocal%col=jlocal
+         Ulocal%val=clocal
+         Ulocal%allocated=.true.
+         ! setup the triangular flags
+         Ulocal%upper=.true.
+         deallocate(ilocal)
+         deallocate(jlocal)
+         deallocate(clocal)
+     end if
+     ! for all processes
+     ! do the transopose
+     call CMATtrans(Llocal,LHlocal)
+     call CMATtrans(Ulocal,UHlocal)
+     !-------------------------------------------------------------------------
+     !    also split the RHS vectors
+     !-------------------------------------------------------------------------
+     ! send (part of) b to all processes
+     allocate(blocal(isizes(rank_local+1)))
+     call MPI_SCATTERV(b, isizes, displs, MPI_DOUBLE_COMPLEX, blocal,&
+    &    isizes(rank_local+1), MPI_DOUBLE_COMPLEX, 0, comm_local, ierr)
+     ! send (part of) iOmegaMuSigma to all processes
+     allocate(VomegaMuSigLoc(isizes(rank_local+1)))
+     call MPI_SCATTERV(VomegaMuSig, isizes, displs, MPI_DOUBLE, &
+    &    VomegaMuSigLoc ,isizes(rank_local+1), MPI_DOUBLE, 0, &
+    &    comm_local, ierr)
+     ! send (part of) x to all processes
+     if (rank_local.eq.0) then ! leader 
+         ! just take the interior elements
+         ei = e(EDGEi)
+         ! idea to test: for non-zero source START with divergence
+         !               correction
+         ! if (bRHS%nonzero_Source) then
+         !     nDivCor = 1
+         !     Call SdivCorr(ei,phi0)
+         ! endif
+         ! also send the local x vector
+     endif
+     ! also send (part of) ei, or x to all processes
+     allocate(xlocal(isizes(rank_local+1)))
+     call MPI_SCATTERV(ei, isizes, displs, MPI_DOUBLE_COMPLEX, xlocal,&
+    &    isizes(rank_local+1), MPI_DOUBLE_COMPLEX, 0, comm_local, ierr)
+     !------------------------------------------------------------------------!
+     ! Outer part of KSS loop ... alternates between Calls to KSS solver
+     ! and Calls to divcor  ... this will be part of EMsolve
+     ! these part should be thread safe
+     !
+     ! e = current best solution (only on interior edges)
+     ! b = rHS
+     !
+     ! at present we don't really have the option to skip
+     ! the divergence correction.  Not sure how/if this should
+     ! be done.
+     ! resetting
+     nIterTotal = 0
+     nDivCor = 0
+     call reset_time(timer)
+     ! Initialize iteration control/diagnostic structure for KSS
+     KSSiter%niter = 0
+#ifdef CUDA
+     ! FIXME this is now hard coded here
+     ! need a more elegant way to deal with it
+     KSSiter%maxIt = maxIterTotal
+     MaxDivCor = 1
+#else
+     KSSiter%maxIt = IterPerDivCor
+#endif
+     if (rank_local.eq.0) then
+         if (trans) then
+             KSSiter%tol = tolEMadj
+         else
+             if (bRHS%nonzero_BC) then
+                 KSSiter%tol = tolEMfwd
+             else
+                 KSSiter%tol = tolEMadj
+             end if
+         end if
+         call MPI_BCAST(KSSiter%tol,1, MPI_DOUBLE,0, comm_local,ierr)
+         call MPI_BCAST(KSSiter%maxIt,1, MPI_INTEGER,0, comm_local,ierr)
+         call MPI_BCAST(MaxDivCor,1, MPI_INTEGER,0, comm_local,ierr)
+         call MPI_BCAST(IterPerDivCor,1, MPI_INTEGER,0, comm_local,ierr)
+     else
+         call MPI_BCAST(KSSiter%tol,1, MPI_DOUBLE,0, comm_local,ierr)
+         call MPI_BCAST(KSSiter%maxIt,1, MPI_INTEGER,0, comm_local,ierr)
+         call MPI_BCAST(MaxDivCor,1, MPI_INTEGER,0, comm_local,ierr)
+         call MPI_BCAST(IterPerDivCor,1, MPI_INTEGER,0, comm_local,ierr)
+     end if
+     allocate(KSSiter%rerr(IterPerDivCor))
+     KSSiter%rerr = 0.0
+     converged = .false.
+     failed = .false.
+!------------------------------------------------------------------------------
+!     iteration starts
+!------------------------------------------------------------------------------
+     loop: do while ((.not.converged).and.(.not.failed))
+         ! fine-grained parallel version 
+#if defined(FG)
+         call BiCGp(blocal,xlocal,KSSiter,comm_local)
+#else
+         call BiCG(blocal,xlocal,KSSiter)
+#endif
+         ! algorithm is converged when the relative error is less than 
+         ! tolerance
+         ! (in which case KSSiter%niter will be less than KSSiter%maxIt)
+         converged = KSSiter%niter .lt. KSSiter%maxIt
+         ! there are two ways of failing: 
+         !    1) the specific KSS did not work or
+         !    2) total number of divergence corrections exceeded
+         failed = failed .or. KSSiter%failed
+         ! update diagnostics output from KSS
+         do iter = 1,KSSiter%niter
+             EMrelErr(nIterTotal+iter) = KSSiter%rerr(iter)
+         end do
+         if (KSSiter%niter.eq.0) then ! in case a initial guess is good enough
+             KSSiter%niter = 1
+             EMrelErr(KSSiter%niter) = KSSiter%rerr(1)
+         endif
+         nIterTotal = nIterTotal + KSSiter%niter
+         nDivCor = nDivCor+1
+         if (nDivCor < MaxDivCor) then
+             if (rank_local.eq.0) then ! leader
+                 if (output_level > 3) then
+                     ! note that the relative residual is "preconditioned"
+                     ! (i.e. after applying the ILU preconditioner)
+                     ! which is different from what you are experiencing 
+                     ! in the SP/SP2/MF version
+                     write(6,*) 'iter: ',nIterTotal,' residual: ',       &
+    &                     EMrelErr(nIterTotal)
+                 endif
+             endif
+         else
+             ! max number of divergence corrections exceeded; 
+             ! convergence failed
+             failed = .true.
+         endif
+     end do loop
+     if (rank_local.eq.0) then ! leader
+         if (output_level > 2) then
+             write (*,'(a12,a20,i8,g15.7)') node_info,'finished solving:',& 
+    &             nIterTotal, EMrelErr(nIterTotal)
+             write (*,'(a12,a22,f12.6)') node_info,'solving time (sec): ',&
+    &             elapsed_time(timer)
+         end if
+     end if
+     ! now retrieve the full ei from the xlocal in different processes
+     call MPI_GATHERV(xlocal, isizes(rank_local+1), MPI_DOUBLE_COMPLEX, ei, &
+ &           isizes, displs, MPI_DOUBLE_COMPLEX, 0, comm_local, ierr)
+     ! common part for leader and workers
+     call deall_spMatCSR(Alocal) ! release the temp sp matrix
+     call deall_spMatCSR(Llocal) ! release the temp sp matrix
+     call deall_spMatCSR(Ulocal) ! release the temp sp matrix
+     if (rank_local.eq.0) then ! leader prepare the results...
+         e(EDGEi) = ei
+         !  After solving symetrized system, need to do different things for
+         !   transposed, standard cases
+         if(trans) then ! trans = .true.
+            !   compute solution on boundary nodes: first  A_IB^T eSol
+            call Mult_Aib(ei ,trans, s)
+            !   Multiply solution on interior nodes by volume weights
+            !   but after filling the solution on boundary
+            temp = Vedge*e
+            e = temp
+            ! then b - A_IB^T eSol, where b is input boundary values (if any)
+            if(bRHS%nonzero_BC) then
+                e(EDGEb) = e(EDGEb) - s(EDGEb)
+            else
+                e(EDGEb) = -s(EDGEb)
+            endif
+         else ! trans = .false.
+            ! just copy input BC into boundary nodes of solution
+            if(.not.bRHS%nonzero_BC) then
+                e(EDGEb) = 0
+            endif
+         endif
+         call setVector(e,eSol)
+     else !while others sit back and watch 
+         if (output_level > 3) then
+             write(*,'(a36,i8,a4,i8)') 'Waiting for Leader to finish: rank#', &
+   &             rank_local
+         end if
+     end if
+     call MPI_BARRIER(comm_local,ierr)
+     if (rank_local .eq. 0) then ! Leader 
+         ! deallocate local temporary arrays
+         deallocate(b)
+         deallocate(s)
+         deallocate(si)
+         deallocate(e)
+         deallocate(ei)
+         deallocate(temp)
+         deallocate(stemp)
+         call deall(tmpvec)
+     endif
+     deallocate(blocal)
+     deallocate(VomegaMuSigLoc) 
+     deallocate(KSSiter%rerr)
+
+  end subroutine FWDsolve3Dp
 
 !**********************************************************************
 ! solver_divcorrr contains the subroutine that would solve the divergence
 ! correction. Solves the divergene correction using pre-conditioned
-! conjuagte gradient
+! conjugate gradient
 subroutine SdivCorr(inE,phi0)
   ! Purpose: driver routine to compute divergence correction for input/output
   ! electric field vector inE
@@ -967,5 +1606,4 @@ end subroutine SdivCorr ! SdivCorr
     deallocate(solverDiag%DivCorRelErr)
 
   end subroutine deallSolverDiag
-
 end module EMsolve3D

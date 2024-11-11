@@ -12,6 +12,9 @@ module solver
    use math_constants   ! math/ physics constants
    use utilities, only: isnan
    use spoptools        ! for sparse-matrix operations
+#if defined(FG)
+   use mpi
+#endif
 #if defined(CUDA)
    use cudaFortMap      ! cuda GPU api bindings for fortran
 #elif defined(HIP)
@@ -40,11 +43,13 @@ module solver
 #if defined(CUDA)
   interface BICG
       module procedure BiCG
+      module procedure BiCGp
       module procedure cuBiCG
   end interface
 #elif defined(HIP)
   interface BICG
       module procedure BiCG
+      module procedure BiCGp
       module procedure hipBiCG
   end interface
 #endif
@@ -433,7 +438,7 @@ subroutine TFQMR(b,x,KSPiter,adjt)
   complex (kind=prec),allocatable,dimension(:)  :: R, R0, V, W, D
   complex (kind=prec),allocatable,dimension(:)  :: AX, AY, AD, Y, YP1
   complex (kind=prec),allocatable,dimension(:)  :: PY, PY1 ! preconditioned Y
-  complex (kind=prec),allocatable,dimension(:)  :: xhalf,xmin
+  complex (kind=prec),allocatable,dimension(:)  :: xmin, xhalf
   real    (kind=prec)                           :: rnorm, rnorm1, bnorm,rnormin
   real    (kind=prec)                           :: xnorm, dnorm, btol
   real    (kind=prec)                           :: THETA, TAU, C
@@ -932,6 +937,295 @@ subroutine BiCG(b,x,KSPiter,adjt)
   deallocate(T)
 end subroutine BiCG ! BICG
   
+#if defined(FG) 
+! *****************************************************************************
+subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
+  ! fine-grained parallel version 
+  ! Stablized version of BiConjugate Gradient, set up for solving
+  ! A x = b using routines in  mult_Aii.
+  ! solves for the interior (edge) field
+  !
+  ! modified from my matlab version of BICGstab...
+  ! so the naming might sound a little different from conventional ones
+  ! also added the optional adjoint to solve adjoint system A^Tx = b
+  ! 
+  ! NOTE: BICG actually performs two sub (or half) line searches within a 
+  !       iteration, but here we only store the relerr for the second sub
+  !       just to be compatitive with QMR
+  !
+  ! 
+  ! interface...........
+  ! redefining some of the interfaces for our convenience (locally)
+  ! generic routines for vector operations for edge/ face nodes
+  ! in a staggered grid
+  !
+  ! NOTE: this has not been extensively tested - I believe it feels a 
+  ! little unstable (dispite the name)...
+  ! if you have time reading this, test it!
+  use modeloperator3d, only: A => mult_Alcl,  M1solve => PC_LsolveLcl,     &
+     &                                          M2solve => PC_UsolveLcl
+
+  implicit none
+  !  b is right hand side (which is actually b_local
+  complex (kind=prec), intent(in), dimension(:)    :: b
+  !  solution vector is x_local ... on input is provided with the initial
+  !  guess, on output is the iterate with smallest residual. 
+  !
+  complex (kind=prec), intent(inout),dimension(:)  :: x
+  type (solverControl_t), intent(inout)            :: KSPiter
+  integer,intent(in)                               :: comm_local
+  logical,intent(in),optional                      :: adjt
+
+  ! local variables
+  complex (kind=prec),allocatable,dimension(:)  :: R,RT,V,T, xmin
+  complex (kind=prec),allocatable,dimension(:)  :: P,PT,PH,S,ST,SH,AX
+  real    (kind=prec)                           :: rnorm, bnorm, rnormin, btol
+  complex (kind=prec)                           :: RHO, ALPHA, BETA, OMEGA
+  complex (kind=prec)                           :: RTV,TT,RHO1
+  integer                                       :: iter, imin
+  integer                                       :: maxiter, i, j
+  logical                                       :: adjoint, ilu_adjt, converged
+  ! parallel related
+  integer                                       :: rank_local, size_local, ierr
+  complex (kind=prec),allocatable, dimension(:) :: xbuff, rbuff, bbuff
+  integer,allocatable,dimension(:)              :: isizes, displs
+  integer                                       :: fsize, lsize
+  ! buffer 
+  real    (kind=prec)                           :: bnrm
+  complex (kind=prec)                           :: bdot
+ 
+  if (present(adjt)) then
+      adjoint = adjt
+      ilu_adjt = adjt
+  else
+      adjoint = .false.
+      ilu_adjt = .false.
+  endif
+  ! now see how many workers do we have
+  call MPI_COMM_RANK(comm_local,rank_local,ierr)
+  call MPI_COMM_SIZE(comm_local,size_local,ierr)
+  ! firstly try to figure out how the data is distributed on 
+  ! each process
+  allocate(isizes(size_local))
+  allocate(displs(size_local))
+  ! local array size
+  lsize = size(x)
+  ! try to get the local row sizes for each process, initialize by zero
+  isizes = 0
+  ! NOTE this can be used in-place, if the comm_local is a intra-communicator
+  ! it should be - but I will refrain to do that as who knows our users 
+  ! will configure their MPI processes...
+  call MPI_ALLGATHER(lsize,  1, MPI_INTEGER, isizes, 1, MPI_INTEGER&
+ &        , comm_local, ierr)
+  fsize = sum(isizes)
+ ! write(6, *) 'local size =', lsize, 'full size =', fsize, 'rank =',&
+ !&     rank_local
+  ! also the displacement
+  displs = 0
+  do i=2,size_local
+      displs(i) = sum(isizes(1:i-1))
+  end do
+ ! write(6, *) 'displacement =', displs(rank_local+1), 'rank =', rank_local
+  !Norm of rhs
+  ! the idea is to calculate the dot product of blocal for all processes and
+  ! sum the result
+  bnrm = dot_product(b, b)
+  ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+  call MPI_ALLREDUCE(bnrm, bnorm, 1, MPI_DOUBLE, MPI_SUM,    &
+ &        comm_local, ierr)
+  bnorm = sqrt(bnorm)
+  if (isnan(bnorm)) then
+  ! this usually means an inadequate model, in which case Maxwell's fails
+      write(0,*) 'Error: b in BICG contains NaNs; exiting...'
+      stop
+  else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
+      write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
+      x = b 
+      KSPiter%niter=1
+      KSPiter%failed=.false.
+      KSPiter%rerr=0.0
+      return
+  endif
+  ! firstly allocate for the buffer
+  allocate(xbuff(fsize))
+  allocate(R(lsize))
+  ! need to gather all local results to xbuff
+  call MPI_ALLGATHERV(x, lsize, MPI_DOUBLE_COMPLEX, xbuff, isizes, &
+ &        displs, MPI_DOUBLE_COMPLEX, comm_local, ierr)
+  ! now calculate the (original) residual
+  ! R= b - Ax, for inital guess x, that has been inputted to the routine
+  call A(xbuff,x,adjoint,R)
+  R = b - R
+  bnrm = dot_product(R, R)
+  ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+  call MPI_ALLREDUCE(bnrm, rnorm, 1, MPI_DOUBLE, MPI_SUM, comm_local, ierr)
+  ! Norm of residual
+  rnorm = sqrt(rnorm)
+  btol = KSPiter%tol * bnorm
+  if ( rnorm .le. btol ) then ! the first guess is already good enough
+     ! returning
+      KSPiter%niter=1
+      KSPiter%failed=.false.
+      KSPiter%rerr(1)=real(rnorm/bnorm)
+      deallocate(xbuff)
+      deallocate(R)
+      return 
+  end if 
+  ! wait for the others
+  call MPI_BARRIER(comm_local, ierr)
+  ! allocate the local parameters of "lsize"
+  allocate(xmin(lsize))
+  allocate(RT(lsize))
+  allocate(P(lsize))
+  allocate(PT(lsize))
+  allocate(PH(lsize))
+  allocate(S(lsize))
+  allocate(ST(lsize))
+  allocate(SH(lsize))
+  allocate(V(lsize))
+  allocate(T(lsize))
+!================= Now start configuring the iteration ===================!
+  ! the adjoint (shadow) residual
+  rnormin = rnorm
+  KSPiter%rerr(1) = real(rnormin/bnorm)
+  ! write(6,*) 'initial residual',  KSPiter%rerr(1)
+  converged = .false.
+  maxiter = KSPiter%maxit 
+  imin = 0
+  RHO = C_ONE
+  OMEGA = C_ONE
+  RT = R
+  xmin = x
+  imin = 1
+!============================== looooops! ================================!
+  do iter= 1, maxiter
+      RHO1 = RHO
+      bdot = dot_product(RT,R)
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bdot, RHO, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+      if (RHO .eq. 0.0) then
+          KSPiter%failed = .true.
+          exit
+      end if 
+      if (iter .eq. 1) then
+          P = R
+      else 
+          BETA = (RHO/RHO1)*(ALPHA/OMEGA) 
+          if (BETA .eq. 0.0) then
+              KSPiter%failed = .true.
+              exit
+          end if
+          ! note we only update the "local" part here
+          P = R + BETA * (P - OMEGA * V);
+      end if 
+      ! first half of the iteration
+      ! L solve PT in L * PT = P
+      call M1solve(P,ilu_adjt,PT)
+      ! U solve PH in L * PH = PT
+      call M2solve(PT,ilu_adjt,PH)
+      ! need to gather all local PH results to xbuff
+      call MPI_ALLGATHERV(PH, lsize, MPI_DOUBLE_COMPLEX, xbuff, isizes, &
+ &        displs, MPI_DOUBLE_COMPLEX, comm_local, ierr)
+      ! calculate V = A * PH
+      call A(xbuff,PH,adjoint,V)
+      ! RTV = dot(RT, V)
+      bdot = dot_product(RT,V)
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bdot, RTV, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+      if (RTV.eq.0.0) then
+          KSPiter%failed = .true.
+          exit
+      end if
+      ALPHA = RHO / RTV
+      if (ALPHA.eq.0.0) then
+          KSPiter%failed = .true.
+          exit
+      end if
+      ! update Xhalf - note that we need to update "each local block" of x
+      x = x + ALPHA * PH ! the first half 
+      S = R - ALPHA * V  !residual for the 0.5 x
+      ! second half of the iteration
+      ! L solve ST in L * ST = S
+      call M1solve(S,ilu_adjt,ST)
+      ! U solve SH in L * SH = ST
+      call M2solve(ST,ilu_adjt,SH)
+      ! need to gather all local SH results to xbuff
+      call MPI_ALLGATHERV(SH, lsize, MPI_DOUBLE_COMPLEX, xbuff, isizes, &
+ &        displs, MPI_DOUBLE_COMPLEX, comm_local, ierr)
+      ! calculate T = A * SH
+      call A(xbuff,SH,adjoint,T)
+      bdot = dot_product(T,T)
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bdot, TT, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+      ! wait for the others
+      call MPI_BARRIER(comm_local, ierr)
+      if (TT.eq.0.0) then
+          KSPiter%failed = .true.
+          exit
+      end if
+      ! omega = dot(T,S)/TT
+      bdot = dot_product(T,S)
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bdot, OMEGA, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+      OMEGA = OMEGA/TT
+      if (OMEGA.eq.0.0) then
+          KSPiter%failed = .true.
+          exit
+      end if
+      x = x + OMEGA * SH  ! the second half 
+      R = S - OMEGA * T   ! residual for the "0.5" iteration
+      ! rnorm = sqrt(dot(R,R))
+      bnrm = dot_product(R,R)
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bnrm, rnorm, 1, MPI_DOUBLE, MPI_SUM, &
+ &          comm_local, ierr)
+      rnorm = sqrt(rnorm)
+      ! wait for the others
+      call MPI_BARRIER(comm_local, ierr)
+      ! write(6,*) 'iter # ',iter,' r norm: ', rnorm
+      KSPiter%rerr(iter) = real(rnorm / bnorm)
+      if (rnorm.lt.btol) then
+          KSPiter%failed = .false.
+          KSPiter%niter = iter
+          converged = .true.
+          exit
+      end if
+      if (rnorm .lt. rnormin) then
+          rnormin = rnorm
+          xmin = x
+          imin = iter
+      end if
+  end do
+ 
+  if (.not. converged) then 
+      ! it should be noted that this is the way my matlab version works
+      ! the bicg will return the 'best' (smallest residual) iteration
+      ! x = xmin;  ! comment this line 
+      KSPiter%niter=maxiter
+      ! KSPiter%rerr(KSPiter%maxit) = KSPiter%rerr(imin)  ! and this line
+      ! to use the last iteration result instead of the 'best'
+  end if
+
+  deallocate(xmin)
+  deallocate(xbuff)
+  deallocate(R)
+  deallocate(RT)
+  deallocate(P)
+  deallocate(PT)
+  deallocate(PH)
+  deallocate(S)
+  deallocate(ST)
+  deallocate(SH)
+  deallocate(V)
+  deallocate(T)
+end subroutine BiCGp ! BICGp
+#endif
+  
+
 
 ! *****************************************************************************
 #if defined(CUDA)
