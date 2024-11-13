@@ -119,8 +119,10 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
 ! 
      ! check the basic input parameters
      if (size(group_sizes) .gt. (nTx*nPol+1)) then
-         write(0,*) 'ERROR: number of groups incompatible with the problem' 
-         stop
+         write(0,*) 'number of group is ', size(group_sizes) 
+         write(0,*) 'number of tasks is ', (nTx*nPol+1)
+         call errStop('ERROR: number of groups incompatible with the &
+    &            number of tasks')
      else ! just group according to the input sizes
          ! start splitting here
          total_nTx_nPol = nTx*nPol ! total number of independent tasks
@@ -149,11 +151,12 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
      else
          if (sum(group_sizes) .gt. (number_of_workers+1)) then
          ! see if the sizes are compatiable
-             write(0,*) 'ERROR: grouping incompatible with the workers' 
-             stop
+             call errStop('ERROR: grouping incompatible with the number &
+    &            of workers')
          else if (group_sizes(1) .ne. 1) then 
          ! the master should always be by itself 
-             write(0,*) 'ERROR: master group incompatible with the workers' 
+             call errStop('ERROR: grouping incompatible with the number &
+    &            of master')
              stop
          else
          ! try allocate the leader group
@@ -265,7 +268,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
      integer                                 :: i,j,k,a_size,nG,nMore,midx
      integer                                 :: nBand,nS,nM,nL,root=0
      real(kind=prec)                         :: time_sort(nTx*nPol)
-     integer                                 :: def, ncpu, total, diff
+     integer                                 :: def, nTask, total, diff
      integer, allocatable, dimension(:)      :: idx
      real(kind=prec), pointer, dimension(:)  :: cputime
      real(kind=prec)                         :: workload
@@ -275,12 +278,14 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
      def = para_method
      ! get the topology array
      if ((rank_world .eq. 0) .and. (output_level .gt. 2)) then
-         write(6,*) ' determine the system topology...'
-         write(6,*) ' and group the processes by physical nodes...'
+         write(6,*) '# determine the system topology...'
+         write(6,*) '# and group the processes by physical nodes...'
      end if
      ! this is useful for "production" setups with
      ! hybrid CPU-GPU calculations
      call get_host_topology(nTx,nPol,host_sizes)
+     ! number of total tasks
+     nTask = nTx * nPol
      ! need to firstly decide how many groups do we have 
      if (rank_world.eq.0) then ! the root process determine the grouping
          ! try to find the slowest groups
@@ -294,11 +299,10 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  ! first run
                  ! procs are divided into equal-sized groups
                  def = 2 
-             elseif (size(walltime) .lt. nTx*nPol) then
+             elseif (size(walltime) .lt. nTask) then
                  ! no need to do dynamic, not enough groups
-                 def = 0 ! only 1 proc per group
-             else
-                 def = 3 ! dynamic
+                 def = 2 ! equal group size
+             elseif (def .eq. 3) then 
                  nG = size(walltime)
                  allocate(idx(nG))
                  idx = (/(i,i=1,nG,1)/)
@@ -329,12 +333,14 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
          elseif (def.eq.2) then  
              ! equal group, but also consider the topology, i.e. one group 
              ! should not be distributed to more than one host
-             ! for simplicity, we use groups of 3 for each per/pol
-             if ((number_of_workers/3) .ge. 1) then
-                 nG = ceiling(float(number_of_workers)/3.0) + 1
+             ! for simplicity, we use a groups of 3 for each per/pol
+             if (number_of_workers .gt. nTask) then
+                 nG = nTask+1
              else
                  ! we don't have that many workers
-                 nG = size(walltime)
+                 nG = number_of_workers+1
+                 ! fall back
+                 def = 0
              endif
          elseif (def.eq.3) then
              ! dynamic - give more procs to harder jobs
@@ -343,15 +349,15 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
          endif
      endif
      ! now distribute the number of groups to everybody
+     call MPI_BCAST(def, 1, MPI_INTEGER, root, comm_current, ierr)
+     if ((rank_world .eq. 0) .and. (output_level .gt. 2)) then 
+         ! master 
+         write(6,*) '# current grouping strategy is: ', def
+     endif
      call MPI_BCAST(nG, 1, MPI_INTEGER, root, comm_current, ierr)
      if ((rank_world .eq. 0) .and. (output_level .gt. 2)) then 
          ! master 
-         write(6,*) 'current grouping strategy is: #', def
-     endif
-     call MPI_BCAST(def, 1, MPI_INTEGER, root, comm_current, ierr)
-     if ((rank_world .eq. 0) .and. (output_level .gt. 3)) then 
-         ! master 
-         write(6,*) 'current group number is: ', nG
+         write(6,*) '# current group number is: ', nG
      endif
      allocate(group_sizes(nG))
      ! now determine the detailed grouping
@@ -429,23 +435,25 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              ! now do a final check of compatibility
              if (sum(group_sizes(2:nG)).ne.number_of_workers) then
                  ! throw an error 
-                 write(0,*) 'ERROR: incompatible grouping settings'
-                 write(0,*) 'check your grouping settings'
-                 STOP
+                 call errStop('ERROR: incompatible grouping settings &
+    &                for workers')
              endif
              deallocate(cputime)
              deallocate(idx)
          else
-             write(0,*) 'ERROR: unknown grouping strategy'
-             STOP
+             call errStop('ERROR: unknown grouping strategy')
          endif !def = 0
          ! here we also check the host topology
          ! should avoid splitting a group onto two physical machines
          if (def.gt.1) then
-             k = 2 !this includes the master group
+             k = 2 ! this includes the first host (always 1)
+             ! for debug
+             ! write(6,*) 'host_sizes =', host_sizes
+             ! write(6,*) 'old group_sizes =', group_sizes
              do j = 2,nG
              ! FIXME: there is a possiblity that one group is larger 
-             ! than the number of procs of a host - should avoid that
+             ! than the number of procs of a host 
+             ! the grouping could be problematic in this case
                  total = sum(group_sizes(1:j)) 
                  if (total .lt. sum(host_sizes(1:k))) then
                      ! do nothing and continue  
@@ -453,33 +461,73 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                      ! go to the next host
                      k = k + 1
                  else ! we have one group spliting into two hosts 
-                     diff = total - sum(host_sizes(1:k))
-                     ! this is kind of brutal
-                     group_sizes(j) = group_sizes(j) - diff
-                     if (host_sizes(j) .le. 0) then
-                         host_sizes(j) = 1
-                         diff = total - sum(host_sizes(1:k-1)) - 1
-                     endif
-                     if ((diff.gt.0).and.(k+1 .gt. size(host_sizes))) then
-                         ! already the last host
-                         ! throw an error
-                         write(0,*) 'ERROR: not enough workers' 
-                     endif
-                     if (diff .gt. host_sizes(k+1)) then
-                         ! group is larger than the next host
-                         group_sizes(j+1) = host_sizes(k+1)
+                     i = 1
+                     diff =  total - sum(host_sizes(1:k))
+                     ! we have two choices -  
+                     if ((group_sizes(j) - diff) .lt. diff) then 
+                         ! better to add more workers to previous groups
+                         diff = sum(host_sizes(1:k)) - sum(group_sizes(1:j-1))
+                         do while (diff .gt. 0)
+                             group_sizes(j-i) = group_sizes(j-i) + 1
+                             diff = diff - 1
+                             i = i + 1
+                         end do
                      else
-                         group_sizes(j+1) = host_sizes(k+1) + diff
-                     endif
-                     if (j+1 .gt. nG) then
-                         ! already the last group
-                         ! just let it go
-                         exit
+                         ! better to remove workers from previous groups
+                         do while (diff .gt. 0)
+                             group_sizes(j-i+1) = group_sizes(j-i+1) - 1
+                             if (group_sizes(j-i+1) .lt. 1) then
+                                 group_sizes(j-i+1) = 1
+                             else
+                                 diff = diff - 1
+                             endif
+                             i = i + 1
+                         end do
                      endif
                      ! go to the next host
                      k = k + 1
                  endif
+                 if (k .gt. size(host_sizes)) then
+                     ! now just let it go 
+                     exit
+                 endif
              end do
+             ! now check the last node
+             diff =  sum(host_sizes) - sum(group_sizes)
+             ! and last group
+             j = nG
+             ! start here
+             i = 1
+             if (diff .gt. 0) then
+                 ! need to add more workers 
+                 do while (diff .gt. 0)
+                     group_sizes(j-i+1) = group_sizes(j-i+1) + 1
+                     diff = diff - 1
+                     i = i + 1
+                 end do
+             elseif (diff .lt. 0) then
+                 ! need to reduce workers 
+                 diff =  - diff
+                 do while (diff .gt. 0)
+                     group_sizes(j-i+1) = group_sizes(j-i+1) - 1
+                     if (group_sizes(j-i+1) .lt. 1) then
+                         group_sizes(j-i+1) = 1
+                     else
+                         diff = diff - 1
+                     endif
+                     i = i + 1
+                 end do
+             endif
+             ! for debug
+             ! write(6,*) 'new group_sizes =', group_sizes
+             if (sum(host_sizes) .ne. sum(group_sizes)) then
+                 ! throw an error
+                 write(0,*) 'host sizes =', sum(host_sizes)
+                 write(0,*) 'group sizes =', sum(group_sizes)
+                 call errStop('ERROR: number of groups incompatible with &
+    &                 size of hosts')
+                 stop
+             endif
          endif
      endif ! rank = 0
      call MPI_BCAST(group_sizes,nG,MPI_INTEGER,root,comm_current,ierr)
