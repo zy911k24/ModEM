@@ -40,17 +40,10 @@ module solver
      logical                                               :: failed = .false.
   end type solverControl_t
 
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
   interface BICG
       module procedure BiCG
-      module procedure BiCGp
       module procedure cuBiCG
-  end interface
-#elif defined(HIP)
-  interface BICG
-      module procedure BiCG
-      module procedure BiCGp
-      module procedure hipBiCG
   end interface
 #endif
 

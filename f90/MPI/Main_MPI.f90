@@ -295,13 +295,12 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              ! NOTE: 
              ! here we try to deduce the time supposed to be consumed 
              ! with one CPU process - stored in cputime array
-             if (walltime(2).eq.-1.0) then 
+             if ((def .eq. 3) .and. (walltime(2).eq.-1.0)) then 
                  ! first run
                  ! procs are divided into equal-sized groups
-                 def = 2 
-             elseif (size(walltime) .lt. nTask) then
-                 ! no need to do dynamic, not enough groups
+             elseif ((def .eq. 3) .and.(size(walltime) .lt. nTask)) then
                  def = 2 ! equal group size
+                 ! no need to do dynamic, not enough groups
              elseif (def .eq. 3) then 
                  nG = size(walltime)
                  allocate(idx(nG))
@@ -2485,7 +2484,7 @@ Subroutine Worker_Job(sigma,d)
              ! for debug
              ! write(6,*) 'rank_world= ', rank_world, 'rank_local= ', &
              !     rank_local, 'rank_leader = ', rank_leader
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
              ! override the gpu setting after each regroup
              ! this is kind of awkward as even for a "gpu-aware" mpi, 
              ! the program will NOT be able to tell the gpu number
@@ -2499,33 +2498,6 @@ Subroutine Worker_Job(sigma,d)
              if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
                  write(6,*) 'number of GPU devices = ', size_gpu
              end if
-             ! see if we have at least one GPU to spare in this group
-             ! note this could be problematic, if the grouping is 
-             ! not based on topology
-             if (size_gpu*cpus_per_gpu .ge. size_local) then
-                 ! everyone can get GPU acceleration
-                 cpu_only_ranks = 0
-             else
-                 cpu_only_ranks = size_local-size_gpu*cpus_per_gpu
-             end if
-             ! currently use cpus_per_gpu cpus for one GPU 
-             ! (hard coded in Declaritiion_MPI.f90)
-             ! i.e. if we have n cpus and m gpus on a physical node
-             ! the last m*cpus_per_gpu cpus will get accelerated by GPU
-#elif defined(HIP)
-             ! override the gpu setting after each regroup
-             ! this is kind of awkward as even for a "gpu-aware" mpi, 
-             ! the program will NOT be able to tell the gpu number
-             ! here we have to call the hip libs to tell
-             ! the number of devices
-             ! it should be noted that this only tells you the number of GPUs
-             ! on current machine, i.e. could be different for different 
-             ! physical nodes 
-             size_gpuPtr = c_loc(size_gpu) ! kind of crude here
-             ierr = hipGetDeviceCount(size_gpuPtr)
-             ! if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
-             write(6,*) 'number of GPU devices = ', size_gpu, 'err = ', ierr
-             ! end if
              ! see if we have at least one GPU to spare in this group
              ! note this could be problematic, if the grouping is 
              ! not based on topology

@@ -48,16 +48,11 @@ integer        :: para_method = 0
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
    integer(c_int),target  :: size_gpu = 0 
    integer(c_int),target  :: size_gpu_total = 0 
-   type(c_ptr)            :: size_gpuPtr = 0
-   type(c_ptr)            :: size_gpu_totalPtr = 0
-#elif defined(HIP)
-   integer(c_int),target  :: size_gpu = 0 
-   integer(c_int),target  :: size_gpu_total = 0 
-   type(c_ptr)            :: size_gpuPtr = 0
-   type(c_ptr)            :: size_gpu_totalPtr = 0
+   type(c_ptr)            :: size_gpuPtr
+   type(c_ptr)            :: size_gpu_totalPtr
 #else
    integer                :: size_gpu = 0 
    integer                :: size_gpu_total = 0 

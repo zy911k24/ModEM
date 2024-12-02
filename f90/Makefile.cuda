@@ -49,7 +49,7 @@ F90 = mpif90
 FFLAGS = -O3 -mavx2 -ffree-line-length-none -fPIC 
 #-fallow-argument-mismatch
 # FFLAGS = -g -fbacktrace -fbounds-check -ffpe-trap=zero -ffree-line-length-none
-NCC = /usr/local/cuda-12.4/bin/nvcc
+NCC = /usr/local/cuda/bin/nvcc
 CFLAGS = -O3
 # CFLAGS = -g 
 MPIFLAGS = -cpp -DMPI -DCUDA 
