@@ -196,10 +196,11 @@ Contains
 
   ! **************************************************************************
   ! * UpdateFreq updates the frequency that is currently being use
-  subroutine UpdateFreq(inOmega)
+  subroutine UpdateFreq(inOmega, nproc)
 
     implicit none
     real (kind=prec), intent (in)             :: inOmega
+    integer, optional :: nproc
 
     omega = inOmega
     Call AdiagSetUp()
