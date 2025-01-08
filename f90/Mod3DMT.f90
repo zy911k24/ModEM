@@ -5,6 +5,7 @@ program Mod3DMT
 !              AUTHORS  Gary Egbert, Anna Kelbert & Naser Meqbel
 !              College of Earth, Ocean and Atmospheric Sciences
 
+     use ModEM_timers
      use SensComp
      use SymmetryTest
      use Main
@@ -31,6 +32,18 @@ program Mod3DMT
 
 #ifdef MPI
       call  constructor_MPI
+#endif
+
+#ifdef MPI
+     if (taskid == 0) then
+         call ModEM_timers_create("Total Time", .true.)
+     endif
+#else
+     call ModEM_timers_create("Total Time", .true.)
+#endif
+
+
+#ifdef MPI
       if (taskid==0) then
           call parseArgs('Mod3DMT',cUserDef)  
           ! OR readStartup(rFile_Startup,cUserDef)
@@ -166,11 +179,13 @@ program Mod3DMT
         end if
       case (FORWARD,SECONDARY_FIELD)
         write(6,*) 'Calculating predicted data...'
+        call ModEM_timers_start("Forward")
 #ifdef MPI
         call Master_job_fwdPred(sigma0,allData,eAll)
 #else
         call fwdPred(sigma0,allData,eAll)
 #endif
+        call ModEM_timers_stop("Forward")
 
 
         ! write out all impedances
@@ -226,6 +241,7 @@ program Mod3DMT
          close(ioSens)
 
      case (INVERSE)
+         call ModEM_timers_start("Total Inverse")
          if (trim(cUserDef%search) == 'NLCG') then
             ! sigma1 contains mHat on input (zero = starting from the prior)
              write(*,*) 'Starting the NLCG search...'
@@ -257,6 +273,7 @@ program Mod3DMT
          if (write_data) then
              call write_dataVectorMTX(allData,cUserDef%wFile_Data)
          end if
+         call ModEM_timers_stop("Total Inverse")
  
       case (APPLY_COV)
 #ifdef MPI
@@ -435,12 +452,21 @@ program Mod3DMT
       call cleanUp()
 #endif
 
-
 #ifdef MPI
-      write(6,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
       call destructor_MPI
-#else
-      write(6,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
 #endif
+
+      write(6,*) ' elapsed time (mins) ',elapsed_time(timer)/60.0
+
+      call ModEM_timers_stop_all()
+#ifdef MPI
+      if (taskid == 0) then
+          call ModEM_timers_report(6)
+      end if
+#else
+      call ModEM_timers_report(6)
+#endif 
+      call ModEM_timers_destory_all()
+
 
 end program

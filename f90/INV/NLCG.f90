@@ -2,6 +2,7 @@ module NLCG
 
 ! inherits SensComp, DataIO and all modules they use. Also Main_MPI and Sub_MPI
 
+use ModEM_timers
 use invcore
 
 
@@ -329,7 +330,9 @@ Contains
    g = grad
    call linComb(MinusONE,grad,R_ZERO,grad,g)
    h = g
+   call ModEM_timers_create("NLCG Iteration", .false.)
    do
+      call ModEM_timers_start("NLCG Iteration")
       !  test for convergence ...
       if((rms.lt.iterControl%rmsTol).or.(iter.ge.iterControl%maxIter)) then
          exit
@@ -371,6 +374,10 @@ Contains
 	  alpha = (ONE+0.01)*alpha
 	  write(*,'(a25,i5)') 'Completed NLCG iteration ',iter
 	  write(ioLog,'(a25,i5)') 'Completed NLCG iteration ',iter
+
+      call ModEM_timers_stop("NLCG Iteration", .false.)
+      call ModEM_timers_print("NLCG Iteration", ioLog)
+
 	  Nmodel = countModelParam(mHat)
 	  mNorm = dotProd(mHat,mHat)/Nmodel
       call printf('with',lambda,alpha,value,mNorm,rms)
