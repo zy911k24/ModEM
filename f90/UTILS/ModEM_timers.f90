@@ -1,6 +1,6 @@
 module ModEM_timers
 
-    use iso_fortran_env, only : int64, int32
+    use iso_fortran_env, only : int64
     use iso_c_binding, only : c_int
 
     implicit none
@@ -16,12 +16,12 @@ module ModEM_timers
         integer :: hours = 0
         integer :: mins = 0
         integer :: secs = 0
-        integer(kind=16) :: nsecs = 0
+        integer(kind=int64) :: nsecs = 0
 
         integer (c_int) :: secs_c = 0
         integer (c_int) :: nsecs_c = 0
-        integer (kind=16) :: total_secs = 0
-        integer (kind=16) :: total_nsecs = 0
+        integer (kind=int64) :: total_secs = 0
+        integer (kind=int64) :: total_nsecs = 0
 
         type (ModEM_timer_t), pointer :: next => null()
     end type ModEM_timer_t
@@ -402,7 +402,7 @@ module ModEM_timers
         type (ModEM_timer_t), pointer :: timer
 
         integer(c_int) :: remainder
-        integer(kind=16) :: converted_nsecs
+        integer(kind=int64) :: converted_nsecs
 
         timer % total_nsecs = timer % total_nsecs + timer % nsecs_c
 
