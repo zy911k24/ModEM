@@ -1,5 +1,14 @@
 module ModEM_timers
 
+! By default, this module will use Fortran's SYSTEM_CLOCK as it's Monotonic; however, it
+! has the capability to use C timers. Because ModEM's makefile generation tool doesn't
+! automatically compile C files, in order to use the C timers you will need to do the 
+! following:
+! 
+! 1. Compile ModEM_machine_timers.c - By manually editing your makefile, see instructions
+!  in ModEM_machine_timers.c on how to do this and makefile rules to use.
+! 2. Compile this module with USE_C_TIMERS defined (Add `-DUSE_C_TIMERS` to FFLAGS).
+!
     use iso_fortran_env, only : int64
     use iso_c_binding, only : c_int
 
