@@ -284,7 +284,7 @@ Contains
         write(*,*) 'Optional final argument -v [debug|full|regular|compact|result|none]'
         write(*,*) 'indicates the desired level of output to screen and to files.'
         write(*,*)
-        stop
+        call ModEM_abort()
      endif
 
      ! extract all following command line arguments
@@ -310,8 +310,7 @@ Contains
 
       case (READ_WRITE) !R
         if (narg < 2) then
-           write(0,*) 'Usage: -R  rFile_Model rFile_Data [wFile_Model wFile_Data]'
-           stop
+           call errStop('Usage: -R  rFile_Model rFile_Data [wFile_Model wFile_Data]')
         else
 	       ctrl%rFile_Model = temp(1)
 	       ctrl%rFile_Data = temp(2)
@@ -355,7 +354,7 @@ Contains
            write(0,*) 'For matrix-free version (default), QMR is recommended. Otherwise, BICG.'
            write(0,*)
            write(0,*) 'Forward solver method PCG|QMR|TFQMR|BICG      : QMR'
-           stop
+           call ModEM_abort()
         else
 	       ctrl%rFile_Model = temp(1)
 	       ctrl%rFile_Data = temp(2)
@@ -412,7 +411,7 @@ Contains
            write(0,*) 'For matrix-free version (default), QMR is recommended. Otherwise, BICG.'
            write(0,*)
            write(0,*) 'Forward solver method PCG|QMR|TFQMR|BICG      : QMR'
-           stop
+           call ModEM_abort()
         else
 	       ctrl%rFile_Model = temp(1)
           ctrl%rFile_Model1D = temp(2)
@@ -433,7 +432,7 @@ Contains
       case (COMPUTE_J) ! J
         if (narg < 3) then
            write(0,*) 'Usage: -J  rFile_Model rFile_Data wFile_Sens [rFile_fwdCtrl]'
-           stop
+           call ModEM_abort()
         else
 	       ctrl%rFile_Model = temp(1)
 	       ctrl%rFile_Data = temp(2)
@@ -445,8 +444,7 @@ Contains
 
       case (MULT_BY_J) ! M
         if (narg < 4) then
-           write(0,*) 'Usage: -M  rFile_Model rFile_dModel rFile_Data wFile_Data [rFile_fwdCtrl]'
-           stop
+           call errStop('Usage: -M  rFile_Model rFile_dModel rFile_Data wFile_Data [rFile_fwdCtrl]')
         else
 	       ctrl%rFile_Model = temp(1)
 	       ctrl%rFile_dModel = temp(2)
@@ -459,8 +457,7 @@ Contains
 
       case (MULT_BY_J_T) ! T
         if (narg < 3) then
-           write(0,*) 'Usage: -T  rFile_Model rFile_Data wFile_dModel [rFile_fwdCtrl]'
-           stop
+           call errStop('Usage: -T  rFile_Model rFile_Data wFile_dModel [rFile_fwdCtrl]')
         else
 	       ctrl%rFile_Model = temp(1)
 	       ctrl%rFile_Data = temp(2)
@@ -472,8 +469,7 @@ Contains
 
       case (MULT_BY_J_T_multi_Tx) ! x
         if (narg < 3) then
-           write(0,*) 'Usage: -x  rFile_Model rFile_Data wFile_dModel [rFile_fwdCtrl]'
-           stop
+           call errStop('Usage: -x  rFile_Model rFile_Data wFile_dModel [rFile_fwdCtrl]')
         else
 	       ctrl%rFile_Model = temp(1)
 	       ctrl%rFile_Data = temp(2)
@@ -527,15 +523,14 @@ Contains
            write(0,*) '      rFile_Cov     = the model covariance configuration file'
            write(0,*) '      rFile_dModel  = the starting model parameter perturbation'
            write(0,*)
-           stop
+           call ModEM_abort()
         else
            ctrl%search = temp(1)
            select case (ctrl%search)
            case ('NLCG','DCG','Hybrid','LBFGS')
               	! write(0,*) 'Inverse search ',trim(ctrl%search),' selected.'
            case default
-		write(0,*) 'Unknown inverse search. Usage: -I [NLCG | DCG | Hybrid | LBFGS]'
-		stop
+		call errStop('Unknown inverse search. Usage: -I [NLCG | DCG | Hybrid | LBFGS]')
            end select
 	       ctrl%rFile_Model = temp(2)
 	       ctrl%rFile_Data = temp(3)
@@ -549,8 +544,7 @@ Contains
             inquire(FILE=ctrl%rFile_invCtrl,EXIST=exists)
             if (.not. exists) then
             	! problem - invalid argument
-		write(0,*) 'Please specify a valid inverse control file or damping parameter'
-		stop
+		call errStop('Please specify a valid inverse control file or damping parameter')
             end if
           end if
         end if
@@ -563,8 +557,7 @@ Contains
             inquire(FILE=ctrl%rFile_fwdCtrl,EXIST=exists)
             if (.not. exists) then
             	! problem - invalid argument
-		write(0,*) 'Please specify a valid forward solver control file or misfit tolerance'
-		stop
+		call errStop('Please specify a valid forward solver control file or misfit tolerance')
             end if
           end if
         end if
@@ -577,8 +570,7 @@ Contains
             inquire(FILE=ctrl%rFile_dModel,EXIST=exists)
             if (.not. exists) then
             	! problem - invalid argument
-		write(0,*) 'Please specify a valid starting model file'
-		stop
+		call errStop('Please specify a valid starting model file')
             end if
         end if
 
@@ -597,7 +589,7 @@ Contains
            write(0,*) '  perturbation for the inversion: \\tilde{m} = C_m^{-1/2} (m - m_0)'
            write(0,*) '  WARNING: may be poorly conditioned if the smoothing is too strong;'
            write(0,*) '  always check your model for white noise after using this option.'
-           stop
+           call ModEM_abort()
         else
         ctrl%option = temp(1)
 	    ctrl%rFile_Model = temp(2)
@@ -618,7 +610,7 @@ Contains
            write(0,*) '  computes the data functionals from the supplied electric field'
            write(0,*) '  Optionally writes out the BCs extracted from the electric field.'
            write(0,*) '  Optionally also writes back the electric field for debugging.'
-           stop
+           call ModEM_abort()
         else
             ctrl%rFile_Model = temp(1)
             ctrl%rFile_Data = temp(2)
@@ -638,7 +630,7 @@ Contains
            write(0,*)
            write(0,*) '  Initializes the forward solver and extracts the boundary conditions,'
            write(0,*) '  writes to file.'
-           stop
+           call ModEM_abort()
         else
             ctrl%rFile_Model = temp(1)
             ctrl%rFile_Data = temp(2)
@@ -658,7 +650,7 @@ Contains
            write(0,*) '  Compute df/dm|_m0 x dm as a dot product'
            write(0,*) '  Compare the two resultant scalars'
            write(0,*)
-           stop
+           call ModEM_abort()
         else
            ctrl%rFile_Model = temp(1)
            ctrl%rFile_Data = temp(2)
@@ -707,7 +699,7 @@ Contains
            write(0,*) ' -A  d rFile_Data wFile_Data [delta]'
            write(0,*) ' -A  e rFile_Model rFile_Data rFile_EMsoln wFile_EMsoln [delta rFile_fwdCtrl]'
            write(0,*) ' -A  b rFile_Model rFile_Data rFile_EMrhs wFile_EMrhs [delta rFile_fwdCtrl]'
-           stop
+           call ModEM_abort()
         else
            ctrl%option = temp(1)
            ctrl%delta = 0.05
@@ -756,7 +748,7 @@ Contains
                 if (narg < 5) then
                     write(0,*) 'Usage: -P rFile_Model rFile_dModel rFile_EMsoln rFile_Data [wFile_Model wFile_EMrhs rFile_fwdCtrl]'
                     write(0,*) 'Please specify data template file to set up the transmitter dictionary'
-                    stop
+                    call ModEM_abort()
                 endif
                 ctrl%rFile_Data = temp(5)
                 if (narg > 5) then
@@ -825,15 +817,13 @@ Contains
                     ctrl%rFile_fwdCtrl = temp(7)
                 endif
            case default
-                write(0,*) 'Unknown operator. Usage: -A [J | L | S | P | Q] OR -A [m | d | e | b]'
-                stop
+                call errStop('Unknown operator. Usage: -A [J | L | S | P | Q] OR -A [m | d | e | b]')
            end select
         end if
 
       case (TEST_SENS) ! S
         if (narg < 4) then
-           write(0,*) 'Usage: -S  rFile_Model rFile_dModel rFile_Data wFile_Data [rFile_fwdCtrl wFile_Sens]'
-           stop
+           call errStop('Usage: -S  rFile_Model rFile_dModel rFile_Data wFile_Data [rFile_fwdCtrl wFile_Sens]')
         else
            ctrl%rFile_Model = temp(1)
            ctrl%rFile_dModel = temp(2)
@@ -848,8 +838,7 @@ Contains
         end if
 
       case default
-         write(0,*) 'Unknown job. Please check your command line options'
-         stop
+         call errStop('Unknown job. Please check your command line options')
 
      end select
 
