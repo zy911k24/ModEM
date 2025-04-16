@@ -35,7 +35,6 @@ Modular Electromagnetic Inversion Software (ModEM)
     * [Inversion Modeling](#inversion-modeling)
 * [More Information And Tools](#more-information-and-tools)
     * [Related Repositories](#related-repositories)
-    * [For ModEM SVN Users](#for-modem-svn-users)
     * [ModEM-ON and ModEM-OO](#modem-on-and-modem-oo)
 * [Citations](#citations)
 
@@ -55,7 +54,7 @@ Receiving objects: 100% (18608/18608), 73.43 MiB | 13.34 MiB/s, done.
 Resolving deltas: 100% (14565/14565), done.
 ```
 
-For more information of Git, GitHub and cloning, please see:
+For more information on Git, GitHub and cloning, please see:
 https://docs.github.com/en/get-started.
 
 You can also download specific versions and commits of ModEM by following [these
@@ -79,19 +78,19 @@ variables of the Makefile.
 ## Creating Makefiles from Configuration files
 
 The current build system for ModEM uses the `fmkmf.pl` pearl script and the
-configuration scripts that are found within in `f90/CONFIG`. Although ModEM uses
-Make and Makefiles, makefiles are meant to be created by the running the 
-configuration scripts.
+configuration scripts that are in `f90/CONFIG`. Although ModEM uses Make and
+Makefiles, makefiles are meant to be created by these configuration scripts.
 
-In order to create Makefiles, one should run the configuration scripts that
-matches your system and desired compilers. These configuration scripts call the
-`fmkmf.pl` script.
+To create Makefiles, run the configuration scripts that match your system,
+desired compiler and desired ModEM version. These configuration scripts
+call the `fmkmf.pl` script:
 
 ``` bash
 $ cd f90/
 $ ./CONFIG/Configure.3D_MT.MAC.GFortran makefile.gnu.mpi MPI
 ```
-All configuration scripts have the same arguments:
+
+All configuration scripts take the same arguments:
 
 ```bash
 $ /CONFIG/Configfile <desired-makefile-name> <type>
@@ -99,14 +98,14 @@ $ /CONFIG/Configfile <desired-makefile-name> <type>
 
 Where `type` is either: `MPI, release, debug`:
 
-* `MPI` - Generates a makefile that will compile a MPI, multi-parallel capable
- ModEM version
+* `MPI` - Generates a makefile that will compile an MPI version of ModEM
 * `release` - Generates a makefile that will compile a serial version of ModEM
 * `debug` -  Generates a makefile that will compile a serial version of ModEM
  with `-O0` (no optimizations) and debug symbols (`-g`, bounds checking ,etc)
 
 Of course, any generated makefile can be altered as you see fit. For instance,
-it is often helpful to add debugging symbols when working with an MPI makefile.
+it is often helpful to add the `-g` to copmile with debug symbols when working
+with an MPI makefile.
 
 ## Compiling
 
@@ -115,38 +114,45 @@ defaults, you can compile ModEM by renaming that makefile to `Makefile` and
 then run `make`:
 
 ``` bash
-$ cp makefile.gnu Makefile
+$ cp Makefile.3D.MF.gnu Makefile
 $ make clean # Not necessary from a fresh clone
 $ make
 ```
 
 ### Compiling with MPI
 
-If you have MPI installed, and already have a makefile generated you can easily
-compile the MPI version of ModEM by altering the makefile. This is sometimes
-easier then creating a new makefile from the configuration scripts.
+If you have MPI installed, and already have a serial makefile generated you can
+easily compile the MPI version of ModEM by altering the makefile. This is
+sometimes easier then creating a new makefile from the configuration scripts.
 
-To run with MPI, edit the compiler in your makefile to be an MPI compiler (e.g.
-`mpifort`) and add `-DMPI` to the `MPIFLAGGS` variable:
+To compile an MPI version, edit the compiler in your makefile to be an MPI
+compiler (e.g.  `mpifort`) and add `-DMPI` to the `MPIFLAGGS` variable:
 
 ``` Makefile
 F90 = mpifort
 MPIFLAGS = -DMPI ... omitting other flags
 ```
 
+However, you can also generate an MPI makefile by running the configuration scripts
+and passing it `MPI` as the type.
+
+> **IMPORTANT NOTE:** When running ModEM with MPI you must use at least 2 tasks and
+> a max of `(2 x nTransmitters) + 1` tasks (except for the SP2 version
+> compiled with `-DFG`).
+
 # Basic ModEM Usage
 
-> **Note:** For a more detailed information on ModEM usage please see the [ModEM
+> **NOTE:** For a more detailed information on ModEM usage please see the [ModEM
 > User's Guide][Users-Guide].
 
 While the [User's Guide][Users-Guide] is the best resource for information on
 running ModEM, information can also be found by running the `Mod2DMT` or
-`Mod3DMT` with no arguments. Furthurmore, specifying the job flag with no other
-arguments will produce a detailed usage description for that job type.  For
-example: `./Mod3DMT -F` will produce a detailed description of options for
-forward modeling.
+`Mod3DMT` executables with no arguments. Furthurmore, specifying the job flag
+with no other arguments will produce a detailed usage description for that job
+type.  For example: `./Mod3DMT -F` will produce a detailed description of
+options for forward modeling.
 
-The following examples below will use data and model files from the
+The examples below will use data and model files from the
 [BLOCK2][BLOCK2-Example] Magnetotelluric examples found within the
 [ModEM-Examples][ModEM-Examples] repo. You will need to clone or download this
 repository to obtain the data files and examples.
@@ -176,17 +182,17 @@ results in `fwd.BLOCK2.dat`. The last argument `esoln.BLOCK2.dat` is an optional
 argument and if present will write out the full electro-magnetic solution in 
 the specified file.
 
-If compiled ModEM with MPI, you can run the above example with MPI:
+If you compiled ModEM with MPI, you can run the above example with MPI:
 
 ```bash
 $ mpiexec -n 2 ./Mod3DMT -F m1.ws Templdate_de.dat fwd.BLOCK2.dat esoln.BLOCK2.dat
 ```
 
-When running ModEM with MPI, you **must** use at least **two** MPI tasks. For all
-versions of ModEM, except SP2 compiled with `-FG`, the max number of MPI tasks
-you can use is `(2 x nTransmitters) + 1`. Where the number of transmitters is the
-number of periods/frequencies. Thus you can run with 9 tasks: 4 transmitters
-multipled by 2 polarizations + 1 main task.
+When running ModEM with MPI, you **must** use at least **two** MPI tasks. For
+all versions of ModEM, except SP2 compiled with `-DFG`, the max number of MPI
+tasks you can use is `(2 x nTransmitters) + 1`. Where the number of transmitters
+is the number of periods/frequencies. Thus you can run with 9 tasks: 4
+transmitters multipled by 2 polarizations + 1 main task:
 
 ```bash
 $ mpiexec -n 9 ./Mod3DMT -F m1.ws Templdate_de.dat fwd.BLOCK2.dat esoln.BLOCK2.dat
@@ -239,7 +245,11 @@ covariance files please see the [ModEM User's Guide][Users-Guide].
 Similar to the forward modeling, you can run the inverse modeling with MPI. The
 same rules as apply as to the number of transmitters and tasks: Must use at least two
 tasks and no more than (2 x nTransmitters) + 1 tasks (except for the SP2 version
-compiled with `-DFG`).
+compiled with `-DFG`):
+
+``` bash
+$ mpiexec -n 9 ./Mod3DMT -I NLCG pr.ws de.dat block2.inv
+```
 
 # More Information and Tools
 
@@ -253,9 +263,6 @@ examples
 [ModEM-Tools]: https://github.com/MiCurry/ModEM-Tools
 [ModEM-Examples]: https://github.com/MiCurry/ModEM-Examples
 
-## For ModEM SVN Users 
-
-
 ## ModEM-ON and ModEM-OO
 
 The versions of ModEM worked on by Brazil's Observatório Nacional (ON) are
@@ -266,7 +273,7 @@ included as branches in this repository under the following names:
 | ModEM-OO Repository | [object-oriented][Object-Oriented-Branch] |
 | ModEM-ON Repository | [CSEM][CSEM-Branch] |
 
-> <font color='red'>**WARNING**:</font> both the object-oriented and CSEM
+> <font color='red'>**WARNING**:</font> Both the object-oriented and CSEM
 > branch have unrelated git-history than other branches. Thus, these branches
 > should not be merged into other branches.
 
