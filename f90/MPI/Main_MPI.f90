@@ -549,9 +549,6 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
          comm_current = comm
-         if (comm .lt. 0) then
-             comm_current = comm_world
-         end if
      else
          comm_current = comm_world
      end if
@@ -1536,9 +1533,6 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
          comm_current = comm
-         if (comm .lt. 0) then
-             comm_current = comm_world
-         end if
      else
          comm_current = comm_world
      end if
