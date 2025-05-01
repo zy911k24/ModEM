@@ -21,7 +21,9 @@ module EMsolve3D
 
   interface FWDSolve3D
      MODULE PROCEDURE FWDSolve3Ds
+#ifdef FP
      MODULE PROCEDURE FWDSolve3Dp
+#endif
   end interface
 
   type :: emsolve_control
@@ -569,6 +571,7 @@ Contains
 
   end subroutine FWDsolve3Ds
 
+#ifdef FG
   ! fine-grained parallel version
   subroutine FWDsolve3Dp(bRHS,omega,eSol,device_id,comm_local)
 !----------------------------------------------------------------------
@@ -1203,6 +1206,7 @@ Contains
      deallocate(KSSiter%rerr)
 
   end subroutine FWDsolve3Dp
+#endif
 
 !**********************************************************************
 ! solver_divcorrr contains the subroutine that would solve the divergence
