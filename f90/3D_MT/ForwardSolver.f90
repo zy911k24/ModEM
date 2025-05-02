@@ -879,12 +879,12 @@ end subroutine unpack_BC_from_file
                  'Solving the ','FWD', ' problem for period ',iTx,   &
                  ': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
          if (present(device_id)) then
-#ifdef FG
+             if (present(comm_local)) then
                  call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id, &
     &               comm_local)
-#else
+             else
                  call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id)
-#endif
+             end if
          else
              call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
          end if
@@ -937,13 +937,13 @@ end subroutine unpack_BC_from_file
      &          'Solving the ',FWDorADJ, ' problem for period ',iTx,&
      &          ': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
         if (present(device_id)) then
-#ifdef FG
-            call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
- &           e%pol(imode), device_id, comm_local)
-#else
-            call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
- &           e%pol(imode), device_id)
-#endif
+            if (present(comm_local)) then
+                call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
+     &           e%pol(imode), device_id, comm_local)
+            else
+                call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
+     &           e%pol(imode), device_id)
+            end if
         else
             call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
         end if
