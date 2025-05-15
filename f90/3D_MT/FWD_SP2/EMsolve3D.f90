@@ -20,8 +20,10 @@ module EMsolve3D
   private       :: SdivCorr
 
   interface FWDSolve3D
-     MODULE PROCEDURE FWDSolve3Ds
+#ifdef MPI
      MODULE PROCEDURE FWDSolve3Dp
+#endif
+     MODULE PROCEDURE FWDSolve3Ds
   end interface
 
   type :: emsolve_control
@@ -569,6 +571,7 @@ Contains
 
   end subroutine FWDsolve3Ds
 
+#ifdef MPI
   ! fine-grained parallel version
   subroutine FWDsolve3Dp(bRHS,omega,eSol,device_id,comm_local)
 !----------------------------------------------------------------------
@@ -1203,6 +1206,7 @@ Contains
      deallocate(KSSiter%rerr)
 
   end subroutine FWDsolve3Dp
+#endif
 
 !**********************************************************************
 ! solver_divcorrr contains the subroutine that would solve the divergence
