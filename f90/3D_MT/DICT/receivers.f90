@@ -56,10 +56,11 @@ Contains
   ! Initializes and sets up receiver dictionary
   ! The reciever dictionary contains sparse vectors required
   ! for magnetic and electric field vector evaluation
-  subroutine setup_rxDict(siteLocations,siteIDs)
+  subroutine setup_rxDict(nSites, siteLocations,siteIDs)
 
-    real(kind=prec), intent(in), optional       :: siteLocations(MAX_NRX,3)
-    character(*), intent(in), optional          :: siteIDs(MAX_NRX)
+    integer, intent(in) :: nSites
+    real(kind=prec), intent(in), optional       :: siteLocations(nSites,3)
+    character(*), intent(in), optional          :: siteIDs(nSites)
 
 
     !  local variables
@@ -67,11 +68,11 @@ Contains
     character(3) :: id
 
     if (.not. associated(rxDict)) then
-      allocate(rxDict(MAX_NRX),STAT=istat)
+      allocate(rxDict(nSites),STAT=istat)
     end if
 
     if (present(siteLocations)) then
-      do i = 1,MAX_NRX
+      do i = 1,nSites
          rxDict(i)%x = siteLocations(i,:)
          if (present(siteIDs)) then
             rxDict(i)%id = siteIDs(i)
@@ -162,7 +163,7 @@ function update_rxDict(loc,id,Rx_azi,loc_ref,id_ref) result (iRx)
      ! If the site really is new, append to the end of the dictionary
      new_Rx = .true.
      new%defined = .true.
-     if (nRx < MAX_NRX) then
+     if (nRx < size(rxDict)) then
          iRx = nRx+1
          rxDict(iRx) = new
      else
