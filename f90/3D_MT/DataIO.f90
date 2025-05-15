@@ -594,7 +594,7 @@ Contains
     call setup_typeDict()
 
     ! Now, allocate ample storage for the receiver dictionary
-    call setup_rxDict()
+    call setup_rxDict(MAX_NRX)
 
     ! Save the user preferences
     nTxt = 5
