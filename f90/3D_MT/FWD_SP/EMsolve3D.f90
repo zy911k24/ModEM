@@ -125,7 +125,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0; 
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3D(bRHS,omega,eSol,device_id,comm_local)
+  subroutine FWDSolve3D(bRHS,omega,eSol,device_id,comm_local)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -180,7 +180,7 @@ Contains
         Nei = size(EDGEi,1)
         Ne = size(EDGEb,1)+Nei
         if (output_level > 3) then
-            write(*,'(a36,i8,a4,i8)') 'FWDsolve3D model grid #edges: Nei=', &
+            write(*,'(a36,i8,a4,i8)') 'FWDSolve3D model grid #edges: Nei=', &
                 Nei,' Ne=',Ne
         end if
     end if
@@ -202,7 +202,7 @@ Contains
         Nni = size(NODEi,1)
         Nn  = size(NODEb,1) + Nni
         if (output_level > 3) then
-            write(*,'(a36,i8,a4,i8)') 'FWDsolve3D source grid #nodes: Nni=',Nni,' Nn=',Nn
+            write(*,'(a36,i8,a4,i8)') 'FWDSolve3D source grid #nodes: Nni=',Nni,' Nn=',Nn
         end if
         allocate(si(Nei))
         allocate(phi0(Nn))
@@ -432,7 +432,7 @@ Contains
     Call deall(tvec)
     deallocate(KSSiter%rerr)
 
-  end subroutine FWDsolve3D
+  end subroutine FWDSolve3D
 
 !**********************************************************************
 ! solver_divcorrr contains the subroutine that would solve the divergence

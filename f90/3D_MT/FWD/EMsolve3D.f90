@@ -113,7 +113,7 @@ Contains
 ! the divergence correction may be applied also for non-physical sources, such as
 ! in Jmult ('FWD') and JmultT ('TRN').
     
-  subroutine FWDsolve3D(bRHS,omega,eSol,device_id,comm_local)
+  subroutine FWDSolve3D(bRHS,omega,eSol,device_id,comm_local)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -388,7 +388,7 @@ Contains
     Call deall(tempBC)
     deallocate(KSSiter%rerr, STAT=status)
 
-  end subroutine FWDsolve3D
+  end subroutine FWDSolve3D
 
 !**********************************************************************
 ! solver_divcorr contains the subroutine that solves the divergence correction 

@@ -195,7 +195,7 @@ Contains
         Nei = size(EDGEi,1)
         Ne = size(EDGEb,1)+Nei
         if (output_level > 3) then
-            write(*,'(a36,i8,a4,i8)') 'FWDsolve3D model grid #edges: Nei=', &
+            write(*,'(a36,i8,a4,i8)') 'FWDSolve3D model grid #edges: Nei=', &
                 Nei,' Ne=',Ne
         end if
     end if
@@ -219,7 +219,7 @@ Contains
         Nni = size(NODEi,1)
         Nn  = size(NODEb,1) + Nni
         if (output_level > 3) then
-            write(*,'(a36,i8,a4,i8)') 'FWDsolve3D source grid #nodes:           Nni=',    Nni,' Nn=',Nn
+            write(*,'(a36,i8,a4,i8)') 'FWDSolve3D source grid #nodes:           Nni=',    Nni,' Nn=',Nn
         end if
     ! uncomment the following line to try divergence correction in CCGD
     !    allocate(phi0(Nn)) ! make sure you *WANT* to do this, first!
@@ -609,7 +609,7 @@ Contains
              Nnb = size(NODEb,1)
              Nn = Nni+Nnb
              if (output_level > 3) then
-                 write(*,'(a36,i8,a4,i8)') 'FWDsolve3D source grid #nodes:           Nni=',    Nni,' Nn=',Nn
+                 write(*,'(a36,i8,a4,i8)') 'FWDSolve3D source grid #nodes:           Nni=',    Nni,' Nn=',Nn
              end if
          ! uncomment the following line to try divergence correction in CCGD
          !    allocate(phi0(Nn)) ! make sure you *WANT* to do this, first!
