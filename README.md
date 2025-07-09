@@ -158,7 +158,7 @@ The examples below will use data and model files from the
 repository to obtain the data files and examples.
 
 [BLOCK2-Example]: https://github.com/MiCurry/ModEM-Examples/tree/main/Magnetotelluric/3D_MT/BLOCK2
-[Users-Guide]: https://github.com/MiCurry/ModEM-Model/blob/main/doc/userguide/ModularEM_UserGuide.pdf
+[Users-Guide]: https://github.com/MiCurry/ModEM-Model/blob/main/doc/userguide/ModEM_UserGuide.pdf
 
 ## Forward Modeling
 
