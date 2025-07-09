@@ -1568,8 +1568,7 @@ Contains
       allocate(colT(A%nCol))
       colT = (/ (j,j=1,A%nCol) /)
       if (A%nrow .lt. np) then
-          write(6,*) 'number of process is larger than number of rows!'
-          stop
+          call errStop('number of process is larger than number of rows!')
       elseif (np.eq.1) then
           !write(6,*) 'only one process, returning the original Matrix'
           m = A%nRow
@@ -1631,8 +1630,7 @@ Contains
       allocate(colT(A%nCol))
       colT = (/ (j,j=1,A%nCol) /)
       if (A%nrow .lt. np) then
-          write(6,*) 'number of processes is larger than number of rows!'
-          stop
+          call errStop('number of processes is larger than number of rows!')
       elseif (np.eq.1) then
           !write(6,*) 'only one process, returning the original Matrix'
           m = A%nRow
@@ -1694,8 +1692,7 @@ Contains
 
       nrow = size(X)
       if (nrow .lt. np) then
-          write(6,*) 'number of process is larger than number of rows!'
-          stop
+          call errStop('number of process is larger than number of rows!')
       elseif (np.eq.1) then
           !write(6,*) 'only one process, returning the original vector'
           allocate(Y(size(X)))
@@ -1747,8 +1744,7 @@ Contains
 
       nrow = size(X)
       if (nrow .lt. np) then
-          write(6,*) 'number of process is larger than number of rows!'
-          stop
+          call errStop('number of process is larger than number of rows!')
       elseif (np.eq.1) then
           !write(6,*) 'only one process, returning the original vector'
           allocate(Y(size(X)))
@@ -1802,12 +1798,10 @@ Contains
 
       ! see if A is square, need not to proceed if it isn't 
       if (A%nrow .ne. A%ncol) then
-          write(6,*) 'blkdiagRMAT: input matrix is not square!'
-          stop
+          call errStop('blkdiagRMAT: input matrix is not square!')
       endif
       if (A%nrow .lt. np) then
-          write(6,*) 'number of process is larger than number of rows!'
-          stop
+          call errStop('number of process is larger than number of rows!')
       elseif (np.eq.1) then
           !write(6,*) 'only one process, returning the original Matrix'
           m = A%nRow
@@ -1832,8 +1826,7 @@ Contains
       if (present(isizes)) then ! split into given sizes
           !check if the sizes are compatitive to the number of rows
           if (sum(isizes) .ne. nrow) then
-              write(6,*) 'blkdiagRMAT: input sizes not consistent with matrix!'
-              stop
+              call errStop('blkdiagRMAT: input sizes not consistent with matrix!')
           endif
           istart = 1
           do k = 1,i
@@ -1888,12 +1881,10 @@ Contains
 
       ! see if A is square, need not to proceed if it isn't
       if (A%nrow .ne. A%ncol) then
-          write(6,*) 'blkdiagCMAT: input matrix is not square!'
-          stop
+          call errStop('blkdiagCMAT: input matrix is not square!')
       endif
       if (A%nrow .lt. np) then
-          write(6,*) 'number of process is larger than number of rows!'
-          stop
+          call errStop('number of process is larger than number of rows!')
       elseif (np.eq.1) then
           !write(6,*) 'only one process, returning the original Matrix'
           m = A%nRow
@@ -1918,8 +1909,7 @@ Contains
       if (present(isizes)) then ! split into given sizes
           !check if the sizes are compatitive to the number of rows
           if (sum(isizes) .ne. nrow) then
-              write(6,*) 'blkdiagCMAT: input sizes not consistent with matrix!'
-              stop
+              call errStop('blkdiagCMAT: input sizes not consistent with matrix!')
           endif
           istart = 1
           do k = 1,i
@@ -2384,7 +2374,7 @@ Contains
                       write(6,*) 'in col: ',                              &
      &                            Atmp%col(Atmp%row(i):Atmp%row(i+1)-1)
                       write(6,*) 'in row: ', Atmp%col(j)
-                      stop
+                      call ModEM_abort()
                   endif 
                   ! first divide each row in L with diagonal elements
                   Atmp%val(j) = Atmp%val(j)/d(Atmp%col(j))
@@ -2449,8 +2439,7 @@ Contains
                   exit ! exit as we reached the last element in L
               elseif(Atmp%col(j).lt.i) then
                   if (d(Atmp%col(j)).eq.0.0) then
-                      write(6,*) 'error: zero pivoting in ILU0 '
-                      stop
+                      call errStop('error: zero pivoting in ILU0 ')
                   endif 
                   ! first divide each row in L with diagonal elements
                   Atmp%val(j) = Atmp%val(j)/d(Atmp%col(j))

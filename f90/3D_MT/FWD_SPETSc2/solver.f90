@@ -10,7 +10,7 @@
 module solver
 
    use math_constants   ! math/ physics constants
-   use utilities, only: isnan
+   use utilities
    use spoptools        ! for sparse-matrix operations
    !use griddef	! staggered grid definitions
    !use sg_scalar
@@ -83,8 +83,7 @@ subroutine PCG(b,x,PCGiter)
   bnorm = sqrt(dot_product(b,b))
   if (isnan(bnorm)) then
   ! this usually means an inadequate model, in which case Maxwell's fails
-      write(0,*) 'Error: b in PCG contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in PCG contains NaNs; exiting...')
   endif
   rnorm = sqrt(dot_product(r,r))
   i = 1
@@ -108,8 +107,7 @@ subroutine PCG(b,x,PCGiter)
      i = i + 1
      rnorm = sqrt(dot_product(r,r))
      if (isnan(rnorm)) then
-         write(0,*) 'Error: residual in PCG contains NaNs; exiting...'
-         stop
+         call errStop('Error: residual in PCG contains NaNs; exiting...')
      endif
      PCGiter%rerr(i) = real(rnorm/bnorm)
   end do loop
@@ -200,8 +198,7 @@ subroutine QMR(b,x,QMRiter)
 
   ! this usually means an inadequate model, in which case Maxwell's fails
   if (isnan(abs(bnorm))) then
-      write(0,*) 'Error: b in QMR contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in QMR contains NaNs; exiting...')
   endif
 
   !  iter is iteration counter
@@ -232,7 +229,7 @@ subroutine QMR(b,x,QMRiter)
         QMRiter%failed = .true.
         write(0,*) 'QMR FAILED TO CONVERGE : RHO'
         write(0,*) 'QMR FAILED TO CONVERGE : PSI'
-        stop
+        call ModEM_abort()
       endif
 
       rhoInv = (1/RHO)*cmplx(1.0, 0.0, 8)
@@ -444,8 +441,7 @@ subroutine TFQMR(b,x,KSPiter,adjt)
   ! Norm of rhs
   bnorm = SQRT(dot_product(b, b))
   if (isnan(bnorm)) then
-      write(0,*) 'Error: b in TFQMR contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in TFQMR contains NaNs; exiting...')
   else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
       write(0,*) 'Warning: b in TFQMR has all zeros, returning zero solution'
       x = b 
@@ -763,8 +759,7 @@ subroutine BICG(b,x,KSPiter,adjt)
   bnorm = SQRT(dot_product(b, b))
   if (isnan(bnorm)) then
   ! this usually means an inadequate model, in which case Maxwell's fails
-      write(0,*) 'Error: b in BICG contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in BICG contains NaNs; exiting...')
   else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
       write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
       x = b 

@@ -33,8 +33,7 @@
       read(someChar,*) Nx, Ny, NzEarth, someIndex
 
       if (someIndex /= 0) then
-          write(0, *) 'Mapping not supported yet in read_modelParam_WS'
-          stop
+          call errStop('Mapping not supported yet in read_modelParam_WS')
       end if
 
 	  ! By default assume 'LINEAR RHO' - Weerachai's linear resistivity format

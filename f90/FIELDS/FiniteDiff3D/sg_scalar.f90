@@ -577,8 +577,7 @@ Contains
       character(80)                     :: fname, isbinary
 
       if(.not. E%allocated) then
-         write(0, *) 'rscalar must be allocated before call to read_rscalar'
-         stop
+         call errStop('rscalar must be allocated before call to read_rscalar')
       endif
 
       if (.not. present(ftype)) then
@@ -605,35 +604,35 @@ Contains
          return
       end if
 
-	  Nx = size(E%v,1)
-	  Ny = size(E%v,2)
-	  Nz = size(E%v,3)
+      Nx = size(E%v,1)
+      Ny = size(E%v,2)
+      Nz = size(E%v,3)
 
-	  allocate(temp(Ny),STAT=istat)
-	  i = 1
-	  do
-	    read(fid,*,iostat=istat) k1, k2 ! block numbers have to be there to read
-	    if (istat /= 0) exit
-		if ((k1 < 0) .or. (k2 > Nz)) then
-	    	write(0, *) 'Error reading the ',i,'th block in read_rscalar'
-	    	stop
-	    else if (k1 > k2) then
-	    	write(0, *) 'Warning: block ',i,' in read_rscalar will be ignored'
-	    end if
-	    do j = Nx,1,-1
-	    	read(fid,*,iostat=istat) temp
-	    	if (istat /= 0) then
-	    	  	write(0, *) 'Error reading the ',j,'th row in ',i,'th block in read_rscalar'
-	    	  	stop
-	    	end if
-	    	do k = k1,k2
-	    	  	E%v(j,:,k) = temp
-	    	end do
-	    end do
-	    if (k == Nz) exit
-	    i = i+1
+      allocate(temp(Ny),STAT=istat)
+      i = 1
+      do
+        read(fid,*,iostat=istat) k1, k2 ! block numbers have to be there to read
+        if (istat /= 0) exit
+        if ((k1 < 0) .or. (k2 > Nz)) then
+            write(0, *) 'Error reading the ',i,'th block in read_rscalar'
+            call ModEM_abort()
+        else if (k1 > k2) then
+            write(0, *) 'Warning: block ',i,' in read_rscalar will be ignored'
+        end if
+        do j = Nx,1,-1
+            read(fid,*,iostat=istat) temp
+            if (istat /= 0) then
+                write(0, *) 'Error reading the ',j,'th row in ',i,'th block in read_rscalar'
+                call ModEM_abort()
+            end if
+            do k = k1,k2
+                E%v(j,:,k) = temp
+            end do
+        end do
+        if (k == Nz) exit
+        i = i+1
       end do
-	  deallocate(temp,STAT=istat)
+      deallocate(temp,STAT=istat)
 
   end subroutine read_rscalar
 
@@ -661,8 +660,7 @@ Contains
       character(80)                     :: fname, isbinary
 
       if(.not. E%allocated) then
-         write(0, *) 'cscalar must be allocated before call to read_cscalar'
-         stop
+         call errStop('cscalar must be allocated before call to read_cscalar')
       endif
 
       if (.not. present(ftype)) then
@@ -689,35 +687,35 @@ Contains
          return
       end if
 
-	  Nx = size(E%v,1)
-	  Ny = size(E%v,2)
-	  Nz = size(E%v,3)
+      Nx = size(E%v,1)
+      Ny = size(E%v,2)
+      Nz = size(E%v,3)
 
-	  allocate(temp(Ny),STAT=istat)
-	  i = 1
-	  do
-	    read(fid,*,iostat=istat) k1, k2 ! block numbers have to be there to read
-	    if (istat /= 0) exit
-		if ((k1 < 0) .or. (k2 > Nz)) then
-	    	write(0, *) 'Error reading the ',i,'th block in read_cscalar'
-	    	stop
-	    else if (k1 > k2) then
-	    	write(0, *) 'Warning: block ',i,' in read_cscalar will be ignored'
-	    end if
-	    do j = Nx,1,-1
-	    	read(fid,*,iostat=istat) temp
-	    	if (istat /= 0) then
-	    	  	write(0, *) 'Error reading the ',j,'th row in ',i,'th block in read_cscalar'
-	    	  	stop
-	    	end if
-	    	do k = k1,k2
-	    	  	E%v(j,:,k) = temp
-	    	end do
-	    end do
-	    if (k == Nz) exit
-	    i = i+1
+      allocate(temp(Ny),STAT=istat)
+      i = 1
+      do
+        read(fid,*,iostat=istat) k1, k2 ! block numbers have to be there to read
+        if (istat /= 0) exit
+        if ((k1 < 0) .or. (k2 > Nz)) then
+            write(0, *) 'Error reading the ',i,'th block in read_cscalar'
+            call ModEM_abort()
+        else if (k1 > k2) then
+            write(0, *) 'Warning: block ',i,' in read_cscalar will be ignored'
+        end if
+        do j = Nx,1,-1
+            read(fid,*,iostat=istat) temp
+            if (istat /= 0) then
+                write(0, *) 'Error reading the ',j,'th row in ',i,'th block in read_cscalar'
+                call ModEM_abort()
+            end if
+            do k = k1,k2
+                E%v(j,:,k) = temp
+            end do
+        end do
+        if (k == Nz) exit
+        i = i+1
       end do
-	  deallocate(temp,STAT=istat)
+      deallocate(temp,STAT=istat)
 
   end subroutine read_cscalar
 
@@ -745,8 +743,7 @@ Contains
       character(80)                     :: fname, isbinary
 
       if(.not. E%allocated) then
-         write(0, *) 'iscalar must be allocated before call to read_iscalar'
-         stop
+         call errStop('iscalar must be allocated before call to read_iscalar')
       endif
 
       if (.not. present(ftype)) then
@@ -773,35 +770,35 @@ Contains
          return
       end if
 
-	  Nx = size(E%v,1)
-	  Ny = size(E%v,2)
-	  Nz = size(E%v,3)
+      Nx = size(E%v,1)
+      Ny = size(E%v,2)
+      Nz = size(E%v,3)
 
-	  allocate(temp(Ny),STAT=istat)
-	  i = 1
-	  do
-	    read(fid,*,iostat=istat) k1, k2 ! block numbers have to be there to read
-	    if (istat /= 0) exit
-	    if ((k1 < 0) .or. (k2 > Nz)) then
-	    	write(0, *) 'Error reading the ',i,'th block in read_iscalar'
-	    	stop
-	    else if (k1 > k2) then
-	    	write(0, *) 'Warning: block ',i,' in read_iscalar will be ignored'
-	    end if
-	    do j = Nx,1,-1
-	    	read(fid,*,iostat=istat) temp
-	    	if (istat /= 0) then
-	    	  	write(0, *) 'Error reading the ',j,'th row in ',i,'th block in read_iscalar'
-	    	  	stop
-	    	end if
-	    	do k = k1,k2
-	    	  	E%v(j,:,k) = temp
-	    	end do
-	    end do
-	    if (k == Nz) exit
-	    i = i+1
+      allocate(temp(Ny),STAT=istat)
+      i = 1
+      do
+        read(fid,*,iostat=istat) k1, k2 ! block numbers have to be there to read
+        if (istat /= 0) exit
+        if ((k1 < 0) .or. (k2 > Nz)) then
+            write(0, *) 'Error reading the ',i,'th block in read_iscalar'
+            call ModEM_abort()
+        else if (k1 > k2) then
+            write(0, *) 'Warning: block ',i,' in read_iscalar will be ignored'
+        end if
+        do j = Nx,1,-1
+            read(fid,*,iostat=istat) temp
+            if (istat /= 0) then
+                write(0, *) 'Error reading the ',j,'th row in ',i,'th block in read_iscalar'
+                call ModEM_abort()
+            end if
+            do k = k1,k2
+                E%v(j,:,k) = temp
+            end do
+        end do
+        if (k == Nz) exit
+        i = i+1
       end do
-	  deallocate(temp,STAT=istat)
+      deallocate(temp,STAT=istat)
 
   end subroutine read_iscalar
 
@@ -827,8 +824,7 @@ Contains
       character(80)                     :: fname, isbinary
 
       if(.not. E%allocated) then
-         write(0, *) 'rscalar must be allocated before call to write_rscalar'
-         stop
+         call errStop('rscalar must be allocated before call to write_rscalar')
       endif
 
       if (.not. present(ftype)) then
@@ -856,36 +852,35 @@ Contains
       end if
 
       Nx = size(E%v,1)
-	  Ny = size(E%v,2)
-	  Nz = size(E%v,3)
+      Ny = size(E%v,2)
+      Nz = size(E%v,3)
 
-	  allocate(temp(Nx,Ny),STAT=istat)
+      allocate(temp(Nx,Ny),STAT=istat)
       k1 = 1
-	  do
-	  	k2 = Nz
-	    do k = k1,Nz-1
-	    	temp = abs(E%v(:,:,k+1) - E%v(:,:,k))
-	    	if (maxval(temp) > TOL6) then
-	    		k2 = k
-	    		exit
-	    	end if
-	    end do
-	    write(fid,'(2i5)',iostat=istat) k1, k2
-	    if (istat /= 0) then
-	    	write(0, *) 'Error writing to file in write_rscalar'
-	    	stop
-	    end if
-	    temp = E%v(:,:,k1)
-	    do i = Nx,1,-1
-	    	do j = 1,Ny
-	    		write(fid,'(es13.5)',iostat=istat,advance='no') E%v(i,j,k1)
-	    	end do
-	    	write(fid,*)
-	    end do
-	    k1 = k2+1
-	    if (k1 > Nz) exit
+      do
+        k2 = Nz
+        do k = k1,Nz-1
+            temp = abs(E%v(:,:,k+1) - E%v(:,:,k))
+            if (maxval(temp) > TOL6) then
+                k2 = k
+                exit
+            end if
+        end do
+        write(fid,'(2i5)',iostat=istat) k1, k2
+        if (istat /= 0) then
+            call errStop('Error writing to file in write_rscalar')
+        end if
+        temp = E%v(:,:,k1)
+        do i = Nx,1,-1
+            do j = 1,Ny
+                write(fid,'(es13.5)',iostat=istat,advance='no') E%v(i,j,k1)
+            end do
+            write(fid,*)
+        end do
+        k1 = k2+1
+        if (k1 > Nz) exit
       end do
-	  deallocate(temp,STAT=istat)
+      deallocate(temp,STAT=istat)
 
   end subroutine write_rscalar
 
@@ -911,8 +906,7 @@ Contains
       character(80)                     :: fname, isbinary
 
       if(.not. E%allocated) then
-         write(0, *) 'cscalar must be allocated before call to write_cscalar'
-         stop
+         call errStop('cscalar must be allocated before call to write_cscalar')
       endif
 
       if (.not. present(ftype)) then
@@ -940,36 +934,35 @@ Contains
       end if
 
       Nx = size(E%v,1)
-	  Ny = size(E%v,2)
-	  Nz = size(E%v,3)
+      Ny = size(E%v,2)
+      Nz = size(E%v,3)
 
-	  allocate(temp(Nx,Ny),STAT=istat)
+      allocate(temp(Nx,Ny),STAT=istat)
       k1 = 1
-	  do
-	  	k2 = Nz
-	    do k = k1,Nz-1
-	    	temp = abs(E%v(:,:,k+1) - E%v(:,:,k))
-	    	if ((maxval(real(temp)) > TOL6) .or. (maxval(imag(temp)) > TOL6)) then
-	    		k2 = k
-	    		exit
-	    	end if
-	    end do
-	    write(fid,'(2i5)',iostat=istat) k1, k2
-	    if (istat /= 0) then
-	    	write(0, *) 'Error writing to file in write_cscalar'
-	    	stop
-	    end if
-	    temp = E%v(:,:,k1)
-	    do i = Nx,1,-1
-	    	do j = 1,Ny
-	    		write(fid,'(es13.5)',iostat=istat,advance='no') E%v(i,j,k1)
-	    	end do
-	    	write(fid,*)
-	    end do
-	    k1 = k2+1
-	    if (k1 > Nz) exit
+      do
+        k2 = Nz
+        do k = k1,Nz-1
+            temp = abs(E%v(:,:,k+1) - E%v(:,:,k))
+            if ((maxval(real(temp)) > TOL6) .or. (maxval(imag(temp)) > TOL6)) then
+                k2 = k
+                exit
+            end if
+        end do
+        write(fid,'(2i5)',iostat=istat) k1, k2
+        if (istat /= 0) then
+            call errStop('Error writing to file in write_cscalar')
+        end if
+        temp = E%v(:,:,k1)
+        do i = Nx,1,-1
+            do j = 1,Ny
+                write(fid,'(es13.5)',iostat=istat,advance='no') E%v(i,j,k1)
+            end do
+            write(fid,*)
+        end do
+        k1 = k2+1
+        if (k1 > Nz) exit
       end do
-	  deallocate(temp,STAT=istat)
+      deallocate(temp,STAT=istat)
 
   end subroutine write_cscalar
 
@@ -997,8 +990,7 @@ Contains
       character(80)                     :: fname, isbinary
 
       if(.not. E%allocated) then
-         write(0, *) 'iscalar must be allocated before call to write_iscalar'
-         stop
+         call errStop('iscalar must be allocated before call to write_iscalar')
       endif
 
       if (.not. present(ftype)) then
@@ -1029,47 +1021,46 @@ Contains
          return
       end if
 
-	  Nx = size(E%v,1)
-	  Ny = size(E%v,2)
-	  Nz = size(E%v,3)
+      Nx = size(E%v,1)
+      Ny = size(E%v,2)
+      Nz = size(E%v,3)
 
-	  allocate(temp(Nx,Ny),STAT=istat)
+      allocate(temp(Nx,Ny),STAT=istat)
       k1 = 1
-	  do
-	  	k2 = Nz
-	    do k = k1,Nz-1
-	    	temp = abs(E%v(:,:,k+1) - E%v(:,:,k))
-	    	if (maxval(temp) > 0) then
-	    		k2 = k
-	    		exit
-	    	end if
-	    end do
-	    if (Nz < 1000) then
-	    	fmt = '(2i4)'
-	    else
-	    	fmt = '(2i6)'
-	    end if
-	    write(fid,fmt,iostat=istat) k1, k2
-	    if (istat /= 0) then
-	    	write(0, *) 'Error writing to file in write_iscalar'
-	    	stop
-	    end if
-	    temp = E%v(:,:,k1)
-   		if (maxval(temp) <= 9) then
-   			fmt = '(i2)'
-   		else
-   			fmt = '(i6)'
-   		end if
-	    do i = Nx,1,-1
-	    	do j = 1,Ny
-	    		write(fid,fmt,iostat=istat,advance='no') E%v(i,j,k1)
-	    	end do
-	    	write(fid,*)
-	    end do
-	    k1 = k2+1
-	    if (k1 > Nz) exit
+      do
+        k2 = Nz
+        do k = k1,Nz-1
+            temp = abs(E%v(:,:,k+1) - E%v(:,:,k))
+            if (maxval(temp) > 0) then
+                k2 = k
+                exit
+            end if
+        end do
+        if (Nz < 1000) then
+            fmt = '(2i4)'
+        else
+            fmt = '(2i6)'
+        end if
+        write(fid,fmt,iostat=istat) k1, k2
+        if (istat /= 0) then
+            call errStop('Error writing to file in write_iscalar')
+        end if
+        temp = E%v(:,:,k1)
+        if (maxval(temp) <= 9) then
+            fmt = '(i2)'
+        else
+            fmt = '(i6)'
+        end if
+        do i = Nx,1,-1
+            do j = 1,Ny
+                write(fid,fmt,iostat=istat,advance='no') E%v(i,j,k1)
+            end do
+            write(fid,*)
+        end do
+        k1 = k2+1
+        if (k1 > Nz) exit
       end do
-	  deallocate(temp,STAT=istat)
+      deallocate(temp,STAT=istat)
 
   end subroutine write_iscalar
 
@@ -1280,8 +1271,7 @@ Contains
     type (cscalar), intent(inout)                    :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMult_cscalar'
-       stop
+       call errStop('RHS not allocated yet for scMult_cscalar')
     endif
 
     ! check to see if LHS (E2) is active (allocated)
@@ -1322,8 +1312,7 @@ Contains
     type (cscalar)                                   :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMult_cscalar_f'
-       stop
+       call errStop('RHS not allocated yet for scMult_cscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1370,8 +1359,7 @@ Contains
     type (rscalar), intent(inout)                    :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMult_rscalar'
-       stop
+       call errStop('RHS not allocated yet for scMult_rscalar')
     endif
 
     ! check to see if LHS (E2) is active (allocated)
@@ -1412,8 +1400,7 @@ Contains
     type (rscalar)                                   :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMult_rscalar_f'
-       stop
+       call errStop('RHS not allocated yet for scMult_rscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1458,8 +1445,7 @@ Contains
     type (rscalar), intent(inout)                    :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMultAdd_rscalar'
-       stop
+       call errStop('RHS not allocated yet for scMultAdd_rscalar')
     endif
 
     ! check to see if LHS (E2) is active (allocated)
@@ -1499,8 +1485,7 @@ Contains
     type (rscalar), intent(inout)            :: E3
 
    if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_rscalar'
-       stop
+       call errStop('RHS not allocated yet for add_rscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -1540,8 +1525,7 @@ Contains
     type (rscalar)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_rscalar_f'
-       stop
+       call errStop('RHS not allocated yet for add_rscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1587,8 +1571,7 @@ Contains
     type (cscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_cscalar'
-       stop
+       call errStop('RHS not allocated yet for add_cscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -1628,8 +1611,7 @@ Contains
     type (cscalar)                           :: E3
 
      if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_cscalar_f'
-       stop
+       call errStop('RHS not allocated yet for add_cscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1674,8 +1656,7 @@ Contains
     type (rscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for subtract_rscalar'
-       stop
+       call errStop('RHS not allocated yet for subtract_rscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -1715,8 +1696,7 @@ Contains
     type (rscalar)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_rscalar_f'
-       stop
+       call errStop('RHS not allocated yet for add_rscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1761,8 +1741,7 @@ Contains
     type (cscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for subtract_cscalar'
-       stop
+       call errStop('RHS not allocated yet for subtract_cscalar')
     endif
 
     ! check to see if LHS (E2) is active (allocated)
@@ -1802,8 +1781,7 @@ Contains
     type (cscalar)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for subtract_cscalar_f'
-       stop
+       call errStop('RHS not allocated yet for subtract_cscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1848,8 +1826,7 @@ Contains
     type (rscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_rscalar'
-       stop
+       call errStop('RHS not allocated yet for diagMult_rscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -1890,8 +1867,7 @@ Contains
     type (rscalar)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_rscalar_f'
-       stop
+       call errStop('RHS not allocated yet for diagMult_rscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -1936,8 +1912,7 @@ Contains
     type (rscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagDiv_rscalar'
-       stop
+       call errStop('RHS not allocated yet for diagDiv_rscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -1978,8 +1953,7 @@ Contains
     type (cscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagDiv_rscalar'
-       stop
+       call errStop('RHS not allocated yet for diagDiv_rscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -2021,8 +1995,7 @@ Contains
     type (cscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_cscalar'
-       stop
+       call errStop('RHS not allocated yet for diagMult_cscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -2062,8 +2035,7 @@ Contains
     type (cscalar)                           :: E3
 
    if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_cscalar_f'
-       stop
+       call errStop('RHS not allocated yet for diagMult_cscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -2109,8 +2081,7 @@ Contains
     type (cscalar), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_crscalar'
-       stop
+       call errStop('RHS not allocated yet for diagMult_crscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -2151,8 +2122,7 @@ Contains
     type (cscalar)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_crscalar_f'
-       stop
+       call errStop('RHS not allocated yet for diagMult_crscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -2199,8 +2169,7 @@ Contains
 
 
    if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_rcscalar'
-       stop
+       call errStop('RHS not allocated yet for diagMult_rcscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -2243,8 +2212,7 @@ Contains
     type (cscalar)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_rcscalar_f'
-       stop
+       call errStop('RHS not allocated yet for diagMult_rcscalar_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -2290,8 +2258,7 @@ Contains
     r = R_ZERO
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for dotProd_rscalar'
-       stop
+       call errStop('RHS not allocated yet for dotProd_rscalar')
     endif
 
     ! Check whether both input scalars are of the same size
@@ -2325,8 +2292,7 @@ Contains
     c = C_ZERO
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for dotProd_cscalar'
-       stop
+       call errStop('RHS not allocated yet for dotProd_cscalar')
     endif
 
     ! Check whether both input scalars are of the same size
@@ -2362,8 +2328,7 @@ Contains
     type (rscalar), intent(inout)          :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for linComb_rscalar'
-       stop
+       call errStop('RHS not allocated yet for linComb_rscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -2407,8 +2372,7 @@ Contains
     type (cscalar), intent(inout)          :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for linComb_cscalar'
-       stop
+       call errStop('RHS not allocated yet for linComb_cscalar')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -2450,8 +2414,7 @@ Contains
     type (cscalar), intent(inout)                    :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMultAdd_cscalar'
-       stop
+       call errStop('RHS not allocated yet for scMultAdd_cscalar')
     endif
 
     ! check to see if LHS (E2) is active (allocated)

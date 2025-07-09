@@ -6,6 +6,7 @@ program FWDtest
         use wsfwd2dpar, only:  SetWSparams
 	use fwdtmmod
 	use fwdtemod
+        use utilities
 	implicit none
 	
 	real (kind=prec), allocatable, dimension(:,:) :: Cond2D
@@ -69,12 +70,12 @@ program FWDtest
         call FWD2DSetupTM(TMgrid,Cond2D,IER)
         if(IER.lt.0) then
            write(0,*) 'Error Initializing for TM mode soln:IER=',IER
-           stop
+           call ModEM_abort()
         endif
         call FWD2DSetupTE(TMgrid,IER)
         if(IER.lt.0) then
            write(0,*) 'Error Initializing for TE mode soln:IER=',IER
-           stop
+           call ModEM_abort()
         endif
 
         ! TM test 

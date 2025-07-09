@@ -3,6 +3,7 @@ module WSutils
 !  module containing routines from utilfunct.f
   
    use math_constants
+   use utilities
    
    contains
   
@@ -14,8 +15,7 @@ module WSutils
       INTEGER ix,iy
  
       IF (y_2-y_1.NE.x_2-x_1) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY VECTOR !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY VECTOR !!!')
       ENDIF
   
       ix = x_1
@@ -36,8 +36,7 @@ module WSutils
       INTEGER ix,iy
  
       IF (y_2-y_1.NE.x_2-x_1) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY VECTOR !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY VECTOR !!!')
       ENDIF
   
       ix = x_1
@@ -59,8 +58,7 @@ module WSutils
       INTEGER ix1,ix2,iy1,iy2
 
       IF ((y01-y00.NE.x01-x00).or.(y11-y10.NE.x11-x10)) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY MATRIX !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY MATRIX !!!')
       ENDIF
 
       ix1 = x00
@@ -85,8 +83,7 @@ module WSutils
       INTEGER i_1,i_2,ia
 
       IF ((e2-s2+1)*(e1-s1+1).NE.(ea-sa+1)) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY MATRIX !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY MATRIX !!!')
       ENDIF
   
       ia = sa

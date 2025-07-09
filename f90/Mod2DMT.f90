@@ -11,6 +11,7 @@ program Mod2DMT
      use NLCG
      use DCG
      use LBFGS
+     use utilities
      !use mtinvsetup
 
 #ifdef MPI
@@ -63,13 +64,13 @@ program Mod2DMT
 
 #ifdef MPI
     if (taskid.gt.0) then
-			    call Worker_job(sigma0,allData)
-	            if (trim(worker_job_task%what_to_do) .eq. 'Job Completed')  then
-	               	 call deallGlobalData()
-		             call cleanUp_MPI()
-	                 call destructor_MPI
-	              stop
-	            end if
+                call Worker_job(sigma0,allData)
+                if (trim(worker_job_task%what_to_do) .eq. 'Job Completed')  then
+                     call deallGlobalData()
+                     call cleanUp_MPI()
+                     call destructor_MPI
+                     stop
+                end if
     end if
 #endif
 
@@ -190,14 +191,14 @@ program Mod2DMT
 #endif
 
        else
-        	write(*,*) 'Inverse search ',trim(cUserDef%search),' not yet implemented. Exiting...'
-        	stop
+            write(*,*) 'Inverse search ',trim(cUserDef%search),' not yet implemented. Exiting...'
+            call ModEM_abort()
         end if
         if (write_model) then
             call write_modelParam(sigma1,cUserDef%wFile_Model)
         end if
         if (write_data) then
-        	call write_dataVectorMTX(allData,cUserDef%wFile_Data)
+            call write_dataVectorMTX(allData,cUserDef%wFile_Data)
         end if
 
     case (APPLY_COV)
@@ -210,13 +211,12 @@ program Mod2DMT
                 sigma1 = multBy_CmSqrt(dsigma)
                 call linComb(ONE,sigma1,ONE,sigma0,sigma1)
             case('INV')
-                write(*,*) 'Inverse of the covariance not implemented for 2D MT. Exiting...'
-                stop
+                call errStop('Inverse of the covariance not implemented for 2D MT. Exiting...')
                 !call linComb(ONE,dsigma,MinusONE,sigma0,dsigma)
                 !sigma1 = multBy_CmSqrtInv(dsigma)
             case default
                write(0,*) 'Unknown covariance option ',trim(cUserDef%option),'; please use FWD or INV.'
-               stop
+               call ModEM_abort()
         end select
         call write_modelParam(sigma1,cUserDef%wFile_Model)
 #endif

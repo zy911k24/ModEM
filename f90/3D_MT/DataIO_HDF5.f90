@@ -1001,8 +1001,7 @@ subroutine read_hdf5_datablocks(allData, cfile)
    
     call h5lexists_f(file_id, mt_group_name, exists, hdferr)
     if (.not. exists) then
-        write(0,*) 'No MT data in the file. Assume that we can only have MT data for now. Exiting...'
-        stop
+        call errStop('No MT data in the file. Assume that we can only have MT data for now. Exiting...')
     end if
 
     ! Open the MT group if it exists

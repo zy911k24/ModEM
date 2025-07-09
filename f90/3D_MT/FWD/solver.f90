@@ -6,7 +6,7 @@
 module solver
 
    use math_constants	! math/ physics constants
-   use utilities, only: isnan
+   use utilities
    !use griddef	! staggered grid definitions
    !use sg_scalar
    !use sg_vector
@@ -64,13 +64,11 @@ subroutine PCG(b,x, PCGiter)
   integer		:: i
 
   if (.not.b%allocated) then
-      write(0,*) 'b in PCG not allocated yet'
-      stop
+      call errStop('b in PCG not allocated yet')
   end if
 
   if (.not.x%allocated) then
-      write(0,*) 'x in PCG not allocated yet'
-      stop
+      call errStop('x in PCG not allocated yet')
   end if
 
   ! Allocation of r, z, p, q
@@ -152,13 +150,11 @@ subroutine QMR(b,x, QMRiter)
   integer                   :: iter
 
   if (.not.b%allocated) then
-      write(0,*) 'Error: b in QMR not allocated yet'
-      stop
+      call errStop('Error: b in QMR not allocated yet')
   end if
 
   if (.not.x%allocated) then
-      write(0,*) 'Error: x in QMR not allocated yet'
-      stop
+      call errStop('Error: x in QMR not allocated yet')
   end if
 
   ! Allocate work arrays
@@ -198,8 +194,7 @@ subroutine QMR(b,x, QMRiter)
 
   ! this usually means an inadequate model, in which case Maxwell's fails
   if (isnan(abs(bnorm))) then
-      write(0,*) 'Error: b in QMR contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in QMR contains NaNs; exiting...')
   endif
 
   !  iter is iteration counter
@@ -382,13 +377,11 @@ subroutine BICG(b,x,BICGiter)
   integer                                       :: maxiter
   logical                                       :: adjoint, ilu_adjt, converged
   if (.not.b%allocated) then
-      write(0,*) 'Error: b in BICG not allocated yet'
-      stop
+      call errStop('Error: b in BICG not allocated yet')
   end if
 
   if (.not.x%allocated) then
-      write(0,*) 'Error: x in BICG not allocated yet'
-      stop
+      call errStop('Error: x in BICG not allocated yet')
   end if
 
   ! allocate the local variables
@@ -410,8 +403,7 @@ subroutine BICG(b,x,BICGiter)
   bnorm = SQRT(dotProd(b, b))
   if (isnan(abs(bnorm))) then
   ! this usually means an inadequate model, in which case Maxwell's fails
-      write(0,*) 'Error: b in BICG contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in BICG contains NaNs; exiting...')
   else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
       write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
       x = b 

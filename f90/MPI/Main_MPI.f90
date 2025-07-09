@@ -157,7 +157,6 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
          ! the master should always be by itself 
              call errStop('ERROR: grouping incompatible with the number &
     &            of master')
-             stop
          else
          ! try allocate the leader group
              allocate(leaders(Ngroup))
@@ -525,7 +524,6 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  write(0,*) 'group sizes =', sum(group_sizes)
                  call errStop('ERROR: number of groups incompatible with &
     &                 size of hosts')
-                 stop
              endif
          endif
      endif ! rank = 0

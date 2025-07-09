@@ -103,8 +103,7 @@
     read(someChar,*) Nx, Ny, NzEarth, nzAir, ifValues
 
     if (ifValues(1:6) /= 'VALUES') then
-        write(0, *) 'Mapping not supported yet in:ReadGridInputRM'
-        stop
+        call errStop('Mapping not supported yet in:ReadGridInputRM')
     end if
 
 	! By default assume 'LINEAR RHO' - Randie Mackie's linear resistivity format
@@ -205,8 +204,7 @@
     GOTO 9999
 
 9000 CONTINUE
-    WRITE(0,*) '!!! FILE CANNOT BE FOUND !!!'
-    STOP
+    call errStop('!!! FILE CANNOT BE FOUND !!!')
 
 9999 CONTINUE
 

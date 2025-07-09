@@ -4,6 +4,7 @@ module elements
 	! specific subroutines calculating the line and area elements (edge lengths
 	! and face areas for staggered-grid cells, respectively), "order numbers" 
 	! for EM-related vectors, etc
+  use utilities
 
   implicit none
 
@@ -700,42 +701,42 @@ Contains
 ! *****************************************************************************
 
 
-	  subroutine n_allhijk(l,m,n,i,j,k,xyz,ii)
+      subroutine n_allhijk(l,m,n,i,j,k,xyz,ii)
 !-------------------------------------------------------------
 !       subroutine for calculating order number of h-vector for
 !             index (i,j,k) and xyz=1,2,3 (x,y,z respectively)
 !       A.K.
 !       Hx: i:(1,L) j:(2,M) k:(1,N+1)
-!		Hy: i:(1,L) j:(1,M) k:(1,N+1)
-!		Hz: i:(1,L) j:(1,M+1) k:(1,N)
+!       Hy: i:(1,L) j:(1,M) k:(1,N+1)
+!       Hz: i:(1,L) j:(1,M+1) k:(1,N)
 !       Hz:   <----- no i dependency for j=1 or M+1
 !-------------------------------------------------------------
  
       implicit none
 
-      integer					:: l,m,n,i,j,k,xyz,ii
-	  integer					:: allx, ally
+      integer                   :: l,m,n,i,j,k,xyz,ii
+      integer                   :: allx, ally
 
-	  allx = (m-1)*(n-1)*(l-1)+(m-1)*(n-2)+(m-1)
-	  ally = l*(n-1)*(m-1)+l*(n-2)+l
+      allx = (m-1)*(n-1)*(l-1)+(m-1)*(n-2)+(m-1)
+      ally = l*(n-1)*(m-1)+l*(n-2)+l
 
-	  if (xyz == 1) then
-		ii=(m-1)*(n-1)*(i-1)+(m-1)*(k-2)+(j-1)
-	  else if (xyz == 2) then
-		ii=allx+l*(n-1)*(j-1)+l*(k-2)+i
-	  else if (xyz == 3) then
-		if (j > 1.and.j < m+1) then
-		   ii=allx+ally+(l*(m-1)+2)*(k-2)+1+l*(j-2)+i
-		else if (j == 1) then
-		   ii=allx+ally+(l*(m-1)+2)*(k-2)+1
-		else if (j == m+1) then
-		   ii=allx+ally+(l*(m-1)+2)*(k-2)+1+l*(j-2)+1
-		end if
-	  else
-		write(0,*) 'Error: (n_allhijk) wrong usage: xyz =',xyz
-		stop
-	  end if
-	  
+      if (xyz == 1) then
+        ii=(m-1)*(n-1)*(i-1)+(m-1)*(k-2)+(j-1)
+      else if (xyz == 2) then
+        ii=allx+l*(n-1)*(j-1)+l*(k-2)+i
+      else if (xyz == 3) then
+        if (j > 1.and.j < m+1) then
+           ii=allx+ally+(l*(m-1)+2)*(k-2)+1+l*(j-2)+i
+        else if (j == 1) then
+           ii=allx+ally+(l*(m-1)+2)*(k-2)+1
+        else if (j == m+1) then
+           ii=allx+ally+(l*(m-1)+2)*(k-2)+1+l*(j-2)+1
+        end if
+      else
+          write(0,*) 'Error: (n_allhijk) wrong usage: xyz =',xyz
+          call ModEM_abort()
+      end if
+
       return
       end subroutine n_allhijk
 

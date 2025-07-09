@@ -144,8 +144,7 @@ subroutine ModelParamToEdge(m, Econd, m0)
   linearizedMapping = present(m0)
   
   if (.not. m%allocated) then
-     write(0, *) 'Input model parameter in ModelParamToEdge not allocated yet.'
-     STOP
+     call errStop('Input model parameter in ModelParamToEdge not allocated yet.')
   end if
   
   if (.not. Econd%allocated) then
@@ -176,7 +175,7 @@ subroutine ModelParamToEdge(m, Econd, m0)
      end if
   else
      if (linearizedMapping) then
-        STOP 'ModelMap:ModelParamToEdge:Not implemented!'
+        call errStop('ModelMap:ModelParamToEdge:Not implemented!')
      else
         temp%v(:, :, nzAir + 1 : nz) = m%cellCond%v
         airCond = m%airCond
@@ -253,8 +252,7 @@ subroutine ModelParamToNode(m, Ncond, m0)
   linearizedMapping = present(m0)
   
   if (.not. m%allocated) then
-     write(0, *) 'Input model parameter in ModelParamToNode not allocated yet.'
-     STOP
+     call errStop('Input model parameter in ModelParamToNode not allocated yet.')
   end if
   
   if (.not. Ncond%allocated) then
@@ -363,7 +361,6 @@ subroutine EdgeToModelParam(Econd, m, m0)
   !
   if ((.not.m%allocated).or.(.not.Econd%allocated)) then
      call errStop('m or Econd not allocated yet in EdgeToModelParam.')
-     STOP
   end if
   
   if ((m%paramtype.eq.LOGE).and.(.not.present(m0))) then

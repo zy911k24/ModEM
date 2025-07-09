@@ -12,6 +12,7 @@ module EMsolve3D
   use vectranslate     ! translate back and forth between Cvec and vec
   use solver           ! generic solvers rewritten in sp
   use solnspace
+  use utilities
 
   implicit none
   public        :: FWDSolve3D
@@ -171,8 +172,7 @@ Contains
     failed = .false.
     trans = (bRHS%adj .eq. TRN)
     if (.not.eSol%allocated) then
-       write(0,*) 'eSol in EMsolve not allocated yet'
-       stop
+       call errStop('eSol in EMsolve not allocated yet')
     else
     !   determine the edge numbers of the mesh
     !   need to write a interface for these

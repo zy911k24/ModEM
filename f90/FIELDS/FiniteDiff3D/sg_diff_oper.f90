@@ -10,6 +10,8 @@ module sg_diff_oper
   use math_constants
   use sg_vector
   use sg_scalar
+  use utilities
+
   implicit none
 
   ! Div computes the divergence of a vector
@@ -31,13 +33,11 @@ Contains
     integer                                         :: ix, iy, iz 
     
     IF(.not.inV%allocated) THEN
- 	WRITE(0,*) 'inV not allocated in Div'
- 	STOP
+        call errStop('inV not allocated in Div')
     ENDIF 
     
     IF(.not.outSc%allocated) THEN
- 	WRITE(0,*) 'outSc not allocated in Div'
- 	STOP
+        call errStop('outSc not allocated in Div')
     ENDIF    
    
     ! Check whether all the inputs/ outputs involved 
@@ -104,13 +104,11 @@ Contains
     
        
     IF(.not.inSc%allocated) THEN
- 	WRITE(0,*) 'inSc not allocated in Grad'
- 	STOP
+        call errStop('inSc not allocated in Grad')
     ENDIF 
     
     IF(.not.outV%allocated) THEN
- 	WRITE(0,*) 'outV not allocated in Grad'
- 	STOP
+        call errStop('outV not allocated in Grad')
     ENDIF 
 
     if ((inSc%nx == outV%nx).and.&
@@ -210,13 +208,11 @@ Contains
     integer                                 :: nx,ny,nz,ix,iy,iz
     
     IF(.not.V1%allocated) THEN
- 	WRITE(0,*) 'V1 not allocated in Curl'
- 	STOP
+        call errStop('V1 not allocated in Curl')
     ENDIF 
     
     IF(.not.V2%allocated) THEN
- 	WRITE(0,*) 'V2 not allocated in Curl'
- 	STOP
+        call errStop('V2 not allocated in Curl')
     ENDIF 
     
 

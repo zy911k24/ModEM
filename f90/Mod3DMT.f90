@@ -12,6 +12,7 @@ program Mod3DMT
      use NLCG
      use DCG
      use LBFGS
+     use utilities
      !use mtinvsetup
 
 #ifdef MPI
@@ -265,7 +266,7 @@ program Mod3DMT
          else
            write(*,*) 'Inverse search ',trim(cUserDef%search),            &
      &          ' not yet implemented. Exiting...'
-           stop
+            call ModEM_abort()
          end if
          if (write_model) then
              call write_modelParam(sigma1,cUserDef%wFile_Model)
@@ -290,7 +291,7 @@ program Mod3DMT
                 sigma1 = multBy_CmSqrtInv(dsigma)
             case default
                write(0,*) 'Unknown covariance option ',trim(cUserDef%option),'; please use FWD or INV.'
-               stop
+               call ModEM_abort()
         end select
         call write_modelParam(sigma1,cUserDef%wFile_Model)
 #endif
