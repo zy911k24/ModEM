@@ -9,11 +9,11 @@ fi
 if [ $2 = "debug" ]; then
 # Debug configuration
 perl fmkmf.pl -f90 ifx \
--opt '-debug all -debug extended -traceback -check bounds -heap-arrays -i8 -I/opt/intel/lib' \
+-opt '-O2 -debug all -debug extended -traceback -check bounds -heap-arrays -i8 -I/opt/intel/lib' \
 -mpi '-cpp' \
 -o './objs/3D_MT/IFXDebug' \
 -l '-lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/oneapi/mkl/latest/lib -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib' \
+-lp '/opt/intel/oneapi/mkl/latest/lib' \
 -p .:INV:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:3D_MT:3D_MT/DICT:3D_MT/modelParam:3D_MT/FWD:3D_MT/FWD/Mod2d:3D_MT/ioMod \
 Mod3DMT.f90 > $1
 
@@ -24,7 +24,7 @@ perl fmkmf.pl -f90 ifx \
 -mpi '-cpp' \
 -o './objs/3D_MT/IFXRelease' \
 -l '-lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/oneapi/mkl/latest/lib -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib' \
+-lp '/opt/intel/oneapi/mkl/latest/lib' \
 -p .:INV:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:3D_MT:3D_MT/DICT:3D_MT/modelParam:3D_MT/FWD:3D_MT/FWD/Mod2d:3D_MT/ioMod \
 Mod3DMT.f90 > $1
 
@@ -35,7 +35,7 @@ perl fmkmf.pl -f90 mpiifx \
 -mpi '-cpp -DMPI' \
 -o './objs/3D_MT/IFXReleaseMPI' \
 -l '-lmkl_lapack95_ilp64 -lmkl_intel_ilp64 -lmkl_intel_thread -lmkl_core  -lpthread -qopenmp -parallel' \
--lp '/opt/intel/oneapi/mkl/latest/lib \
+-lp '/opt/intel/oneapi/mkl/latest/lib' \
 -p .:INV:MPI:LAPACK:SENS:UTILS:FIELDS/FiniteDiff3D:3D_MT:3D_MT/DICT:3D_MT/modelParam:3D_MT/FWD:3D_MT/FWD/Mod2d:3D_MT/ioMod \
 Mod3DMT.f90 > $1
 fi
