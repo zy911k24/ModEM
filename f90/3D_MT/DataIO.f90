@@ -593,6 +593,9 @@ Contains
     ! First, set up the data type dictionary, if it's not in existence yet
     call setup_typeDict()
 
+    ! Now, allocate ample storage for the receiver dictionary
+    call setup_rxDict(MAX_NRX)
+
     ! Save the user preferences
     nTxt = 5
     nDt = size(typeDict)
@@ -1192,6 +1195,9 @@ Contains
 
     ! Finished reading the data: write an empty line to screen
     write(0,*)
+
+    ! Now reallocate rxDict to only include sites that have benn found in file
+    call trim_rxDict()
 
     ! Finally, set up the index vectors in the data type dictionary - used for output
     nTxt = 5

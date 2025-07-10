@@ -3,10 +3,12 @@ module receivers
   ! This module contains the receiver dictionary (rxDict) for 3D MT
 
   use math_constants
+  use utilities
 
   implicit none
 
   public			:: setup_rxDict, update_rxDict, deall_rxDict
+  private      :: count_rx
 
   !  multiple receiver dictionaries can be defined, as
   !   different sorts of meta-data may be required for different data
@@ -34,6 +36,8 @@ module receivers
      ! site ID used for input/output and for searching through the list
      character(50)                      ::  id=''
      character(50)                      ::  id_ref=''
+     ! for efficiency, we may initialize with padding, then trim to only leave what's been read
+     logical                            ::  defined = .false.
   end type MTrx
 
   ! receiver dictionary for 3D MT data will be an array of
@@ -42,6 +46,9 @@ module receivers
   !  data functional module, and can thus be private
   type (MTrx), pointer, save, public, dimension(:) :: rxDict
 
+  ! for efficiency, we now initialize with MAX_NRX and trim after reading the file
+  integer, parameter                    :: MAX_NRX = 200000
+
 
 Contains
 
@@ -49,30 +56,32 @@ Contains
   ! Initializes and sets up receiver dictionary
   ! The reciever dictionary contains sparse vectors required
   ! for magnetic and electric field vector evaluation
-  subroutine setup_rxDict(nSites,siteLocations,siteIDs)
+  subroutine setup_rxDict(nSites, siteLocations,siteIDs)
 
-    integer, intent(in)	 				:: nSites
-    real(kind=prec), intent(in)			:: siteLocations(nSites,3)
-    character(*), intent(in), optional  :: siteIDs(nSites)
+    integer, intent(in) :: nSites
+    real(kind=prec), intent(in), optional       :: siteLocations(nSites,3)
+    character(*), intent(in), optional          :: siteIDs(nSites)
 
 
     !  local variables
-    integer		 :: i,istat
-	character(3) :: id
+    integer      :: i,istat
+    character(3) :: id
 
-	if (.not. associated(rxDict)) then
-    	allocate(rxDict(nSites),STAT=istat)
+    if (.not. associated(rxDict)) then
+      allocate(rxDict(nSites),STAT=istat)
     end if
 
-    do i = 1,nSites
-    	rxDict(i)%x = siteLocations(i,:)
-		if (present(siteIDs)) then
-			rxDict(i)%id = siteIDs(i)
-		else
-			write(id,'(i6.6)') i
-			rxDict(i)%id = id
-		end if
-    end do
+    if (present(siteLocations)) then
+      do i = 1,nSites
+         rxDict(i)%x = siteLocations(i,:)
+         if (present(siteIDs)) then
+            rxDict(i)%id = siteIDs(i)
+         else
+            write(id,'(i6.6)') i
+            rxDict(i)%id = id
+         end if
+      end do
+    end if
 
   end subroutine setup_rxDict
 
@@ -120,7 +129,7 @@ function update_rxDict(loc,id,Rx_azi,loc_ref,id_ref) result (iRx)
      	return
      end if
 
-     nRx = size(rxDict)
+     nRx = count_rx()
 
      ! If this site isn't new, do nothing, unless a new ref. site is found in case of Inter-Stations TF.
      do i = 1,nRx
@@ -128,39 +137,40 @@ function update_rxDict(loc,id,Rx_azi,loc_ref,id_ref) result (iRx)
            if (present(loc_ref)) then
            !Check if the this site is associated with the same Ref. site. If not, then continue and append another site to the Rx dictionary. 
               if (new%id_ref .eq. rxDict(i)%id_ref) then 
-     	         rxDict(i)%r=loc_ref
-     	         rxDict(i)%id_ref=id_ref
+                 rxDict(i)%r=loc_ref
+                 rxDict(i)%id_ref=id_ref
                  iRx=i
                  new_Rx = .false.
                  return
               end if   
            elseif (present(Rx_azi)) then
               ! Check if the this site has same azimuth as what we have already in the Dic -
-	      ! this is only well-defined for CSEM; for MT, Rx_azi is not used since we're supporting
-	      ! the possibility that each field component has its own orientation (stored in DataSpace).
+              ! this is only well-defined for CSEM; for MT, Rx_azi is not used since we're supporting
+              ! the possibility that each field component has its own orientation (stored in DataSpace).
               if (new%Rx_azi .eq. rxDict(i)%Rx_azi) then 
                  iRx=i
                  new_Rx = .false.
                  return
               end if              		   
            else    
-     	    iRx=i
+            iRx=i
             new_Rx = .false.
-     		return
+            return
            end if 
      	end if
      end do
 
      ! If the site really is new, append to the end of the dictionary
      new_Rx = .true.
-     allocate(temp(nRx+1),STAT=istat)
-     temp(1:nRx) = rxDict
-     temp(nRx+1) = new
-     deallocate(rxDict,STAT=istat)
-     allocate(rxDict(nRx+1),STAT=istat)
-     rxDict = temp
-     deallocate(temp,STAT=istat)
-     iRx = nRx+1
+     new%defined = .true.
+     if (nRx < size(rxDict)) then
+         iRx = nRx+1
+         rxDict(iRx) = new
+     else
+         write(0,*) 'ERROR: The number of receivers (sites) in file has exceeded the hard-coded maximum', MAX_NRX
+         write(0,*) 'ERROR: Please edit MAX_NRX in receivers.f90 and recompile'
+         call ModEM_abort()
+     end if
 
   end function update_rxDict
 
@@ -197,9 +207,9 @@ function update_rxDict(loc,id,Rx_azi,loc_ref,id_ref) result (iRx)
         return
      end if
 
-     nRx = size(rxDict)
+     nRx = count_rx()
      write(iounit,*) nRx, '   Receivers'
-     do iRx = 1, size(rxDict)
+     do iRx = 1, nRx
         write(iounit,'(i6,2x,a20,4f12.3,a20)') iRx,trim(rxDict(iRx)%id),rxDict(iRx)%x,&
           rxDict(iRx)%Rx_azi,trim(rxDict(iRx)%id_ref)
      enddo
@@ -221,11 +231,11 @@ function update_rxDict(loc,id,Rx_azi,loc_ref,id_ref) result (iRx)
         return
      end if
 
-     nRx = size(rxDict)
+     nRx = count_rx()
      header = 'Receiver Dictionary'
      write(iounit) header
      write(iounit) nRx
-     do iRx = 1, size(rxDict)
+     do iRx = 1, nRx
         write(iounit) iRx,rxDict(iRx)%x,rxDict(iRx)%Rx_azi
         !   hard to read variable length records from a binary file,
         !   unless written as individual sequential records; hence this
@@ -233,6 +243,55 @@ function update_rxDict(loc,id,Rx_azi,loc_ref,id_ref) result (iRx)
      enddo
 
   end subroutine write_rxDict_bin
+
+  ! **************************************************************************
+  ! Finds the end of the defined part of rxDict
+  integer function count_rx()  result (nRx)
+
+    !  local variables
+    integer :: N, iRx
+
+    if (.not. associated(rxDict)) then
+      nRx = 0
+      return
+    end if
+
+    N = size(rxDict)
+
+    ! return when the first undefined value is encountered
+    do iRx = 1,N
+      if (.not. rxDict(iRx)%defined) then
+         nRx = iRx-1
+         return
+      end if
+    end do
+
+    ! if they are all defined, nRx = size(rxDict)
+    nRx = N
+
+  end function count_rx
+
+
+  ! **************************************************************************
+  ! Trims the tail end of the pre-allocated rxDict
+  subroutine trim_rxDict()
+
+     type(MTrx), pointer, dimension(:)   :: temp
+     integer                             :: nRx, istat
+
+    nRx = count_rx()
+
+    if (associated(rxDict)) then
+       allocate(temp(nRx),STAT=istat)
+       temp = rxDict(1:nRx)
+       deallocate(rxDict,STAT=istat)
+       allocate(rxDict(nRx),STAT=istat)
+       rxDict = temp
+       deallocate(temp,STAT=istat)
+    end if
+
+  end subroutine trim_rxDict
+
 
   ! **************************************************************************
   ! Cleans up and deletes receiver dictionary at end of program execution
