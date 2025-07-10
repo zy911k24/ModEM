@@ -226,7 +226,7 @@ if ($WIN) {
 } elsif ($f90 =~ /^g95$/){
 	print "MODULE = -fmod=\$(OBJDIR)\n";
 } elsif (($f90 =~ /^gfortran$/) or ($f90 =~ /^mpifort$/)){
-	print "MODULE = --sysroot=\$(OBJDIR)\n";
+	print "MODULE = -J \$(OBJDIR)\n";
 } elsif ($f90 =~ /^mpif90$/){
 	print "MODULE = -J \$(OBJDIR)\n";
 } else {

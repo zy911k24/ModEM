@@ -404,7 +404,7 @@ Contains
            end if
        else
            call reset_time(timer)
-           write(*,*) '[WARNING] can not attach to a valid GPU...'
+           write(*,*) '[WARNING] could not find a valid CUDA GPU...'
            if (trim(solver_name) .eq. 'PCG') then
              write(*,*) '[WARNING] Fall back to CPU version of PCG'
              write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
@@ -453,7 +453,7 @@ Contains
            end if
        else
            call reset_time(timer)
-           write(*,*) '[WARNING] can not attach to a valid GPU...'
+           write(*,*) '[WARNING] could not find a valid HIP GPU...'
            if (trim(solver_name) .eq. 'PCG') then
              write(*,*) '[WARNING] Fall back to CPU version of PCG'
              write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
@@ -845,7 +845,7 @@ Contains
          endif ! trans 
      endif ! if rank == 0
      !-------------------------------------------------------------------------
-     !    now start to disassemble the system matrix
+     !    now start to decompose the system matrix
      !-------------------------------------------------------------------------
      if (rank_local.eq.0) then ! leader
          if (output_level > 2) then
@@ -913,7 +913,7 @@ Contains
          deallocate(vlocal)
      end if
      !-------------------------------------------------------------------------
-     !    now start to disassemble the L/U matrix
+     !    now start to decompose the L/U matrix
      !-------------------------------------------------------------------------
      if (rank_local.eq.0) then ! leader
          ! firstly leader split the system matrix L/U (complex)
@@ -1075,6 +1075,7 @@ Contains
 #else
      KSSiter%maxIt = IterPerDivCor
 #endif
+     ! distribute the structure to all processes
      if (rank_local.eq.0) then
          if (trans) then
              KSSiter%tol = tolEMadj

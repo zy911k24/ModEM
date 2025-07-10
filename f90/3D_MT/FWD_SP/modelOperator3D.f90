@@ -143,6 +143,8 @@ Contains
 
       real (kind=prec), intent (in)             :: inOmega
       integer, optional, intent(in)             :: nproc
+      ! NOTE that we have completely no use of nproc for SP version, for 
+      ! now, at least
 
       call updateOmegaMuSig(inOmega)
       call PC_setup()

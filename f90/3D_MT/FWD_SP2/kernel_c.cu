@@ -3,7 +3,7 @@
 #include <string.h>
 #include <complex.h>
 #include <cuda.h>
-// #include <nvml.h>
+#include <nccl.h>
 #include <cuda_runtime.h>
 
 // simple kernel function that converts double vectors to single
@@ -334,6 +334,73 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double
     x_update_cmplx<<< grids, blocks >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
 
     return;
+}
+
+// This function is copied from nccl
+static __inline__ int ncclTypeSize(ncclDataType_t type) {
+  switch (type) {
+    case ncclInt8:
+    case ncclUint8:
+      return 1;
+    case ncclFloat16:
+      return 2;
+    case ncclInt32:
+    case ncclUint32:
+    case ncclFloat32:
+      return 4;
+    case ncclInt64:
+    case ncclUint64:
+    case ncclFloat64:
+      return 8;
+    default:
+      return -1;
+  }
+}
+// a homebrew allgatherv method facilated with the basic nccl apis 
+ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
+	ncclDataType_t senddatatype, void *recvbuff,
+	size_t recvcounts[], size_t recvdispls[], 
+	int root,ncclComm_t comm, cudaStream_t stream)
+{
+    int rank_nccl;
+    int size_nccl;
+    ncclResult_t err;
+    // need to check the nccl interface here
+    ncclCommUserRank(comm, &rank_nccl);
+    ncclCommCount(comm, &size_nccl);
+    // firstly gather to root
+    // send to root (if you are not)
+    if(rank_nccl!=root) {
+	// note we send n*2 as nccl doesn't support complex data
+        err = ncclSend(sendbuff, sendcount*2, senddatatype,
+        	root, comm, stream);
+        if(err){
+            return err;
+	}
+    }
+    // loop through all ranks and receive (if you are root)
+    else {
+        for(int i=1;i<size_nccl;++i){
+	    // note we send n*2 as nccl doesn't support complex data
+            err=ncclRecv(static_cast<std::byte*>(recvbuff)+
+	        ncclTypeSize(senddatatype)*recvdispls[i]*2,
+                recvcounts[i]*2, senddatatype, i, comm, stream);
+            if(err){
+        	 return err;
+	    }
+	}
+    }
+    // now broadcast to all
+    size_t total = 0;
+    for (int i = 0; i < size_nccl; i++){
+        total += recvcounts[i];
+    }
+    // note we send n*2 as nccl doesn't support complex data
+    err=ncclBcast(recvbuff, total*2, senddatatype, 0, comm, stream);
+    if(err){
+        return err;
+    }
+    return ncclSuccess;
 }
 
 // function called from main fortran program 

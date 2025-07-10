@@ -1262,7 +1262,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       complex (kind=prec),pointer,dimension(:)   :: iwus
 
       real    (kind=prec), target                :: rnorm, bnorm, rnorm0, btol
-      real    (kind=prec), target                :: xnorm, dnorm
+      real    (kind=prec), target                :: xnorm
       complex (kind=prec)                        :: RHO1, ALPHA, BETA, OMEGA
       complex (kind=prec), target                :: RTV,TT,RHO
       real    (kind=SP), target                  :: ctime
@@ -2104,13 +2104,13 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
 
         ! now check the second half of iteration
         ! calculate the residual norm for the second half of iteration 
-        ! rtv = dot(T,T)
-        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrT,1,rtvPtr)
+        ! tt = dot(T,T)
+        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrT,1,ttPtr)
         ierr2 = ierr2 + ierr
-        ! tts = dot(T,S)
-        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrS,1,ttPtr)
+        ! rtv = dot(T,S)
+        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrS,1,rtvPtr)
         ierr2 = ierr2 + ierr
-        OMEGA = tt/rtv
+        OMEGA = rtv/tt
         ! write(6,*) 'omega = ', OMEGA
         if (OMEGA .eq. 0.0) then !bad omega
             KSPiter%failed = .true.
@@ -2347,7 +2347,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       complex (kind=prec),pointer,dimension(:)   :: iwus
 
       real    (kind=prec), target                :: rnorm, bnorm, rnorm0, btol
-      real    (kind=prec), target                :: xnorm, dnorm
+      real    (kind=prec), target                :: xnorm
       complex (kind=prec)                        :: RHO1, ALPHA, BETA, OMEGA
       complex (kind=prec), target                :: RTV,TT,RHO
       real    (c_float),target                   :: ctime 
@@ -2398,7 +2398,6 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       type(c_ptr) :: rnormPtr
       type(c_ptr) :: rnormPtr0
       type(c_ptr) :: xnormPtr ! for stagnant check
-      type(c_ptr) :: dnormPtr
       type(c_ptr) :: rhoPtr
       type(c_ptr) :: rtvPtr
       type(c_ptr) :: ttPtr
@@ -2484,7 +2483,6 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       rnormPtr = c_loc(rnorm)
       rnormPtr0 = c_loc(rnorm0)
       xnormPtr = c_loc(xnorm)
-      dnormPtr = c_loc(dnorm)
       rhoPtr = c_loc(RHO)
       rtvPtr = c_loc(rtv)
       ttPtr = c_loc(tt)
@@ -3227,13 +3225,13 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ! now check the second half of iteration
         ! calculate the residual norm for the second half of iteration 
 
-        ! rtv = dot(T,T)
-        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrT,1,rtvPtr)
+        ! tt = dot(T,T)
+        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrT,1,ttPtr)
         ierr2 = ierr2 + ierr
-        ! tts = dot(T,S)
-        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrS,1,ttPtr)
+        ! rtv = dot(T,S)
+        ierr = cublasZdot(cublasHandle,n,devPtrT,1,devPtrS,1,rtvPtr)
         ierr2 = ierr2 + ierr
-        OMEGA = tt/rtv
+        OMEGA = rtv/tt
         ! write(6,*) 'omega = ', OMEGA
         if (OMEGA .eq. 0.0) then !bad omega
             KSPiter%failed = .true.
@@ -3475,7 +3473,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
       complex (kind=prec),pointer,dimension(:)   :: iwus
 
       real    (kind=prec), target                :: rnorm, bnorm, rnorm0, btol
-      real    (kind=prec), target                :: xnorm, dnorm
+      real    (kind=prec), target                :: xnorm
       complex (kind=prec)                        :: RHO1, ALPHA, BETA, OMEGA
       complex (kind=prec), target                :: RTV,TT,RHO
       real    (kind=SP), target                  :: ctime
@@ -4327,13 +4325,13 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
 
         ! now check the second half of iteration
         ! calculate the residual norm for the second half of iteration 
-        ! rtv = dot(T,T)
-        ierr = hipblasZdot(hipblasHandle,n,devPtrT,1,devPtrT,1,rtvPtr)
+        ! tt = dot(T,T)
+        ierr = hipblasZdot(hipblasHandle,n,devPtrT,1,devPtrT,1,ttPtr)
         ierr2 = ierr2 + ierr
-        ! tts = dot(T,S)
-        ierr = hipblasZdot(hipblasHandle,n,devPtrT,1,devPtrS,1,ttPtr)
+        ! rtv = dot(T,S)
+        ierr = hipblasZdot(hipblasHandle,n,devPtrT,1,devPtrS,1,rtvPtr)
         ierr2 = ierr2 + ierr
-        OMEGA = tt/rtv
+        OMEGA = rtv/tt
         ! write(6,*) 'omega = ', OMEGA
         if (OMEGA .eq. 0.0) then !bad omega
             KSPiter%failed = .true.

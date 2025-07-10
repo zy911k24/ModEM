@@ -87,9 +87,38 @@ module cudaFortMap
    integer*4         :: cudaStreamDefault
    parameter (cudaStreamNonBlocking=1)
    parameter (cudaStreamDefault=0)
+   ! nccl enumerators
+   integer*4         :: ncclInt8
+   integer*4         :: ncclChar
+   integer*4         :: ncclInt
+   integer*4         :: ncclFloat
+   integer*4         :: ncclFloat64
+   integer*4         :: ncclDouble
+   integer*4         :: NCCL_UNIQUE_ID_BYTES
+   parameter (ncclInt8=0)
+   parameter (ncclChar=0)
+   parameter (ncclInt=2)
+   parameter (ncclFloat=7)
+   parameter (ncclFloat64=8)
+   parameter (ncclDouble=8)
+   parameter (NCCL_UNIQUE_ID_BYTES=128)
+   ! index base - we all use 1 in fortran
    ! additional C_ONE in FP32 - useful in mixed precision calculations
    complex(kind=SP)  :: C_ONEs
    parameter (C_ONEs=(1.0, 0.0))
+   ! ======================= NCCL C derived types ===================== !
+   ! ncclUniqueId
+   type, bind(c) :: ncclUniqueId
+       character(c_char) :: internal(NCCL_UNIQUE_ID_BYTES)
+   end type
+   ! ncclComm
+   type, bind(c) :: ncclComm
+       type(c_ptr) :: member
+   end type
+   ! ncclResult
+   type, bind(c) :: ncclResult
+       integer(c_int) :: member
+   end type
    ! ======================= CUDA C interfaces ======================== !
    interface
    ! I only included some "might-be-useful" interfaces here...
@@ -229,6 +258,171 @@ module cudaFortMap
      implicit none
      type(c_ptr), value ::stream ! streamid
    end function cudaStreamDestroy
+
+   ! ==================================================================== !
+   ! ======================= NCCL API INTERFACES ======================== !
+   ! ==================================================================== !
+
+   ! ncclGetErrorString
+   character(c_char) function ncclGetErrorString(ierr) &
+    &              bind (C, name="ncclGetErrorString" )
+     ! getting error string
+     use iso_c_binding
+     implicit none
+     integer(c_int), value :: ierr
+   end function ncclGetErrorString
+
+   ! ncclGetUniqueId
+   integer (c_int) function ncclGetUniqueId(uid) &
+    &              bind (C, name="ncclGetUniqueId" )
+     ! get the unique id for a device
+     use iso_c_binding
+     import ncclUniqueId
+     implicit none
+     type(ncclUniqueID)          :: uid ! address of
+   end function ncclGetUniqueId
+
+   ! ncclCommInitRank
+   integer (c_int) function ncclCommInitRank(comm, nDevice, uid, rank) &
+    &              bind (C, name="ncclCommInitRank" )
+     ! initialize the Communicator for a certain rank
+     use iso_c_binding
+     import ncclUniqueId
+     import ncclComm
+     implicit none
+     type(ncclComm)         :: comm ! address of
+     ! type(c_ptr)                :: commPtr ! address of
+     type(ncclUniqueId),value   :: uid
+     integer(c_int), value  :: nDevice
+     integer(c_int), value  :: rank
+   end function ncclCommInitRank
+   
+   ! ncclCommInitAll
+   integer (c_int) function ncclCommInitAll(comm, nDevice, devs) &
+    &              bind (C, name="ncclCommInitAll" )
+     ! initialize the Communicator for all devices
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm)         :: comm
+     integer(c_int), value  :: nDevice
+     integer(c_int)         :: devs(nDevice)
+   end function ncclCommInitAll
+
+   ! ncclCommUserRank
+   integer (c_int) function ncclCommUserRank(comm, rank) &
+    &              bind (C, name="ncclCommUserRank" )
+     ! initialize the Communicator for a certain rank
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm), value  :: comm
+     type(c_ptr)            :: rank
+   end function ncclCommUserRank
+
+   ! ncclCommCount
+   integer (c_int) function ncclCommCount(comm, count) &
+    &              bind (C, name="ncclCommCount" )
+     ! initialize the Communicator for a certain rank
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm), value  :: comm
+     type(c_ptr)            :: count
+   end function ncclCommCount
+
+   integer(c_int) function ncclSend(sendbuff, count, datatype, &
+    &              peer, comm, stream)  bind (C, name="ncclSend" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+     ! type(c_ptr),value   :: comm
+     ! return the device assoicated with the come
+     type (c_ptr), value       :: sendbuff,  stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value :: datatype,  peer
+   end function ncclSend
+   
+   ! ncclRecv
+   integer(c_int) function ncclRecv(recvbuff, count, datatype, &
+    &              peer, comm, stream)  bind (C, name="ncclRecv" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+     ! type(c_ptr),value   :: comm
+     ! return the device assoicated with the come
+     type (c_ptr), value       :: recvbuff,  stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value    :: datatype,  peer
+   end function ncclRecv
+
+
+   ! ncclAllReduce
+   integer(c_int) function ncclAllReduce(sendbuff, recvbuff, count, datatype, &
+    &              comm, stream)  bind (C, name="ncclAllReduce" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm), value     :: comm
+     ! type(c_ptr),value   :: comm
+     ! return the device assoicated with the comm
+     type (c_ptr), value       :: sendbuff, recvbuff, stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value    ::  datatype
+   end function ncclAllReduce
+
+   ! ncclAllGather
+   integer(c_int) function ncclAllGather(sendbuff, recvbuff, count, datatype, &
+    &              comm, stream)  bind (C, name="ncclAllGather" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     ! return the device assoicated with the comm
+     type(ncclComm),value      :: comm
+     type (c_ptr), value       :: sendbuff, recvbuff
+     type (c_ptr), value       :: stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value    :: datatype
+   end function ncclAllGather
+
+   ! ncclAllGatherV
+   integer(c_int) function ncclAllGatherV(sendbuff, sendcount, datatype, &
+    &              recvbuff, recvcount, displs, comm, stream)  &
+    &              bind (C, name="ncclAllGatherV" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     ! return the device assoicated with the comm
+     type(ncclComm),value      :: comm
+     type (c_ptr), value       :: sendbuff, recvbuff
+     type (c_ptr), value       :: stream! pointer
+     integer (c_size_t), value :: sendcount
+     integer (c_size_t), value :: recvcount, displs
+     integer (c_int), value    :: datatype
+   end function ncclAllGatherV
+
+   ! ncclCommFinalize
+   integer (c_int) function ncclCommFinalize(comm) &
+    &              bind (C, name="ncclCommFinalize" )
+     ! destroy the Communicator
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+     ! type(c_ptr),value          :: comm
+   end function ncclCommFinalize
+
+   ! ncclCommDestroy
+   integer (c_int) function ncclCommDestroy(comm) &
+    &              bind (C, name="ncclCommDestroy" )
+     ! destroy the Communicator
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+   end function ncclCommDestroy
 
    ! ==================================================================== !
    ! ===================== CUDA EVENT INTERFACES ======================== !
