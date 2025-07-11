@@ -389,7 +389,7 @@ module cudaFortMap
 
    ! ncclAllGatherV
    integer(c_int) function ncclAllGatherV(sendbuff, sendcount, datatype, &
-    &              recvbuff, recvcount, displs, comm, stream)  &
+    &              recvbuff, recvcounts, displs, root, n, comm, stream)  &
     &              bind (C, name="ncclAllGatherV" )
      use iso_c_binding
      import ncclComm
@@ -399,8 +399,8 @@ module cudaFortMap
      type (c_ptr), value       :: sendbuff, recvbuff
      type (c_ptr), value       :: stream! pointer
      integer (c_size_t), value :: sendcount
-     integer (c_size_t), value :: recvcount, displs
-     integer (c_int), value    :: datatype
+     integer (c_int), value    :: datatype, root, n
+     integer (c_size_t)        :: recvcounts(n), displs(n)
    end function ncclAllGatherV
 
    ! ncclCommFinalize

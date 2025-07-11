@@ -252,7 +252,8 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
 !           in a group - efficient when you have a lot of nodes at service. 
 !           use one entire node (many procs) to calculate one FWD problem
 !           currently through PETSc, or FG only. In this case only the leaders
-!           communicate with the master, or:
+!           communicate with the master.
+!           Mainly for debug purpose.
 ! def = 2 - equal group settings - the idea is to use a same number of
 !           Lprocs per task - let's say we have 3 processes per Tx/pol, 
 !           we will group Nworkers into  Nworkers/3 groups
@@ -322,14 +323,14 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  workload=workload/sum(log(2.0+group_sizes(2:nG))/log(3.0))
              endif
          endif
-         if (def.eq.0) then 
+         if (def .eq. 0) then 
              ! just put each one in its own group, default 
              nG = number_of_workers+1
-         elseif (def.eq.1) then  
+         elseif (def .eq. 1) then  
              ! group according to topography - put all procs from one host in 
              ! a group, useful for GPU 
              nG = size(host_sizes)
-         elseif (def.eq.2) then  
+         elseif (def .eq. 2) then  
              ! equal group, but also consider the topology, i.e. one group 
              ! should not be distributed to more than one host
              ! for simplicity, we use a groups of 3 for each per/pol
@@ -341,7 +342,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  ! fall back
                  def = 0
              endif
-         elseif (def.eq.3) then
+         elseif (def .eq. 3) then
              ! dynamic - give more procs to harder jobs
              ! note this is only possible when nG > number_of_workers+1
              nG = size(walltime)
@@ -363,10 +364,10 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
      if (rank_world.eq.0) then ! the root process determine the grouping
          if (def.eq.0) then ! 1 group for everyone
              group_sizes = 1
-         elseif (def.eq.1) then ! 1 group for each (physical) machine
+         elseif (def .eq. 1) then ! 1 group for each (physical) machine
              group_sizes = 1 
              group_sizes(2:nG) = host_sizes(2:nG)
-         elseif (def.eq.2) then ! equally distribute the workers
+         elseif (def .eq. 2) then ! equally distribute the workers
              ! note that a_size is an integer
              a_size = number_of_workers/(nG-1)
              if (a_size.ge.1) then
@@ -382,7 +383,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  ! each task gets one worker 
                  group_sizes = 1
              endif !asize
-         elseif (def.eq.3) then ! dynamic balancing the workers
+         elseif (def .eq. 3) then ! dynamic balancing the workers
              group_sizes = 0
              ! root always has its own group
              group_sizes(1) = 1
@@ -1584,10 +1585,11 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      if (robin.lt.1) then
          robin = 1
      end if
-     if (trim(job_name).eq. 'JmultT') then
-         write(6,*)'robin = ', robin
-         write(6,*)'total jobs = ', total_jobs
-     endif
+     ! for debug
+     ! if (trim(job_name).eq. 'JmultT') then
+     !     write(6,*)'robin = ', robin
+     !    write(6,*)'total jobs = ', total_jobs
+     ! endif
      do ijob=1,total_jobs !loop through all jobs
          ! loop through all jobs, until we run out of workers
          who=who+1

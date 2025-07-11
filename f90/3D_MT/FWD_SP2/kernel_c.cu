@@ -356,37 +356,53 @@ static __inline__ int ncclTypeSize(ncclDataType_t type) {
       return -1;
   }
 }
-// a homebrew allgatherv method facilated with the basic nccl apis 
-ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
+// a homebrew allgatherv method by stitching the basic nccl apis togather  
+extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
 	ncclDataType_t senddatatype, void *recvbuff,
 	size_t recvcounts[], size_t recvdispls[], 
-	int root,ncclComm_t comm, cudaStream_t stream)
+	int root, int n, ncclComm_t comm, cudaStream_t stream)
 {
     int rank_nccl;
     int size_nccl;
-    ncclResult_t err;
+    cudaError_t cuErr;
+    ncclResult_t Err;
     // need to check the nccl interface here
     ncclCommUserRank(comm, &rank_nccl);
     ncclCommCount(comm, &size_nccl);
+    // for debug
+    // printf("#C rank = %i, size = %i \n", rank_nccl, size_nccl);
+    // for debug
+    // printf("#C rank = %i, sizes = %ld \n", rank_nccl, recvcounts[rank_nccl]);
+    // for debug
+    // printf("#C rank = %i, displs = %ld \n",rank_nccl, recvdispls[rank_nccl]);
     // firstly gather to root
     // send to root (if you are not)
     if(rank_nccl!=root) {
-	// note we send n*2 as nccl doesn't support complex data
-        err = ncclSend(sendbuff, sendcount*2, senddatatype,
+	// non-root send the data
+        // printf("#C sending data to %i @ %i\n", 0, rank_nccl);
+        Err = ncclSend(sendbuff, sendcount, senddatatype,
         	root, comm, stream);
-        if(err){
-            return err;
+        if(Err){
+            return Err;
 	}
     }
-    // loop through all ranks and receive (if you are root)
     else {
-        for(int i=1;i<size_nccl;++i){
-	    // note we send n*2 as nccl doesn't support complex data
-            err=ncclRecv(static_cast<std::byte*>(recvbuff)+
-	        ncclTypeSize(senddatatype)*recvdispls[i]*2,
-                recvcounts[i]*2, senddatatype, i, comm, stream);
-            if(err){
-        	 return err;
+        // root firstly copy sendbuff to recvbuff 
+        size_t self_displ = recvdispls[rank_nccl];
+        cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + 
+	    ncclTypeSize(senddatatype) * self_displ,
+            sendbuff, sendcount * ncclTypeSize(senddatatype),
+            cudaMemcpyDeviceToDevice, stream);
+	if (cuErr != cudaSuccess) return ncclSystemError;
+	// then recieve the data from other processes
+        for(int i=0;i<size_nccl;++i){
+            if(i == root) continue; //skip the root
+            // printf("#C waiting for data from %i @ %i\n", i, rank_nccl);
+            Err=ncclRecv(static_cast<std::byte*>(recvbuff)+
+	        ncclTypeSize(senddatatype)*recvdispls[i],
+                recvcounts[i], senddatatype, i, comm, stream);
+            if(Err){
+        	 return Err;
 	    }
 	}
     }
@@ -395,10 +411,12 @@ ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
     for (int i = 0; i < size_nccl; i++){
         total += recvcounts[i];
     }
-    // note we send n*2 as nccl doesn't support complex data
-    err=ncclBcast(recvbuff, total*2, senddatatype, 0, comm, stream);
-    if(err){
-        return err;
+    // for debug
+    // now broadcast the full vector
+    // printf("#C now broadcasting @ %i\n", rank_nccl);
+    Err=ncclBcast(recvbuff, total, senddatatype, 0, comm, stream);
+    if(Err){
+        return Err;
     }
     return ncclSuccess;
 }

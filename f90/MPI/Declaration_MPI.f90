@@ -34,11 +34,13 @@ integer        :: hostname_len, ngroup
 ! on-the-fly modification, 
 ! TODO: need to think about it - if we really need an on-the-fly config
 ! 0 : simple grouping, 1 proc per each fwd/trn task (default)
-! 1 : topology grouping, 1 node per each fwd/trn task
+! 1 : topology grouping, 1 node per each fwd/trn task, for debug purpose
 ! 2 : equal grouping, n procs per each fwd/trn task
 ! 3 : dynamic grouping, variable number of procs per each fwd/trn task, 
 !     for load-balancing
-#if defined(FG)
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+integer        :: para_method = 2 ! use 1 for debug only
+#elif defined(FG)
 integer        :: para_method = 2
 #elif defined(PETSC) 
 integer        :: para_method = 2
@@ -59,7 +61,11 @@ integer        :: para_method = 0
 #endif
 ! change the cpus_per_gpu if you want to use more than one cpus to 
 ! feed one gpu, modify at your own risk! 
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+integer                   :: cpus_per_gpu = 1 ! override for GPU+FG
+#else
 integer                   :: cpus_per_gpu = 3 ! hard coded here 
+#endif
 integer                   :: device_id = -1
 ! this is used to store the timer of each mpi sub-process
 DOUBLE PRECISION          :: previous_time

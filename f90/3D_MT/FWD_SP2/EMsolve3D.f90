@@ -21,9 +21,9 @@ module EMsolve3D
 
   interface FWDSolve3D
 #ifdef MPI
-     MODULE PROCEDURE FWDSolve3Dp
+     MODULE PROCEDURE FWDSolve3D
 #endif
-     MODULE PROCEDURE FWDSolve3Ds
+     MODULE PROCEDURE FWDSolve3Dfg
   end interface
 
   type :: emsolve_control
@@ -41,7 +41,8 @@ module EMsolve3D
     integer                   ::      ioE0
     character (len=80)        ::      AirLayersMethod
     integer                   ::      AirLayersNz
-    real(kind = 8)            ::      AirLayersMaxHeight, AirLayersAlpha, AirLayersMinTopDz
+    real(kind = 8)            ::      AirLayersMaxHeight, AirLayersAlpha
+    real(kind = 8)            ::      AirLayersMinTopDz
     real(kind = 8), pointer, dimension(:)   :: AirLayersDz
     logical                   ::      AirLayersPresent=.false.
     character (len=10)        ::      solver_name="BICG"
@@ -76,7 +77,7 @@ module EMsolve3D
   !Solver name, by default we use BICG
   character (len=10)  		   ::   solver_name="BICG"
   character (len=50) , public      ::   get_1D_from="Geometric_mean"
-							 
+
 
   save
 
@@ -133,7 +134,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0;
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3Ds(bRHS,omega,eSol,device_id)
+  subroutine FWDsolve3D(bRHS,omega,eSol,device_id)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -148,8 +149,7 @@ Contains
     !  INPUTS:
     type (RHS_t), intent(in)      :: bRHS
     real(kind=prec), intent(in)   :: omega
-    !dummy parameter for compatibiliy
-    integer, intent(in),optional  :: device_id
+    integer,optional,intent(in)   :: device_id ! use GPU device
     !  OUTPUTS:
     !  eSol must be allocated before calling this routine
     type (cvector), intent(inout) :: eSol
@@ -211,7 +211,8 @@ Contains
         Nni = size(NODEi,1)
         Nn  = size(NODEb,1) + Nni
         if (output_level > 3) then
-            write(*,'(a36,i8,a4,i8)') 'FWDSolve3D source grid #nodes: Nni=',    Nni,' Nn=',Nn
+            write(*,'(a36,i8,a4,i8)') 'FWDSolve3D source grid #nodes: Nni=',&
+   &                Nni,' Nn=',Nn
         end if
     ! uncomment the following line to try divergence correction in CCGD
     !    allocate(phi0(Nn)) ! make sure you *WANT* to do this, first!
@@ -348,19 +349,14 @@ Contains
     end if
 
     KSSiter%niter = 0
-#if defined(CUDA)
-    ! FIXME this is now hard coded here
-    ! need a more elegant way to deal with it
-    KSSiter%maxIt = maxIterTotal
-    MaxDivCor = 1
-#elif defined(HIP)
+#if defined(CUDA) || defined(HIP)
     ! FIXME this is now hard coded here
     ! need a more elegant way to deal with it
     KSSiter%maxIt = maxIterTotal
     MaxDivCor = 1
 #else
-    call reset_time(timer)
     KSSiter%maxIt = IterPerDivCor
+    call reset_time(timer)
 #endif
     allocate(KSSiter%rerr(KSSiter%maxIt))
     KSSiter%rerr = 0.0
@@ -376,119 +372,96 @@ Contains
     !   Call SdivCorr(ei,phi0)
     ! endif
     loop: do while ((.not.converged).and.(.not.failed))
-#if defined(CUDA)
+#if defined(CUDA) || defined(HIP)
        if (device_id.ge.0) then
            ! before start, need to tell if the device is available
            ierr = cf_hookDev(device_id)
            call reset_time(timer)
            if (trim(solver_name) .eq. 'PCG') then
-             write(*,*) '[WARNING] CUDA PCG is not yet implemented'
+             write(*,*) '[WARNING] GPU PCG is not yet implemented'
              write(*,*) '[WARNING] Fall back to CPU version of PCG'
-             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
+             write(*,*) 'I am using PCG with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call PCG(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'QMR') then
-             write(*,*) '[WARNING] CUDA QMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] GPU QMR is not yet implemented '
              write(*,*) '[WARNING] Fall back to CPU version of QMR'
-             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
+             write(*,*) 'I am using QMR with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call QMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'TFQMR') then
-             write(*,*) '[WARNING] CUDA TFQMR is not yet implemented ',KSSiter%rerr(1)
+             write(*,*) '[WARNING] GPU TFQMR is not yet implemented ', &
+    &                KSSiter%rerr(1)
              write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
-             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
+             write(*,*) 'I am using TFQMR with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call TFQMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'BICG') then
-             write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
-             Call BICG(b, ei, KSSiter, device_id)
+             write(*,*) 'I am using BICG with initial relative error ', &
+    &                KSSiter%rerr(1)
+             Call BiCG(b, ei, KSSiter, device_id)
            else
-             write(*,*) 'Unknown Forward Solver Method'
+             write(1,*) 'ERROR: Unknown Forward Solver Method: ', &
+    &                trim(solver_name)
+             write(6,*) '[WARNING] Fall back to CPU version of TFQMR'
+             write(6,*) 'I am using TFQMR with initial relative error ', &
+    &                KSSiter%rerr(1)
+             Call TFQMR(b, ei, KSSiter)
            end if
        else
-           call reset_time(timer)
-           write(*,*) '[WARNING] could not find a valid CUDA GPU...'
+           write(6,*) '[WARNING] could not find a valid GPU...'
            if (trim(solver_name) .eq. 'PCG') then
-             write(*,*) '[WARNING] Fall back to CPU version of PCG'
-             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
+             write(6,*) '[WARNING] Fall back to CPU version of PCG'
+             write(6,*) 'I am using PCG with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call PCG(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'QMR') then
-             write(*,*) '[WARNING] Fall back to CPU version of QMR'
-             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
+             write(6,*) '[WARNING] Fall back to CPU version of QMR'
+             write(6,*) 'I am using QMR with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call QMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'TFQMR') then
-             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
-             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
+             write(6,*) '[WARNING] Fall back to CPU version of TFQMR'
+             write(6,*) 'I am using TFQMR with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call TFQMR(b, ei, KSSiter)
            elseif (trim(solver_name) .eq. 'BICG') then
-             write(*,*) '[WARNING] Fall back to CPU version of BICG'
-             write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
-             Call BICG(b, ei, KSSiter)
+             write(6,*) '[WARNING] Fall back to CPU version of BICG'
+             write(6,*) 'I am using BICG with initial relative error ', &
+    &                KSSiter%rerr(1)
+             Call BiCG(b, ei, KSSiter)
            else
-             write(*,*) 'Unknown Forward Solver Method'
-           end if
-       end if
-#elif defined(HIP)
-       if (device_id.ge.0) then
-           ierr = cf_hookDev(device_id)
-           call reset_time(timer)
-           ! before start, need to tell if the device is available
-           if (trim(solver_name) .eq. 'PCG') then
-             write(*,*) '[WARNING] HIP PCG is not yet implemented'
-             write(*,*) '[WARNING] Fall back to CPU version of PCG'
-             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
-             Call PCG(b, ei, KSSiter)
-           elseif (trim(solver_name) .eq. 'QMR') then
-             write(*,*) '[WARNING] HIP QMR is not yet implemented ',KSSiter%rerr(1)
-             write(*,*) '[WARNING] Fall back to CPU version of QMR'
-             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
-             Call QMR(b, ei, KSSiter)
-           elseif (trim(solver_name) .eq. 'TFQMR') then
-             write(*,*) '[WARNING] HIP TFQMR is not yet implemented ',KSSiter%rerr(1)
-             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
-             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
+             write(1,*) 'ERROR: Unknown Forward Solver Method: ', &
+    &                trim(solver_name)
+             write(6,*) '[WARNING] Fall back to CPU version of TFQMR'
+             write(6,*) 'I am using TFQMR with initial relative error ', &
+    &                KSSiter%rerr(1)
              Call TFQMR(b, ei, KSSiter)
-           elseif (trim(solver_name) .eq. 'BICG') then
-             write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
-             Call BICG(b, ei, KSSiter, device_id)
-           else
-             write(*,*) 'Unknown Forward Solver Method'
-           end if
-       else
-           call reset_time(timer)
-           write(*,*) '[WARNING] could not find a valid HIP GPU...'
-           if (trim(solver_name) .eq. 'PCG') then
-             write(*,*) '[WARNING] Fall back to CPU version of PCG'
-             write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
-             Call PCG(b, ei, KSSiter)
-           elseif (trim(solver_name) .eq. 'QMR') then
-             write(*,*) '[WARNING] Fall back to CPU version of QMR'
-             write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
-             Call QMR(b, ei, KSSiter)
-           elseif (trim(solver_name) .eq. 'TFQMR') then
-             write(*,*) '[WARNING] Fall back to CPU version of TFQMR'
-             write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
-             Call TFQMR(b, ei, KSSiter)
-           elseif (trim(solver_name) .eq. 'BICG') then
-             write(*,*) '[WARNING] Fall back to CPU version of BICG'
-             write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
-             Call BICG(b, ei, KSSiter)
-           else
-             write(*,*) 'Unknown Forward Solver Method'
            end if
        end if
 #else
       if (trim(solver_name) .eq. 'PCG') then
-        write(*,*) 'I am using PCG with initial relative error ',KSSiter%rerr(1)
+        write(6,*) 'I am using PCG with initial relative error ',   &
+    &           KSSiter%rerr(1)
         Call PCG(b, ei, KSSiter)
       elseif (trim(solver_name) .eq. 'QMR') then
-        write(*,*) 'I am using QMR with initial relative error ',KSSiter%rerr(1)
+        write(6,*) 'I am using QMR with initial relative error ',   &
+    &           KSSiter%rerr(1)
         Call QMR(b, ei, KSSiter)
       elseif (trim(solver_name) .eq. 'TFQMR') then
-        write(*,*) 'I am using TFQMR with initial relative error ',KSSiter%rerr(1)
+        write(6,*) 'I am using TFQMR with initial relative error ', &
+    &           KSSiter%rerr(1)
         Call TFQMR(b, ei, KSSiter)
       elseif (trim(solver_name) .eq. 'BICG') then
-        write(*,*) 'I am using BICG with initial relative error ',KSSiter%rerr(1)
-        Call BICG(b, ei, KSSiter)
+        write(6,*) 'I am using BICG with initial relative error ', &
+    &           KSSiter%rerr(1)
+        Call BiCG(b, ei, KSSiter)
       else
-        write(*,*) 'Unknown Forward Solver Method'
+        write(1,*) 'ERROR: Unknown Forward Solver Method: ', trim(solver_name)
+        write(6,*) '[WARNING] Fall back to TFQMR'
+        write(6,*) 'I am using TFQMR with initial relative error ', &
+    &                KSSiter%rerr(1)
+        Call TFQMR(b, ei, KSSiter)
       end if
 #endif
        ! algorithm is converged when the relative error is less than tolerance
@@ -569,11 +542,11 @@ Contains
     Call deall(tvec)
     deallocate(KSSiter%rerr)
 
-  end subroutine FWDsolve3Ds
+  end subroutine FWDsolve3D
 
 #ifdef MPI
   ! fine-grained parallel version
-  subroutine FWDsolve3Dp(bRHS,omega,eSol,device_id,comm_local)
+  subroutine FWDsolve3Dfg(bRHS,omega,eSol,device_id,comm_local)
 !----------------------------------------------------------------------
      ! redefine some of the interfaces (locally) for our convenience
      use sg_vector !, only: copy => copy_cvector, &
@@ -584,6 +557,14 @@ Contains
      ! in a staggered grid
      ! in cvec copy, remember the order is copy(new, old) i.e new = old
      implicit none
+     !  INPUTS:
+     type (RHS_t), intent(in)           :: bRHS
+     real(kind=prec), intent(in)        :: omega
+     integer, intent(in)                :: device_id 
+     integer, intent(in)                :: comm_local 
+     !  OUTPUTS:
+     !  eSol must be allocated before calling this routine
+     type (cvector), intent(inout)      :: eSol
 !----------------------------------------------------------------------
 !               variables related to parallel computation
 !----------------------------------------------------------------------
@@ -602,14 +583,6 @@ Contains
      complex(kind=prec), dimension (:), allocatable :: blocal
      real(kind=prec)                    :: ptol=1e-2
      real                               :: normu
-     !  INPUTS:
-     type (RHS_t), intent(in)           :: bRHS
-     real(kind=prec), intent(in)        :: omega
-     integer, intent(in)                :: device_id
-     integer, intent(in)                :: comm_local
-     !  OUTPUTS:
-     !  eSol must be allocated before calling this routine
-     type (cvector), intent(inout)      :: eSol
 !----------------------------------------------------------------------
      ! LOCAL VARIABLES
      logical                                        :: converged,trans
@@ -718,9 +691,9 @@ Contains
          ! local data structures
          if (output_level > 3) then
              ! for debug
-             write(6,*) 'system iedges =', iedges
-             write(6,*) 'system isubs =', isubs
-             write(6,*) 'system isizes =', isizes
+             write(6,*) 'system matrix iedges =', iedges
+             write(6,*) 'system matrix isubs =', isubs
+             write(6,*) 'system matrix isizes =', isizes
          endif 
          ! cboundary is a quite complex type...
          ! *essentially it should be e(EDGEb)
@@ -1067,13 +1040,14 @@ Contains
      call reset_time(timer)
      ! Initialize iteration control/diagnostic structure for KSS
      KSSiter%niter = 0
-#ifdef CUDA
+#if defined(CUDA) || defined(HIP)
      ! FIXME this is now hard coded here
      ! need a more elegant way to deal with it
      KSSiter%maxIt = maxIterTotal
      MaxDivCor = 1
 #else
      KSSiter%maxIt = IterPerDivCor
+     call reset_time(timer)
 #endif
      ! distribute the structure to all processes
      if (rank_local.eq.0) then
@@ -1096,7 +1070,7 @@ Contains
          call MPI_BCAST(MaxDivCor,1, MPI_INTEGER,0, comm_local,ierr)
          call MPI_BCAST(IterPerDivCor,1, MPI_INTEGER,0, comm_local,ierr)
      end if
-     allocate(KSSiter%rerr(IterPerDivCor))
+     allocate(KSSiter%rerr(KSSiter%maxIt))
      KSSiter%rerr = 0.0
      converged = .false.
      failed = .false.
@@ -1105,10 +1079,34 @@ Contains
 !------------------------------------------------------------------------------
      loop: do while ((.not.converged).and.(.not.failed))
          ! fine-grained parallel version 
-#if defined(FG)
-         call BiCGp(blocal,xlocal,KSSiter,comm_local)
+#if defined(CUDA) || defined(HIP)
+         if (device_id.ge.0) then
+             ! before start, need to tell if the device is available
+             ierr = cf_hookDev(device_id)
+             if (trim(solver_name) .ne. 'BICG') then
+                 write(*,*) '[WARNING] the GPU ', solver_name, &
+    &                    'algorithm is not yet implemented'
+                 write(*,*) '[WARNING] Fall back to BICG GPU solver'
+                 write(*,*) 'I am using BICG with initial relative error ', &
+    &                    KSSiter%rerr(1)
+             endif
+             call reset_time(timer)
+             call BiCG(blocal,xlocal,KSSiter,comm_local,device_id)
+         else
+             write(*,*) '[WARNING] could not find a valid CUDA or HIP GPU '
+             call BiCG(blocal,xlocal,KSSiter,comm_local)
+         endif
 #else
-         call BiCG(blocal,xlocal,KSSiter)
+         ! cpu only, currently only BICG is implemented
+         if (trim(solver_name) .ne. 'BICG') then
+             write(*,*) '[WARNING] the Fine Grain ', solver_name,           &
+    &                'algorithm is not yet implemented'
+             write(*,*) '[WARNING] Fall back to BICG FG solver'
+             write(*,*) 'I am using BICG with initial relative error ',     &
+    &                KSSiter%rerr(1)
+         endif
+         call reset_time(timer)
+         call BiCG(blocal,xlocal,KSSiter,comm_local)
 #endif
          ! algorithm is converged when the relative error is less than 
          ! tolerance
@@ -1206,7 +1204,7 @@ Contains
      deallocate(VomegaMuSigLoc) 
      deallocate(KSSiter%rerr)
 
-  end subroutine FWDsolve3Dp
+  end subroutine FWDsolve3Dfg
 #endif
 
 !**********************************************************************

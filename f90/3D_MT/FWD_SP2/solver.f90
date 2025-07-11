@@ -39,11 +39,23 @@ module solver
      ! logical variable indicating if algorithm "failed"
      logical                                               :: failed = .false.
   end type solverControl_t
-
-#if defined(CUDA) || defined(HIP)
+! currently only BiCG is supported for FG and GPU versions
+#if defined(FG)
   interface BICG
       module procedure BiCG
+      module procedure BiCGfg
+#if defined(CUDA)
+      module procedure cuBiCGfg
+#endif 
+  end interface
+#else
+  interface BICG
+      module procedure BiCG
+#if defined(CUDA)
       module procedure cuBiCG
+#elif defined(HIP)
+      module procedure hipBiCG
+#endif 
   end interface
 #endif
 
@@ -524,8 +536,6 @@ subroutine TFQMR(b,x,KSPiter,adjt)
       !     restart = .true.
       ! end if
       if (restart) then
-          ! write(6,'(A8,I4,A22,ES10.4)') 'iter: ', iter,'  &
-          !         (re)started relres = ', rnorm/bnorm
           ! store the first residual
           R0 = R
           W = R0
@@ -932,7 +942,7 @@ end subroutine BiCG ! BICG
   
 #if defined(FG) 
 ! *****************************************************************************
-subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
+subroutine BiCGfg(b,x,KSPiter,comm_local,adjt)
   ! fine-grained parallel version 
   ! Stablized version of BiConjugate Gradient, set up for solving
   ! A x = b using routines in  mult_Aii.
@@ -956,7 +966,7 @@ subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
   ! little unstable (dispite the name)...
   ! if you have time reading this, test it!
   use modeloperator3d, only: A => mult_Alcl,  M1solve => PC_LsolveLcl,     &
-     &                                          M2solve => PC_UsolveLcl
+     &                                        M2solve => PC_UsolveLcl
 
   implicit none
   !  b is right hand side (which is actually b_local
@@ -978,7 +988,7 @@ subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
   integer                                       :: iter, imin
   integer                                       :: maxiter, i, j
   logical                                       :: adjoint, ilu_adjt, converged
-  ! parallel related
+  ! fine-grain parallel related
   integer                                       :: rank_local, size_local, ierr
   complex (kind=prec),allocatable, dimension(:) :: xbuff, rbuff, bbuff
   integer,allocatable,dimension(:)              :: isizes, displs
@@ -1011,14 +1021,13 @@ subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
   call MPI_ALLGATHER(lsize,  1, MPI_INTEGER, isizes, 1, MPI_INTEGER&
  &        , comm_local, ierr)
   fsize = sum(isizes)
- ! write(6, *) 'local size =', lsize, 'full size =', fsize, 'rank =',&
- !&     rank_local
   ! also the displacement
   displs = 0
   do i=2,size_local
       displs(i) = sum(isizes(1:i-1))
   end do
- ! write(6, *) 'displacement =', displs(rank_local+1), 'rank =', rank_local
+  ! write(6, *) 'local size =', lsize, 'displs =', displs(rank_local+1), &
+  !&   'full size = ', fsize,  'rank =',   rank_local
   !Norm of rhs
   ! the idea is to calculate the dot product of blocal for all processes and
   ! sum the result
@@ -1179,8 +1188,8 @@ subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
       rnorm = sqrt(rnorm)
       ! wait for the others
       call MPI_BARRIER(comm_local, ierr)
-      ! write(6,*) 'iter # ',iter,' r norm: ', rnorm
       KSPiter%rerr(iter) = real(rnorm / bnorm)
+      ! write(6,*) 'iteration # ', iter ,' relres= ', KSPiter%rerr(iter)
       if (rnorm.lt.btol) then
           KSPiter%failed = .false.
           KSPiter%niter = iter
@@ -1192,6 +1201,7 @@ subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
           xmin = x
           imin = iter
       end if
+      stop
   end do
  
   if (.not. converged) then 
@@ -1215,10 +1225,8 @@ subroutine BiCGp(b,x,KSPiter,comm_local,adjt)
   deallocate(SH)
   deallocate(V)
   deallocate(T)
-end subroutine BiCGp ! BICGp
+end subroutine BiCGfg ! BICGp
 #endif
-  
-
 
 ! *****************************************************************************
 #if defined(CUDA)
@@ -1842,8 +1850,6 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             restart = .TRUE.
         end if
         if (restart) then 
-            ! write(6,*) 'iter = ', iter
-            ! write(6,'(A, ES10.4)') ' relres = ', rnorm/bnorm
             ! restart the iteration (to steepest decend) every interval times
             ! RT = R
             ierr = cublasZcopy(cublasHandle,n,devPtrR,1,devPtrRT,1)
@@ -2966,8 +2972,6 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             restart = .TRUE.
         end if
         if (restart) then
-            ! write(6,*) 'iter = ', iter
-            ! write(6,'(A, ES10.4)') ' relres = ', rnorm/bnorm
             ! restart the iteration (to steepest decend) every interval times
             ! RT = R 
             ierr = cublasZcopy(cublasHandle,n,devPtrR,1,devPtrRT,1)
@@ -3431,6 +3435,1255 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       end if 
       return
 end subroutine cuBiCGmix ! cuBiCGmix
+
+#if defined(FG)
+subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
+  ! fine-grained parallel version with GPU support 
+  ! Stablized version of BiConjugate Gradient, set up for solving
+  ! A x = b 
+  ! this solves for the interior (edge) field
+  ! essentially we divide the matrix A into several row blocks and 
+  ! solve each block with one thread (GPU)
+  !
+  ! modified (no hell no) to call the CUDA lib to calculate with GPU 
+  ! I kept the naming convention from my BiCGStab (see above CPU version)
+  ! for instance X -> devPtrX, T -> devPtrT to manipulate the GPU memory
+  ! also added the optional adjoint to solve adjoint system A^Tx = b
+  ! 
+  ! NOTE: BICG actually performs two sub (or half) line searches within a 
+  !       iteration, but here we only store the relerr for the second sub
+  !       just to be compatitive with QMR
+  ! 
+  ! interface...........
+  ! redefining some of the interfaces for our convenience (locally)
+  ! generic routines for vector operations for edge/ face nodes
+  ! in a staggered grid
+  !
+  ! NOTE: this has not been extensively tested - I believe it feels a 
+  ! little unstable (dispite the name)...
+  ! if you have time reading this, test it!
+
+      use modeloperator3d, only:  Alocal, Llocal, Ulocal, LHlocal, UHlocal,&
+   &   vOmegaMuSigLoc
+      implicit none
+      !  b is right hand side
+      complex (kind=prec),intent(in),target,dimension(:)    :: b
+      !  solution vector is x ... on input is provided with the initial
+      !  guess, on output is the iterate with smallest residual. 
+      complex (kind=prec),intent(inout),target,dimension(:) :: x
+      type (solverControl_t),intent(inout)                  :: KSPiter
+      integer,intent(in)                                    :: comm_local
+      integer,intent(in)                                    :: device_idx
+      logical,intent(in),optional                           :: adjt
+    
+      ! local variables
+      integer                                    :: ncol, nrow, nnz, iter
+      integer                                    :: maxiter, i, j
+      complex (kind=prec),pointer,dimension(:)   :: iwus
+
+      real    (kind=prec), target                :: rnorm, bnorm, rnorm0, btol
+      complex (kind=prec), target                :: bdotLoc, bdot
+      real    (kind=prec), target                :: xnorm
+      complex (kind=prec)                        :: RHO1, ALPHA, BETA, OMEGA
+      complex (kind=prec), target                :: RTV,TT,RHO
+      real    (kind=SP), target                  :: ctime
+      integer                                    :: TRANS
+      integer                                    :: Lfillmode,Ldiagtype
+      integer                                    :: Ufillmode,Udiagtype
+      integer                                    :: ierr,ierr2, idx
+      logical                                    :: converged, adjoint
+      integer                                    :: interval
+      logical                                    :: restart
+      ! fine-grain parallel related    
+      integer                                        :: rank_local, size_local
+      integer,target                                 :: size_nccl, rank_nccl
+      complex (kind=prec),pointer, dimension(:)      :: xbuff, rbuff, bbuff
+      integer (c_size_t), allocatable, dimension(:)  :: isizes, displs
+      integer (c_size_t)                             :: fsize, lsize
+
+      ! size to determine corresponding buffer/memory
+      integer*8                :: Arowp1_i_size,Arow_d_size
+      integer*8                :: Acol_d_size,Annz_i_size,Annz_d_size
+      integer*8                :: Mrow_d_size,Lnnz_i_size,Lnnz_d_size
+      integer*8                :: Unnz_i_size,Unnz_d_size
+      integer(c_int),target    :: zeroLoc
+      ! integer(c_int)         :: mbsize
+      integer(c_size_t)        :: bsize, lbsize, ubsize
+
+      ! --------------------- pointers to *host* memory ------------------ !   
+      type(c_ptr) :: cublasHandle 
+      type(c_ptr) :: cusparseHandle
+      type(c_ptr) :: cuStream
+      type(c_ptr) :: cuEvent1
+      type(c_ptr) :: cuEvent2
+      type(c_ptr) :: matA
+      type(c_ptr) :: matL
+      type(c_ptr) :: matU
+      type(c_ptr) :: vecX
+      type(c_ptr) :: vecXloc
+      type(c_ptr) :: vecY 
+      type(c_ptr) :: LsolveHandle
+      type(c_ptr) :: UsolveHandle
+      type(c_ptr) :: ilu_info
+      type(c_ptr) :: ArowPtr
+      type(c_ptr) :: AcolPtr
+      type(c_ptr) :: AvalPtr
+      type(c_ptr) :: iwusPtr
+      type(c_ptr) :: MrowPtr
+      type(c_ptr) :: McolPtr
+      type(c_ptr) :: MvalPtr
+      type(c_ptr) :: xPtr  
+      type(c_ptr) :: bPtr
+      type(c_ptr) :: bdotLocPtr
+      type(c_ptr) :: rnormPtr0
+      type(c_ptr) :: rhoPtr
+      type(c_ptr) :: rtvPtr
+      type(c_ptr) :: ttPtr
+      type(c_ptr) :: zeroLocPtr
+      type(c_ptr) :: timePtr
+      type(c_ptr) :: xBuffPtr
+      type(c_ptr) :: bBuffPtr
+      type(c_ptr) :: rBuffPtr
+      type(ncclUniqueId)  :: uid          ! nccl id
+      type(ncclComm)      :: comm_nccl    ! nccl communicator
+      type(c_ptr)         :: rankPtr      
+      type(c_ptr)         :: sizePtr      
+      ! -------------------- pointers to *device* memory ----------------- ! 
+      type(c_ptr) :: devPtrArow
+      type(c_ptr) :: devPtrAcol
+      type(c_ptr) :: devPtrAval
+      type(c_ptr) :: devPtriwus
+      type(c_ptr) :: devPtrLrow
+      type(c_ptr) :: devPtrLcol
+      type(c_ptr) :: devPtrLval
+      type(c_ptr) :: devPtrUrow
+      type(c_ptr) :: devPtrUcol
+      type(c_ptr) :: devPtrUval
+      type(c_ptr) :: devPtrX
+      type(c_ptr) :: devPtrX0
+      type(c_ptr) :: devPtrRHS
+      type(c_ptr) :: devPtrR
+      type(c_ptr) :: devPtrRT
+      type(c_ptr) :: devPtrP
+      type(c_ptr) :: devPtrPT
+      type(c_ptr) :: devPtrPH
+      type(c_ptr) :: devPtrS
+      type(c_ptr) :: devPtrST
+      type(c_ptr) :: devPtrSH
+      type(c_ptr) :: devPtrV
+      type(c_ptr) :: devPtrT
+      type(c_ptr) :: devPtrAX
+      type(c_ptr) :: buffer
+      type(c_ptr) :: bufferL
+      type(c_ptr) :: bufferU
+      
+      ! buffer for the full x, b and r
+      type(c_ptr) :: devPtrXbuff ! full x
+      ! note we don't check the input parameters compatibility 
+      ierr2 = 0
+      converged = .FALSE.
+      zeroLoc = 0
+      if (present(adjt)) then 
+          ! write(6,'(A)') ' adjt = ', adjt
+          adjoint = adjt
+          if (adjt) then
+              TRANS = CUSPARSE_OPERATION_TRANSPOSE
+              Lfillmode = CUSPARSE_FILL_MODE_UPPER
+              Ufillmode = CUSPARSE_FILL_MODE_LOWER
+              Ldiagtype = CUSPARSE_DIAG_TYPE_NON_UNIT
+              Udiagtype = CUSPARSE_DIAG_TYPE_UNIT
+          else
+              TRANS = CUSPARSE_OPERATION_NON_TRANSPOSE
+              Lfillmode = CUSPARSE_FILL_MODE_LOWER
+              Ufillmode = CUSPARSE_FILL_MODE_UPPER
+              Ldiagtype = CUSPARSE_DIAG_TYPE_UNIT
+              Udiagtype = CUSPARSE_DIAG_TYPE_NON_UNIT
+          end if
+      else
+          adjoint = .FALSE.
+          TRANS = CUSPARSE_OPERATION_NON_TRANSPOSE
+          Lfillmode = CUSPARSE_FILL_MODE_LOWER
+          Ufillmode = CUSPARSE_FILL_MODE_UPPER
+          Ldiagtype = CUSPARSE_DIAG_TYPE_UNIT
+          Udiagtype = CUSPARSE_DIAG_TYPE_NON_UNIT
+      end if
+      
+      ! now see how many workers do we have
+      call MPI_COMM_RANK(comm_local,rank_local,ierr)
+      call MPI_COMM_SIZE(comm_local,size_local,ierr)
+      ! firstly try to figure out how the data is distributed on
+      ! each process
+      allocate(isizes(size_local))
+      allocate(displs(size_local))
+      ! local array size
+      lsize = size(x)
+      ! try to get the local row sizes for each process, initialize by zero
+      isizes = 0
+      ! displacement
+      displs = 0
+      ! NOTE it can be used in-place, if the comm_local is a intra-communicator
+      ! it should be - but I will refrain to do that as who knows our users
+      ! will configure their MPI processes...
+      call MPI_ALLGATHER(lsize,  2, MPI_INTEGER, isizes, 2, MPI_INTEGER &
+ &            , comm_local, ierr)
+      fsize = sum(isizes)
+      ! and calculate the displacement
+      do i=2,size_local
+          displs(i) = sum(isizes(1:i-1))
+      end do
+      ! for debug
+      ! write(6, *) 'local size =', lsize, ' displs = ', displs(rank_local+1), &
+      !&       'full size =', fsize, 'rank =', rank_local
+      ! note we still keep the Ae = CCGDe + iwuse 
+      ! idea as in ModEM SP2, we will test if this will save some time 
+      ! (probably not much)
+      ! call CSR_R2Cdiag(AAii,VOmegaMuSig,Aii)
+      ncol = fsize
+      nrow = lsize
+      nnz = size(Alocal%col)
+      ArowPtr = c_loc(Alocal%row)
+      AcolPtr = c_loc(Alocal%col)
+      AvalPtr = c_loc(Alocal%val)
+      ! other host pointers
+      xPtr  = c_loc(x)  ! x = A \ b --> local x
+      bPtr  = c_loc(b)  ! b = ones(n,1) --> local b
+      ! buffer
+      allocate(xbuff(fsize))
+      allocate(rbuff(fsize))
+      allocate(bbuff(fsize))
+      xBuffPtr  = c_loc(xbuff)  ! full x
+      rBuffPtr  = c_loc(rbuff)  ! full r
+      bBuffPtr  = c_loc(bbuff)  ! full b
+      allocate(iwus(nrow))
+      ! only the local part of iwus
+      iwus = VOmegaMuSigLoc*ISIGN*CMPLX(0.0,1.0,8)
+      iwusPtr = c_loc(iwus) ! i V omega mu sigma (local)
+      bdotLocPtr = c_loc(bdotLoc)
+      rnormPtr0 = c_loc(rnorm0)
+      rhoPtr = c_loc(RHO)
+      rtvPtr = c_loc(rtv)
+      ttPtr = c_loc(tt)
+      zeroLocPtr = c_loc(zeroLoc)
+      ! pointer to store the time 
+      ctime = 0.0 
+      timePtr = c_loc(ctime)
+      
+      ! get the size of the vector and matrix (need to allocate on the device)
+      Arowp1_i_size=sizeof(Alocal%row(1:nrow+1))
+      Arow_d_size=sizeof(b(1:nrow))
+      Acol_d_size=sizeof(x(1)) * ncol ! size of the (full) x vector
+      Annz_i_size=sizeof(Alocal%col(1:nnz))
+      Annz_d_size=sizeof(Alocal%val(1:nnz))
+
+      ! select the current cuda device 
+      ! note this only works for physical devices (not working for MIG devices)
+      ierr = cudaSetDevice(device_idx);
+      ierr2 = ierr2 + ierr
+      ! firstly define the CUDA Stream and cuda handles
+      ierr = cudaStreamCreateWithFlags(cuStream, cudaStreamNonBlocking) 
+      ierr2 = ierr2 + ierr
+      ! initialize the cusparse lib
+      ierr = cusparseCreate(cusparseHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSetStream(cusparseHandle,cuStream) 
+      ierr2 = ierr2 + ierr
+      ! now initialize the cublas lib
+      ierr = cublasCreate(cublasHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cublasSetStream(cublasHandle,cuStream)
+      ierr2 = ierr2 + ierr
+      ! and creates two cuda events to record the time
+      ierr = cudaEventCreate(cuEvent1)
+      ierr2 = ierr2 + ierr
+      ierr = cudaEventCreate(cuEvent2)
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I4)') 'Error during cuda initialize ',ierr2
+          stop
+      end if 
+      ! and init the NCCL communicator
+      if (rank_local .eq. 0) then
+          ! leader generating the uniqueId
+          ierr = ncclGetUniqueId(uid)
+          ierr2 = ierr2 + ierr
+          if (ierr2 .ne. 0) then
+              write(0,*) 'error getting NCCL unique id on device:', ierr
+              stop
+          endif
+      endif
+      ! distribute the ID to all workers, using MPI
+      call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, 0, &
+    &         comm_local, ierr)
+      ! for debug
+      ! write(6,*) 'uid = ', uid%internal, ' @rank: ', rank_local
+      sizePtr = c_loc(size_nccl)
+      rankPtr = c_loc(rank_nccl)
+      size_nccl = size_local
+      rank_nccl = rank_local
+      ! for debug
+      ! write(6,*) 'initializing NCCL communicator... @ ', rank_nccl
+      ierr = ncclCommInitRank(comm_nccl, size_nccl, uid, rank_nccl)
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I4)') 'Error initializing nccl ',ierr2
+          stop
+      end if 
+      ierr = ncclCommUserRank(comm_nccl, rankPtr)
+      ierr2 = ierr2 + ierr
+      ierr = ncclCommCount(comm_nccl, sizePtr)
+      ierr2 = ierr2 + ierr
+      ! record the event before memory manipulation
+      ! ierr = cudaEventRecord(cuEvent1, cuStream)
+      ! ierr2 = ierr2 + ierr
+      ! write(6,*) 'Allocating GPU memory'
+      ierr = cudaMalloc(devPtrX,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrX0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrRHS,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrR,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrRT,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrP,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrPT,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrPH,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrS,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrST,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrSH,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrT,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrV,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrAX,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrAval,Annz_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrAcol,Annz_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrArow,Arowp1_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtriwus,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ! alloc the full vector buffer
+      ierr = cudaMalloc(devPtrXbuff,Acol_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaDeviceSynchronize()
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I2)') 'Error during CUDA allocation: ',ierr2
+          stop
+      end if 
+      ! write(6,*) 'reset GPU memory to all zeros'
+      ierr = cudaMemset(devPtrX,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrX0,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrRHS,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrR,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrRT,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrP,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrPT,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrPH,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrS,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrST,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrSH,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrT,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrV,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrAX,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrAval,0,Annz_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrAcol,0,Annz_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrArow,0,Arowp1_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtriwus,0,Arow_d_size)
+      ierr2 = ierr2 + ierr
+      ! set the full buffer to zero
+      ierr = cudaMemset(devPtrXbuff,0,Acol_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaDeviceSynchronize()
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I3)') 'Error during device memory reseting : ',ierr2
+          stop
+      end if 
+      ! transfer memory over to GPU
+      ! write(6,*) 'Transferring (local) memory to GPU'
+      ! initialize (local) A
+      ierr = cudaMemcpyAsync(devPtrArow,ArowPtr,Arowp1_i_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrAcol,AcolPtr,Annz_i_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrAval,AvalPtr,Annz_d_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtriwus,iwusPtr,Arow_d_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ! finally need to create the SpMatDescr 
+      ierr = cusparseCreateCsr(matA, nrow, ncol, nnz, devPtrArow, devPtrAcol, &
+     &       devPtrAval, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, &
+     &       CUSPARSE_INDEX_BASE_ONE, CUDA_R_64F) 
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, *) " local matrix size = ", nrow, ' * ', ncol
+          write(6, '(A,I2)') " error assembling system matrix ", ierr2
+          stop
+      end if
+      ! initialize rhs and x
+      ierr = cudaMemcpyAsync(devPtrX,xPtr,Arow_d_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrRHS,bPtr,Arow_d_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaDeviceSynchronize()
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A, I4)') " Error during cuda memcpy ", ierr2
+          stop
+      end if
+      ! now deallocate temp array
+      if ( c_associated(iwusPtr) ) then
+          ! this is a little tricky as iwus is associated with
+          ! iwusPtr in C
+          nullify(iwus)
+          call cf_free(iwusPtr)
+      end if
+      ! for debug
+      ! write(6,*) 'nccl gather from all GPUs #', rank_nccl
+      ! note that nccl doesn't really support the complex communication
+      ierr =  ncclAllGatherV(devPtrX, lsize*2, ncclFloat64, devPtrXbuff, &
+     &     isizes*2, displs*2, 0, size_nccl, comm_nccl, cuStream)
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0) then 
+          write(6,*) ' error gather data from devices: ', ierr
+          stop
+      endif
+      ! firstly we need to create three dense vectors 
+      ! as the user-hostile developers in Nvidia think of a new idea 
+      ! to mess up the interfaces
+      ! full x
+      ierr = cusparseCreateDnVec(vecX, ncol, devPtrXbuff, CUDA_C_64F)
+      ierr2 = ierr2 + ierr
+      ! local x
+      ierr = cusparseCreateDnVec(vecXloc, nrow, devPtrX, CUDA_C_64F)
+      ierr2 = ierr2 + ierr
+      ! local b/r 
+      ierr = cusparseCreateDnVec(vecY, nrow, devPtrR, CUDA_C_64F)
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, *) " error creating the dense Vecs "
+          stop
+      end if
+      ierr = cusparseSpMV_bufferSize_cmplx(cusparseHandle,              &
+     &        TRANS, C_ONE, matA, vecX, C_ONE, vecY,                    &
+     &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG2, bsize)
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I2)') " error estimating buffer for spMV ",  ierr2
+          stop
+      end if
+      ! write(6,*) 'spmv buffersize = ', mbsize
+      ! and finally (re)allocate the buffer
+      ierr = cudaMalloc(buffer, bsize)
+      ierr2 = ierr2 + ierr
+      ! now let's deal with L and U
+      ! write(6,'(A)') ' Setup L and U preconditioners on GPU'
+      ! L first
+      if (adjoint) then
+          nnz = size(LHlocal%col)
+          ! sizes (row size is the same as A
+          Lnnz_i_size=sizeof(LHlocal%col(1:nnz))
+          Lnnz_d_size=sizeof(LHlocal%val(1:nnz))
+          MrowPtr = c_loc(LHlocal%row)
+          McolPtr = c_loc(LHlocal%col)
+          MvalPtr = c_loc(LHlocal%val)
+      else
+          nnz = size(Llocal%col)
+          ! sizes (row size is the same as A
+          Lnnz_i_size=sizeof(Llocal%col(1:nnz))
+          Lnnz_d_size=sizeof(Llocal%val(1:nnz))
+          MrowPtr = c_loc(Llocal%row)
+          McolPtr = c_loc(Llocal%col)
+          MvalPtr = c_loc(Llocal%val)
+      end if
+      ! initialize L in GPU memory
+      ierr = cudaMalloc(devPtrLval,Lnnz_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrLcol,Lnnz_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrLrow,Arowp1_i_size)
+      ierr2 = ierr2 + ierr
+      ! set everything to zeros
+      ierr = cudaMemset(devPtrLval,0,Lnnz_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrLcol,0,Lnnz_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrLrow,0,Arowp1_i_size)
+      ierr2 = ierr2 + ierr
+      ! now copy the values to device
+      ierr = cudaMemcpyAsync(devPtrLval,MvalPtr,Lnnz_d_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrLcol,McolPtr,Lnnz_i_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrLrow,MrowPtr,Arowp1_i_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ! finish synchronizing
+      ierr = cudaDeviceSynchronize()
+      ierr2 = ierr2 + ierr
+      ! finally need to create the SpMatDescr 
+      ierr = cusparseCreateCsr(matL,nrow,nrow, nnz, devPtrLrow, devPtrLcol, &
+     &       devPtrLval, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, &
+     &       CUSPARSE_INDEX_BASE_ONE, CUDA_C_64F) 
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I2)') " error assembling L matrix ", ierr2
+          stop
+      end if
+      ! now start messing up with SpSV
+      ! now estimate the buffersize needed by SpSV (Lsolve)
+      ! solves y in L*y = a*x (if a=1)
+      ierr = cusparseSpMatSetAttribute(matL, CUSPARSE_SPMAT_FILL_MODE, &
+    &        Lfillmode, 4)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpMatSetAttribute(matL, CUSPARSE_SPMAT_DIAG_TYPE, &
+    &        Ldiagtype, 4)
+      ierr2 = ierr2 + ierr
+      ! still need to establish a context handler for Lsolve
+      ierr = cusparseSpSV_createDescr(LsolveHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpSV_bufferSize_dcmplx(cusparseHandle,             &
+     &        CUSPARSE_OPERATION_NON_TRANSPOSE, C_ONE, matL, vecXloc, vecY,&
+     &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle, lbsize)
+      ierr2 = ierr2 + ierr
+
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I2)') " error estimating buffer for Lsolve ",  ierr2
+          stop
+      end if
+      ierr = cudaMalloc(bufferL, lbsize)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpSV_analysis_dcmplx(cusparseHandle,         &
+     &        CUSPARSE_OPERATION_NON_TRANSPOSE, C_ONE, matL, vecXloc, vecY, &
+     &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle, bufferL)
+      ierr2 = ierr2 + ierr
+      ! write(6,*) 'spsv Lsolve buffersize = ', lbsize
+      ! then U 
+      if (adjoint) then
+          nnz = size(UHlocal%col)
+          ! sizes (row size is the same as A
+          Unnz_i_size=sizeof(UHlocal%col(1:nnz))
+          Unnz_d_size=sizeof(UHlocal%val(1:nnz))
+          MrowPtr = c_loc(UHlocal%row)
+          McolPtr = c_loc(UHlocal%col)
+          MvalPtr = c_loc(UHlocal%val)
+      else
+          nnz = size(Ulocal%col)
+          ! sizes (row size is the same as A
+          Unnz_i_size=sizeof(Ulocal%col(1:nnz))
+          Unnz_d_size=sizeof(Ulocal%val(1:nnz))
+          MrowPtr = c_loc(Ulocal%row)
+          McolPtr = c_loc(Ulocal%col)
+          MvalPtr = c_loc(Ulocal%val)
+      end if
+      ! initialize U in GPU memory
+      ierr = cudaMalloc(devPtrUval,Unnz_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrUcol,Unnz_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMalloc(devPtrUrow,Arowp1_i_size)
+      ierr2 = ierr2 + ierr
+      ! set everything to zeros
+      ierr = cudaMemset(devPtrUval,0,Unnz_d_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrUcol,0,Unnz_i_size)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemset(devPtrUrow,0,Arowp1_i_size)
+      ierr2 = ierr2 + ierr
+      ! now copy the values to device
+      ierr = cudaMemcpyAsync(devPtrUval,MvalPtr,Unnz_d_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrUcol,McolPtr,Unnz_i_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ierr = cudaMemcpyAsync(devPtrUrow,MrowPtr,Arowp1_i_size, &
+     &        cudaMemcpyHostToDevice)
+      ierr2 = ierr2 + ierr
+      ! finally need to create the SpMatDescr 
+      ierr = cusparseCreateCsr(matU, nrow, nrow, nnz, devPtrUrow, devPtrUcol, &
+     &       devPtrUval, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, &
+     &       CUSPARSE_INDEX_BASE_ONE, CUDA_C_64F) 
+      ierr2 = ierr2 + ierr
+      ! now estimate the buffersize needed by SpSV (Usolve)
+      ! solves y in U*y = a*x (if a=1)
+      ierr = cusparseSpMatSetAttribute(matU, CUSPARSE_SPMAT_FILL_MODE, &
+    &        Ufillmode, 4)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpMatSetAttribute(matU, CUSPARSE_SPMAT_DIAG_TYPE, &
+    &        Udiagtype, 4)
+      ierr2 = ierr2 + ierr
+      ! still need to establish a context handler for Usolve
+      ierr = cusparseSpSV_createDescr(UsolveHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpSV_bufferSize_dcmplx(cusparseHandle,             &
+     &        CUSPARSE_OPERATION_NON_TRANSPOSE,C_ONE, matU, vecXloc, vecY,&
+     &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle, ubsize)
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I2)') " error estimating buffer for Usolve ",  ierr2
+          stop
+      end if
+      ! write(6,*) 'spsv Usolve buffersize = ', ubsize
+      ierr = cudaMalloc(bufferU, ubsize)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpSV_analysis_dcmplx(cusparseHandle,         &
+     &        CUSPARSE_OPERATION_NON_TRANSPOSE, C_ONE, matU, vecXloc, vecY, &
+     &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle, bufferU)
+      ierr2 = ierr2 + ierr
+      !write(6, '(A, I8)') " allocated SpMV/SpSV buffer on GPU (MB) ",&
+     !&            bsize/1024/1024
+      ! see how long it takes for the intialization part
+      ! ierr = cudaEventRecord(cuEvent2, cuStream)
+      ! ierr2 = ierr2 + ierr
+      ! ierr = cudaDeviceSynchronize()
+      ! ierr = cudaEventElapsedTime(timePtr, cuEvent1, cuEvent2)
+      ! ierr2 = ierr2 + ierr
+      ! write(6,*) 'initial GPU memory cpy time is ', ctime, 'ms'
+      ! if (ierr2 .ne. 0 ) then
+      !     write(6, *) " error recording the time ", ierr2
+      !     stop
+      ! end if
+
+      ! Norm of rhs
+      ! the idea is to calculate the dot product of blocal for all processes and
+      ! sum the result
+      ! bnorm = nrm2(b)
+      ierr = cublasZdot(cublasHandle,nrow,devPtrRHS,1,devPtrRHS,1,bdotLocPtr)
+      ierr2 = ierr2 + ierr
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM,    &
+ &        comm_local, ierr)
+      ierr2 = ierr2 + ierr
+      ! here every process stores a copy of bnorm
+      bnorm = sqrt(abs(bdot))
+      if (isnan(bnorm)) then
+      ! this usually means an inadequate model, in which case Maxwell's failed
+          write(0,*) 'Error: b in BICG contains NaNs; exiting...'
+          stop
+      else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
+          write(0,*) 'Warning: b in BICG has all zeros, returning zero &
+     &        solution'
+          x = b 
+          KSPiter%niter=1
+          KSPiter%failed=.false.
+          KSPiter%rerr(1)=0.0
+          converged = .true.
+          goto 9527 
+      endif
+      ! now Compute the initial residual
+      ! write(6,*) 'Computing initial residual'
+      ! R = Diag(iwus)*X <-- diagonal
+      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, nrow)
+      ! setup the vecX and vecY
+      ierr = cusparseDnVecSetValues(vecX, devPtrXbuff)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDnVecSetValues(vecY, devPtrR)
+      ierr2 = ierr2 + ierr
+      ! now calculate the y = Ax
+      ! R = CC*X + Diag(iwus)*X
+      ! thank God (or whatever deserves it) that SpMV does not 
+      ! need to be analyzed
+      ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS,                  &
+     &        C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,              &
+     &        CUSPARSE_SPMV_CSR_ALG2, buffer)
+      ierr2 = ierr2 + ierr
+      ! and get the values back 
+      ierr = cusparseDnVecGetValues(vecY, devPtrR)
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, *) " error with SpMV operation ", ierr2
+          stop
+      end if
+      ! now calculate the residual
+      ! R = -Ax 
+      ! ierr = cublasZscal(cublasHandle,nrow,C_MINUSONE,devPtrR,1)
+      ! ierr2 = ierr2 + ierr
+      ! R = b - Ax
+      ! ierr = cublasZaxpy(cublasHandle,nrow,C_ONE,devPtrRHS,1,devPtrR,1)
+      ! ierr2 = ierr2 + ierr
+      ! TEST: R = b - Ax with an all-in-one kernel of xpby
+      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, nrow)
+      ! rnorm = nrm2(b - Ax)
+      ierr = cublasZdot(cublasHandle,nrow,devPtrR,1,devPtrR,1,bdotLocPtr)
+      ierr2 = ierr2 + ierr
+      ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+      call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM,  &
+ &        comm_local, ierr)
+      ierr2 = ierr2 + ierr
+      ! here every process stores a copy of rnorm
+      rnorm = sqrt(abs(bdot))
+      rnorm0 = rnorm
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A, I4)') " Error during residual estimation", ierr2
+          stop
+      end if
+      ! write(6,'(A, ES12.6)') ' initial relative residual = ', rnorm/bnorm
+      !================= Now start configuring the iteration ================!
+      btol = KSPiter%tol*bnorm
+      maxIter = KSPiter%maxIt
+      KSPiter%rerr(1) = real(rnorm/bnorm)
+      if ( rnorm .le. btol ) then ! the first guess is already good enough
+         ! returning
+          write(6, *) " The first guess is good enough, exiting..."
+          iter=1
+          KSPiter%failed=.false.
+          converged = .true.
+          goto 9527 
+      end if
+      ! intial the parameters for restarting
+      restart = .FALSE.
+      ! hard coded here, need a more elegant way to deal with it
+      interval = 120
+      ! write(6,'(A,I4)') ' maxiter = ', maxiter
+      ! RHO = C_ONE
+      kspLoop: do iter = 1,maxIter
+        ! write(6,'(A, I4)') ' KSP iteration #', iter
+        if (mod(iter, interval) .eq. 1) then ! hard coded here
+            restart = .TRUE.
+        end if
+        if (restart) then 
+            ! restart the iteration (to steepest decend) every interval times
+            ! current and previous RHO, RHO0 should be one
+            RHO1 = C_ONE
+            OMEGA = C_ONE
+            ! RT = R (local)
+            ierr = cublasZcopy(cublasHandle,nrow,devPtrR,1,devPtrRT,1)
+            ierr2 = ierr2 + ierr
+            ! RHO = dot(RT,R)
+            ierr = cublasZdot(cublasHandle,nrow,devPtrRT,1,devPtrR,1,bdotLocPtr)
+            ierr2 = ierr2 + ierr
+            call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+    &           comm_local, ierr)
+            ierr2 = ierr2 + ierr
+            RHO = bdot
+            if (RHO .eq. 0.0) then !bad beta
+                KSPiter%failed = .true.
+                exit
+            endif
+            ! P = R (local)
+            ierr = cublasZcopy(cublasHandle,nrow,devPtrR,1,devPtrP,1)
+            ierr2 = ierr2 + ierr
+            restart = .FALSE.
+            if (ierr2 .ne. 0 ) then
+              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              stop
+            end if
+        else
+            ! save the previous RHO
+            RHO1 = RHO
+            ! RHO = dot(RT,R)
+            ierr = cublasZdot(cublasHandle,nrow,devPtrRT,1,devPtrR,1,bdotLocPtr)
+            ierr2 = ierr2 + ierr
+            call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+    &           comm_local, ierr)
+            ierr2 = ierr2 + ierr
+            RHO = bdot
+            BETA=(RHO/RHO1)*(ALPHA/OMEGA)
+            if (BETA .eq. 0.0) then !bad beta
+                converged=.FALSE.
+                KSPiter%failed = .true.
+                exit kspLoop
+            end if
+            ! P = R + BETA * (P - OMEGA * V)
+            ! P = P - OMEGA * V
+            ! ierr = cublasZaxpy(cublasHandle,nrow,-(OMEGA),devPtrV,1,devPtrP,1)
+            ! ierr2 = ierr2 + ierr
+            ! P = BETA * P
+            ! ierr = cublasZscal(cublasHandle,nrow,BETA,devPtrP,1)
+            ! ierr2 = ierr2 + ierr
+            ! P = R + P
+            ! ierr = cublasZaxpy(cublasHandle,nrow,C_ONE,devPtrR,1,devPtrP,1)
+            ! ierr2 = ierr2 + ierr
+            ! TEST: P = R + BETA * P  with an all-in-one kernel 
+            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n)
+            ! TEST: update (local) P with an all-in-one kernel 
+            call kernelc_update_pc(devPtrR, devPtrV,BETA,OMEGA, devPtrP,nrow)
+            if (ierr2 .ne. 0 ) then
+              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              stop
+            end if
+        end if
+        ! record - start of two SPSVs
+        ! ierr = cudaEventRecord(cuEvent1, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! ============== first half of the conjugate iteration ============= !
+        ! L solve --> L*PT = P
+        ! write(6,'(A)') ' Lsolve '
+        ! still need to use the vecX/Y types
+        ierr = cusparseDnVecSetValues(vecXloc, devPtrP)
+        ierr2 = ierr2 + ierr
+        ierr = cusparseDnVecSetValues(vecY, devPtrPT)
+        ierr2 = ierr2 + ierr
+        ierr = cusparseSpSV_solve_dcmplx(cusparseHandle,            &
+     &         CUSPARSE_OPERATION_NON_TRANSPOSE,C_ONE, matL, vecXloc, vecY, &
+     &         CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle)
+        ierr2 = ierr2 + ierr
+        ! and get the values back 
+        ierr = cusparseDnVecGetValues(vecY, devPtrPT)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+          write(6, '(A, I2)') " Error during Lsolve ", ierr2
+          stop
+        end if
+        ! U solve --> U*PH = PT
+        ! write(6,'(A)') ' Usolve '
+        ! still need to use the vecX/Y types
+        ierr = cusparseDnVecSetValues(vecXloc, devPtrPT)
+        ierr2 = ierr2 + ierr
+        ierr = cusparseDnVecSetValues(vecY, devPtrPH)
+        ierr2 = ierr2 + ierr
+        ierr = cusparseSpSV_solve_dcmplx(cusparseHandle,            &
+     &         CUSPARSE_OPERATION_NON_TRANSPOSE, C_ONE, matU, vecXloc, vecY, &
+     &         CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle)
+        ierr2 = ierr2 + ierr
+        ! and get the values back 
+        ierr = cusparseDnVecGetValues(vecY, devPtrPH)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          stop
+        end if
+        ! record - end of two SPSVs
+        ! ierr = cudaEventRecord(cuEvent2, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! ierr = cudaDeviceSynchronize()
+        ! ierr = cudaEventElapsedTime(timePtr, cuEvent1, cuEvent2)
+        ! ierr2 = ierr2 + ierr
+        ! write(6,*) '2 SPSV time = ', ctime, 'ms'
+        ! if (ierr2 .ne. 0 ) then
+        !    write(6,'(A,I4)') " error recording the time ", ierr2
+        !     stop
+        ! end if
+        ! record - start of one SPMV
+        ! ierr = cudaEventRecord(cuEvent1, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! V = A*PH
+        ! write(6,'(A)') ' Axpy '
+        ! for debug
+        ! write(6,*) 'nccl gather from all GPUs #', rank_nccl
+        ! need to gather all local PH results to xbuff
+        ierr =  ncclAllGatherV(devPtrPH, lsize*2, ncclFloat64, devPtrXbuff, &
+     &     isizes*2, displs*2, 0, size_nccl, comm_nccl, cuStream)
+        ierr2 = ierr2 + ierr
+        ierr = cudaDeviceSynchronize()
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6,'(A,I4)') " Error gathering PH ", ierr2
+            stop
+        end if
+        ! still need to use the vecX/Y types
+        ierr = cusparseDnVecSetValues(vecX, devPtrXbuff)
+        ierr2 = ierr2 + ierr
+        ! now calculate V = A * PH (local)
+        ! V = Diag(iwus)*PH (local)
+        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, nrow)
+        ierr = cusparseDnVecSetValues(vecY, devPtrV)
+        ierr2 = ierr2 + ierr
+        ! V = CC*PH + Diag(iwus)*PH (local)
+        ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
+     &         C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,  &
+     &         CUSPARSE_SPMV_CSR_ALG2, buffer)
+        ierr2 = ierr2 + ierr
+        ! and get the values back 
+        ierr = cusparseDnVecGetValues(vecY, devPtrV)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6,'(A,I4)') " Error calculating A*PH", ierr2
+            stop
+        end if
+        ! record - end of one SPMV
+        ! ierr = cudaEventRecord(cuEvent2, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! ierr = cudaDeviceSynchronize()
+        ! ierr = cudaEventElapsedTime(timePtr, cuEvent1,cuEvent2)
+        ! ierr2 = ierr2 + ierr
+        ! write(6,*) '1 SPMV time = ', ctime, 'ms'
+        ! if (ierr2 .ne. 0 ) then
+        !    write(6, *) " error recording the time ", ierr2
+        !    stop
+        ! end if
+        ! now check the residual of first half of iteration
+        ! rtv = dot(RT,V)
+        ierr = cublasZdot(cublasHandle,nrow,devPtrRT,1,devPtrV,1,bdotLocPtr)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6,'(A,I4)') " Error calculating dot(RT,V)", ierr2
+            stop
+        end if
+        ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+        call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+        ierr2 = ierr2 + ierr
+        RTV = bdot
+        ! wait for the others
+        call MPI_BARRIER(comm_local, ierr)
+        ierr2 = ierr2 + ierr
+        ALPHA = RHO/RTV
+        ! write(6,*) 'ALPHA = ', ALPHA
+        if (ALPHA .eq. 0.0) then !bad alpha
+            KSPiter%failed = .true.
+            converged=.FALSE.
+            exit kspLoop
+        end if
+        ! x = x + ALPHA * PH (local)
+        ierr = cublasZaxpy(cublasHandle,nrow,ALPHA,devPtrPH,1,devPtrX,1)
+        ierr2 = ierr2 + ierr
+        ! S = R (local)
+        ierr = cudaMemcpyAsync(devPtrS, devPtrR, Arow_d_size, &
+       &       cudaMemcpyDeviceToDevice)
+        ierr2 = ierr2 + ierr
+        ! S = R - ALPHA * V (local)
+        ierr = cublasZaxpy(cublasHandle,nrow,-(ALPHA),devPtrV,1,devPtrS,1)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6, '(A, I4)') " Error estimating the first Conj res. ", ierr2
+            stop
+        end if
+        ! ============== second half of the conjugate iteration ============= !
+        ! record - start of two SPSV
+        ! ierr = cudaEventRecord(cuEvent1, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! L solve --> L*ST = S
+        ! write(6,'(A)') ' Lsolve '
+        ! still need to use the vecX/Y types
+        ierr = cusparseDnVecSetValues(vecXloc, devPtrS)
+        ierr2 = ierr2 + ierr
+        ierr = cusparseDnVecSetValues(vecY, devPtrST)
+        ierr2 = ierr2 + ierr
+    !    ierr = cusparseSpSV_analysis_dcmplx(cusparseHandle,        &
+    ! &         CUSPARSE_OPERATION_NON_TRANSPOSE,C_ONE, matL, vecXloc, vecY, &
+    ! &         CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle, bufferL)
+    !    ierr2 = ierr2 + ierr
+        ierr = cusparseSpSV_solve_dcmplx(cusparseHandle,           &
+     &         CUSPARSE_OPERATION_NON_TRANSPOSE,C_ONE, matL, vecXloc, vecY, &
+     &         CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle)
+        ierr2 = ierr2 + ierr
+        ! and get the values back 
+        ierr = cusparseDnVecGetValues(vecY, devPtrST)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6, '(A, I2)') " Error during Lsolve ", ierr2
+            stop
+        end if
+        ! U solve --> U*SH = ST
+        ! write(6,'(A)') ' Usolve '
+        ! still need to use the vecX/Y types
+        ierr = cusparseDnVecSetValues(vecXloc, devPtrST)
+        ierr2 = ierr2 + ierr
+        ierr = cusparseDnVecSetValues(vecY, devPtrSH)
+        ierr2 = ierr2 + ierr
+    !    ierr = cusparseSpSV_analysis_dcmplx(cusparseHandle,         &
+    ! &         CUSPARSE_OPERATION_NON_TRANSPOSE,C_ONE, matU, vecXloc, vecY, &
+    ! &         CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle, bufferU)
+    !    ierr2 = ierr2 + ierr
+        ierr = cusparseSpSV_solve_dcmplx(cusparseHandle,            &
+     &         CUSPARSE_OPERATION_NON_TRANSPOSE,C_ONE, matU, vecXloc, vecY, &
+     &         CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle)
+        ierr2 = ierr2 + ierr
+        ! and get the values back 
+        ierr = cusparseDnVecGetValues(vecY, devPtrSH)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6, '(A, I2)') " Error during Usolve ", ierr2
+            stop
+        end if
+
+        ! record - end of 2 SPSVs
+        ! ierr = cudaEventRecord(cuEvent2, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! ierr = cudaDeviceSynchronize()
+        ! ierr = cudaEventElapsedTime(timePtr, cuEvent1,cuEvent2)
+        ! ierr2 = ierr2 + ierr
+        ! write(6,*) '2 SPSV time = ', ctime, 'ms'
+        ! if (ierr2 .ne. 0 ) then
+        !     write(6, *) " error recording the time ", ierr2
+        !     stop
+        ! end if
+        ! record - start of 1 SPMV
+        ! ierr = cudaEventRecord(cuEvent1, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! T = A*SH 
+        ! write(6,'(A)') ' Axpy '
+        ! for debug
+        ! write(6,*) 'nccl gather from all GPUs #', rank_nccl
+        ! need to gather all local PH results to xbuff
+        ierr =  ncclAllGatherV(devPtrSH, lsize*2, ncclFloat64, devPtrXbuff, &
+     &     isizes*2, displs*2, 0, size_nccl, comm_nccl, cuStream)
+        ierr2 = ierr2 + ierr
+        ierr = cudaDeviceSynchronize()
+        ierr2 = ierr2 + ierr
+        ! still need to use the vecX/Y types
+        ierr = cusparseDnVecSetValues(vecX, devPtrXbuff)
+        ierr2 = ierr2 + ierr
+        ! T = Diag(iwus)*SH (local)
+        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, nrow)
+        ierr = cusparseDnVecSetValues(vecY, devPtrT)
+        ierr2 = ierr2 + ierr
+        ! T = A*SH + Diag(iwus)*SH (local)
+        ierr = cusparseSpMV_cmplx(cusparseHandle,TRANS, &
+       &        C_ONE, matA, vecX, C_ONE, vecY, CUDA_C_64F,                 & 
+       &        CUSPARSE_SPMV_CSR_ALG2, buffer)
+        ierr2 = ierr2 + ierr
+        ! and get the (local) values back 
+        ierr = cusparseDnVecGetValues(vecY, devPtrT)
+        ierr2 = ierr2 + ierr
+        if (ierr2 .ne. 0 ) then
+            write(6,'(A,I4)') " Error calculating A*SH", ierr2
+            stop
+        end if
+
+        ! record - end of 1 SPMV 
+        ! ierr = cudaEventRecord(cuEvent2, cuStream)
+        ! ierr2 = ierr2 + ierr
+        ! ierr = cudaDeviceSynchronize()
+        ! ierr = cudaEventElapsedTime(timePtr, cuEvent1,cuEvent2)
+        ! ierr2 = ierr2 + ierr
+        ! write(6,*) '2 SPMV time = ', ctime, 'ms'
+        ! if (ierr2 .ne. 0 ) then
+        !     write(6, *) " error recording the time ", ierr2
+        !     stop
+        ! end if
+
+        ! now check the second half of iteration
+        ! calculate the residual norm for the second half of iteration 
+        ! tt = dot(T,T)
+        ierr = cublasZdot(cublasHandle,nrow,devPtrT,1,devPtrT,1,bdotLocPtr)
+        ierr2 = ierr2 + ierr
+        ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+        call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+        ierr2 = ierr2 + ierr
+        TT = bdot
+        ! tts = dot(T,S)
+        ierr = cublasZdot(cublasHandle,nrow,devPtrT,1,devPtrS,1,bdotLocPtr)
+        ierr2 = ierr2 + ierr
+        ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
+        call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+ &          comm_local, ierr)
+        ierr2 = ierr2 + ierr
+        OMEGA = bdot
+        OMEGA = OMEGA/TT
+        ! wait for the others
+        call MPI_BARRIER(comm_local, ierr)
+        ierr2 = ierr2 + ierr
+        ! write(6,*) 'OMEGA = ', OMEGA
+        if (OMEGA .eq. 0.0) then !bad omega
+            KSPiter%failed = .true.
+            converged=.false.
+            exit kspLoop
+        end if
+        ! x = x + OMEGA * SH (local)
+        ierr = cublasZaxpy(cublasHandle,nrow,OMEGA,devPtrSH,1,devPtrX,1)
+        ierr2 = ierr2 + ierr
+        ! R = S
+        ierr = cudaMemcpyAsync(devPtrR, devPtrS, Arow_d_size, &
+       &       cudaMemcpyDeviceToDevice)
+        ierr2 = ierr2 + ierr
+        ! R = S - OMEGA * T (local)
+        ierr = cublasZaxpy(cublasHandle,nrow,-(OMEGA),devPtrT,1,devPtrR,1)
+        ierr2 = ierr2 + ierr
+        ! early second half convergence check (norm of R)
+        ! rnorm = norm(R)
+        ierr = cublasZdot(cublasHandle,nrow,devPtrR,1,devPtrR,1,bdotLocPtr)
+        ierr2 = ierr2 + ierr
+        call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+    &          comm_local, ierr)
+        rnorm = sqrt(bdot)
+        if (ierr2 .ne. 0 ) then
+          write(6, '(A, I4)') " Error estimating the second Conj res. ", ierr2
+          stop
+        end if
+        KSPiter%rerr(iter) = rnorm/bnorm
+        ! for debug
+        ! write(6,'(A12,I4,A10,ES12.6)') 'iteration #', iter, ' relres= ', &
+        !&           KSPiter%rerr(iter)
+        ! now check the second half of iteration
+        ! NOTE WE TEST AN IDEA THAT OMIT THE X, WHICH SAVES ANOTHER 
+        ! SPMV FOR US
+        if (rnorm.lt.btol) then
+            KSPiter%rerr(iter) = real(rnorm/bnorm)
+            converged=.TRUE.
+            KSPiter%failed = .false.
+            KSPiter%niter = iter
+            exit kspLoop
+        end if
+        if (rnorm .lt. rnorm0) then
+            rnorm0 = rnorm
+            ierr = cudaMemCpyAsync(devPtrX0, devPtrX, Arow_d_size, &
+                cudaMemcpyDeviceToDevice)
+            ierr2 = ierr2 + ierr
+        end if
+      end do kspLoop
+ 9527 continue
+      ierr = cudaDeviceSynchronize()
+      ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A, I4)') " Error synchronizing after iterations ", ierr2
+          stop
+      end if
+      ! for debug
+      ! write(6,*) 'finalizing NCCL communicator... @ ', rank_nccl
+      ierr = ncclCommFinalize(comm_nccl) 
+      if (ierr .ne. 0 ) then
+          write(6, '(A, I2)') " nccl comm finalize error: ", ierr
+          stop
+      end if
+      ierr2 = ierr2 + ierr
+      ierr = ncclCommDestroy(comm_nccl) 
+      if (ierr .ne. 0 ) then
+          write(6, '(A, I2)') " nccl comm destroy error: ", ierr
+          stop
+      end if
+      ierr2 = ierr2 + ierr
+      ! for debug
+      ! write(6,'(A)') ' Copy solution from GPU to CPU'
+      if (.not. converged) then ! solution not found 
+          KSPiter%niter=KSPiter%maxit
+          ! return the best solution so far
+          ierr = cudaMemcpy(xPtr,devPtrX0,Arow_d_size,cudaMemcpyDeviceToHost)
+      else ! solution found
+          KSPiter%niter=iter
+          ! return the last solution
+          ierr = cudaMemcpy(xPtr,devPtrX,Arow_d_size,cudaMemcpyDeviceToHost)
+      end if
+      if (ierr .ne. 0 ) then
+          write(6, '(A, I2)') " cudaMemcpy back to host error: ", ierr
+          stop
+      end if
+      ! \activiate lightsaber
+      ! clear gpu mem
+      ierr = cudaFree(devPtrArow)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrAcol)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrAval)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtriwus)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrLrow)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrLcol)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrLval)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrUrow)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrUcol)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrUval)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrX)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrX0)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrRHS)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrR)
+      ierr2 = ierr2 + ierr 
+      ierr = cudaFree(devPtrRT)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrP)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrPT)
+      ierr2 = ierr2 + ierr 
+      ierr = cudaFree(devPtrPH)
+      ierr2 = ierr2 + ierr 
+      ierr = cudaFree(devPtrS)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrST)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrSH)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrT)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrV)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrAX)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(buffer)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(bufferL)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(bufferU)
+      ierr2 = ierr2 + ierr
+      ierr = cudaFree(devPtrXbuff)
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I2)') 'Error during cudafree: ',ierr2
+          stop
+      end if 
+      ierr = cusparseSpSV_destroyDescr(LsolveHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseSpSV_destroyDescr(UsolveHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroyDnVec(vecX)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroyDnVec(vecXloc)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroyDnVec(vecY)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroySpMat(matL)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroySpMat(matU)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroySpMat(matA)
+      ierr2 = ierr2 + ierr
+      ierr = cublasDestroy(cublasHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cusparseDestroy(cusparseHandle)
+      ierr2 = ierr2 + ierr
+      ierr = cudaStreamDestroy(cuStream)
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I2)') 'Error during cuda handle destruction: ',ierr2
+          stop
+      end if 
+      ierr = cf_resetFlag(device_idx)
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I2)') 'Error setting device flags: ',ierr2
+          stop
+      end if 
+      return
+end subroutine cuBiCGfg ! cuBiCGfg
+#endif
 
 #elif defined(HIP)
 subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
@@ -4063,8 +5316,6 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
             restart = .TRUE.
         end if
         if (restart) then 
-            ! write(6,*) 'iter = ', iter
-            ! write(6,'(A, ES10.4)') ' relres = ', rnorm/bnorm
             ! restart the iteration (to steepest decend) every interval times
             ! RT = R
             ierr = hipblasZcopy(hipblasHandle,n,devPtrR,1,devPtrRT,1)
