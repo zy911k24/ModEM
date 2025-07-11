@@ -2,7 +2,6 @@
 Module Declaration_MPI
      use math_constants
 #ifdef MPI
-! include 'mpif.h'
      use mpi
 #if defined(CUDA)
      use cudaFortMap
@@ -131,45 +130,6 @@ type :: define_worker_job
  end type define_worker_job
 type(define_worker_job), save :: worker_job_task
 !********************************************************************
-
-#if defined(CUDA)
-
-!  interface
-   ! kernelc_getDevNum --> call cuda c kernel code with iso_c_binding
-   !integer(c_int) function kernelc_getDevNum() & 
-   ! &              bind (C, name="kernelc_getDevNum" )
-   !  ! interface to get the number of GPU devices - 
-   !  ! only useful if you have any!   
-   !  use iso_c_binding
-   !  implicit none
-   ! end function kernelc_getDevNum
-
-!    ! cudaGetDevCount 
-!    integer(c_int) function cudaGetDeviceCount(device_count) & 
-!     &              bind (C, name="cudaGetDeviceCount" )
-!      use iso_c_binding
-!      implicit none
-!      integer(c_int),value ::  device_count
-!      ! get the number of devices (with Cumpute Capability > 2.0)
-!      ! on this machine
-!    end function cudaGetDeviceCount
-! end interface
-
-#elif defined(HIP)
-
-! interface
-!    ! hipGetDevCount 
-!    integer(c_int) function hipGetDeviceCount(device_count) & 
-!     &              bind (C, name="hipGetDeviceCount" )
-!      use iso_c_binding
-!      implicit none
-!      integer(c_int),value ::  device_count
-!      ! get the number of devices 
-!      ! on this machine
-!    end function hipGetDeviceCount
-! end interface
-
-#endif
 
 Contains
 

@@ -4,6 +4,10 @@
 #include <string.h>
 #include <complex.h>
 #include "hip/hip_runtime.h"
+#if defined(FG)
+#include "hip/rccl.h"
+#endif
+
 
 // simple kernel function that converts double vectors to single
 __global__ void real64to32(const double *in, float *out, const int N)
@@ -214,7 +218,8 @@ extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
 
 // function called from main fortran program
 // hadamard multiply real version
-extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
+		int Np, hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -228,14 +233,15 @@ extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_real<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_real<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // hadamard multiply complex version
-extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
+		int Np, hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -249,14 +255,14 @@ extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_cmplx<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_cmplx<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // xpby complex version
-extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, int Np)
+extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, int Np, hipStream_t cstream)
 {
     //double  *x_d;  // declare GPU vector double 
     //double  *y_d;  // declare GPU vector double
@@ -273,14 +279,14 @@ extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d,
     // get lower 64 bit
     double bi = cimag(b);
     // call function on GPU
-    xpby_cmplx<<< grids, blocks >>>( x_d, br, bi, y_d, N);
+    xpby_cmplx<<< grids, blocks, 0, cstream>>>( x_d, br, bi, y_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update p complex version
-extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np)
+extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np, hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -301,14 +307,16 @@ extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    p_update_cmplx<<< grids, blocks >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
+    p_update_cmplx<<< grids, blocks, 0, cstream >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update x complex version
-extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double _Complex alpha, double _Complex omega, double *x_d, int Np)
+extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
+		double _Complex alpha, double _Complex omega, double *x_d,
+		int Np, hipStream_t cstream)
 {
     //double  *ph_d;  // declare GPU vector double 
     //double  *sh_d;  // declare GPU vector double
@@ -330,7 +338,7 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    x_update_cmplx<<< grids, blocks >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
+    x_update_cmplx<<< grids, blocks, 0, cstream >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
     return;
 }
 

@@ -17,6 +17,8 @@ module cudaFortMap
    parameter (cudaMemcpyHostToDevice=1)
    parameter (cudaMemcpyDeviceToHost=2)
    parameter (cudaMemcpyDeviceToDevice=3)
+   integer*4         :: cudaSuccess
+   parameter (cudaSuccess=0)
    ! matrix operation (whether do transpose)
    ! note this is important as the tests confirm the non-transposed
    ! operation is much faster than transposed ones on GPU
@@ -64,11 +66,15 @@ module cudaFortMap
    parameter (CUSPARSE_DIAG_TYPE_NON_UNIT=0)
    ! Algorithm type for SpMV
    integer*4         :: CUSPARSE_SPMV_ALG_DEFAULT
+   integer*4         :: CUSPARSE_SPMV_COO_ALG1
    integer*4         :: CUSPARSE_SPMV_CSR_ALG1
    integer*4         :: CUSPARSE_SPMV_CSR_ALG2
+   integer*4         :: CUSPARSE_SPMV_COO_ALG2
    parameter (CUSPARSE_SPMV_ALG_DEFAULT=0)
+   parameter (CUSPARSE_SPMV_COO_ALG1=1)
    parameter (CUSPARSE_SPMV_CSR_ALG1=2)
    parameter (CUSPARSE_SPMV_CSR_ALG2=3)
+   parameter (CUSPARSE_SPMV_COO_ALG2=4)
    ! Algorithm type for SpSV
    integer*4         :: CUSPARSE_SPSV_ALG_DEFAULT
    parameter (CUSPARSE_SPSV_ALG_DEFAULT=0)
@@ -1636,15 +1642,17 @@ module cudaFortMap
    end subroutine cf_free
 
    ! cf_resetFlags
-   integer(c_int) function cf_resetFlags(device_idx) &
-                   bind (C, name="cf_resetFlags" )
-     ! reset the device flag (to a certain value)
+   integer(c_int) function cf_resetFlag(device_idx) &
+                   bind (C, name="cf_resetFlag" )
+     ! reset the computation flag of the GPU device
      ! see the c code in kernel_c for details
+     ! can be "cudaDeviceScheduleSpin" or
+     ! "cudaDeviceScheduleYield"
      use iso_c_binding
      implicit none
      integer(c_int),value ::  device_idx
      ! this calls resetflags from the c side
-   end function cf_resetFlags
+   end function cf_resetFlag
 
    ! kernelc_hookDev
    integer(c_int) function cf_hookDev(device_idx) & 
@@ -1660,17 +1668,6 @@ module cudaFortMap
      ! get the current device idx
    end function cf_hookDev
 
-  ! cf_resetFlag
-   integer(c_int) function cf_resetFlag(device_idx) & 
-    &              bind (C, name="cf_resetFlag" )
-     ! reset the computation flag of the GPU device
-     ! can be "hipDeviceScheduleSpin" or 
-     ! "hipDeviceScheduleYield"
-     use iso_c_binding
-     implicit none
-     ! the current device idx
-     integer(c_int),value ::  device_idx
-   end function cf_resetFlag
 
    ! TODO
    ! currently do not need it here, since we already defined this at 
