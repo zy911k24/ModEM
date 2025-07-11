@@ -323,10 +323,11 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  workload=workload/sum(log(2.0+group_sizes(2:nG))/log(3.0))
              endif
          endif
-         if (def .eq. 0) then 
-             ! just put each one in its own group, default 
-             nG = number_of_workers+1
-         elseif (def .eq. 1) then  
+         !if (def .eq. 0) then
+         !    ! just put each one in its own group, default
+         !    nG = number_of_workers+1
+         !elseif (def .eq. 1) then
+         if (def .le. 1) then
              ! group according to topography - put all procs from one host in 
              ! a group, useful for GPU 
              nG = size(host_sizes)
@@ -362,9 +363,10 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
      allocate(group_sizes(nG))
      ! now determine the detailed grouping
      if (rank_world.eq.0) then ! the root process determine the grouping
-         if (def.eq.0) then ! 1 group for everyone
-             group_sizes = 1
-         elseif (def .eq. 1) then ! 1 group for each (physical) machine
+         !if (def.eq.0) then ! 1 group for everyone
+         !    group_sizes = 1
+         !elseif (def .eq. 1) then ! 1 group for each (physical) machine
+         if (def.le.1) then ! 1 group for each (physical) machine
              group_sizes = 1 
              group_sizes(2:nG) = host_sizes(2:nG)
          elseif (def .eq. 2) then ! equally distribute the workers
@@ -439,7 +441,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              deallocate(idx)
          else
              call errStop('ERROR: unknown grouping strategy')
-         endif !def = 0
+         endif !def
          ! here we also check the host topology
          ! should avoid splitting a group onto different physical machines
          if (def.gt.1) then
@@ -2513,8 +2515,11 @@ Subroutine Worker_job(sigma,d)
                  device_id = -1
              endif
 #if defined(CUDA) || defined(HIP)
-             ! if we already have a device...
+             ! if we have a device to use...
              if (device_id .ge. 0) then
+                 if ((ctrl%output_level .gt. 3).and. (rank_local .eq. 0)) then
+                     write(6,*) ' hooking up the device #', device_id
+                 end if
                  ierr = cudaSetDevice(device_id);
              endif
 #endif
