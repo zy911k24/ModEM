@@ -964,7 +964,7 @@ Subroutine Master_job_JmultT(sigma,d,dsigma,eAll,s_hat,comm)
              comm_current = comm_world
          else 
              comm_current = comm_leader
-         end if
+         endif
      end if
      ! nTX is number of transmitters;
      nTx = d%nTx
@@ -2514,7 +2514,7 @@ Subroutine Worker_job(sigma,d)
              size_gpuPtr = c_loc(size_gpu) ! kind of crude here
              ierr = cudaGetDeviceCount(size_gpuPtr)
              if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
-                 write(6,*) 'number of GPU devices = ', size_gpu
+                 write(6,*) 'number of available GPU devices = ', size_gpu
              end if
              ! see if we have at least one GPU to spare in this group
              ! note this could be problematic, if the grouping is 

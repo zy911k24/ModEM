@@ -44,6 +44,8 @@ public  :: LBFGSsolver
      real (kind=prec)   :: gamma
      ! model and data output file name
      character(80)              :: fname
+     ! output only every nskipth iterations, to reduce disk usage
+     integer            :: nskip
   end type LBFGSiterControl_t
 
   type  :: modelParam_array_t ! container type
@@ -97,6 +99,10 @@ Contains
      iterControl%gamma = 0.99
      ! model and data output file name
      iterControl%fname = 'YES_I_AM_LAZY'
+     ! output only every nskipth iterations, to reduce disk usage
+     ! i.e. 1 = output every iteration
+     !      2 = output every second iteration, etc.
+     iterControl%nskip = 1
 
    end subroutine set_LBFGSiterControl
 
@@ -411,27 +417,29 @@ Contains
       call printf('with',lambda,alpha,value,mNorm,rms,logFile)
 
       ! write out the intermediate model solution and responses
-      call CmSqrtMult(mHat,m_minus_m0)
-      call linComb(ONE,m_minus_m0,ONE,m0,m)
-      write(iterChar,'(i3.3)') iter
-      if (output_level > 1) then
-        mFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.rho'
-        call write_modelParam(m,trim(mFile))
-      end if
-      if (output_level > 2) then
-        mHatFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.prm'
-        call write_modelParam(mHat,trim(mHatFile))
-      end if
-      if (output_level > 2) then
-        dataFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.dat'
-        call write_dataVectorMTX(dHat,trim(dataFile))
-      end if
-      ! compute residual for output: res = d-dHat; do not normalize by errors
-      if (output_level > 2) then
-        res = d
-        call linComb(ONE,d,MinusONE,dHat,res)
-        resFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.res'
-        call write_dataVectorMTX(res,trim(resFile))
+      if (mod(iter, iterControl%nskip).eq.0) then
+        call CmSqrtMult(mHat,m_minus_m0)
+        call linComb(ONE,m_minus_m0,ONE,m0,m)
+        write(iterChar,'(i3.3)') iter
+        if (output_level > 1) then
+          mFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.rho'
+          call write_modelParam(m,trim(mFile))
+        end if
+        if (output_level > 2) then
+          mHatFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.prm'
+          call write_modelParam(mHat,trim(mHatFile))
+        end if
+        if (output_level > 2) then
+          dataFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.dat'
+          call write_dataVectorMTX(dHat,trim(dataFile))
+        end if
+        ! compute residual for output: res = d-dHat; do not normalize by errors
+        if (output_level > 2) then
+          res = d
+          call linComb(ONE,d,MinusONE,dHat,res)
+          resFile = trim(iterControl%fname)//'_LBFGS_'//iterChar//'.res'
+          call write_dataVectorMTX(res,trim(resFile))
+        end if
       end if
 
       ! if alpha is too small, we are not making progress: update lambda
