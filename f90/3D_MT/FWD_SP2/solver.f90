@@ -3420,6 +3420,12 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
           write(6,'(A, I2)') 'Error during cuda handle destruction: ',ierr2
           stop
       end if 
+      ierr = cf_resetFlag(device_idx)
+      ierr2 = ierr2 + ierr
+      if (ierr2.ne.0) then
+          write(6,'(A, I2)') 'Error during cuda flag rest: ',ierr2
+          stop
+      end if
       return
 end subroutine cuBiCGmix ! cuBiCGmix
 

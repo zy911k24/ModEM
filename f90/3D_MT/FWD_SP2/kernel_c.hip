@@ -432,12 +432,6 @@ extern "C" int cf_hookDev(int dev_idx)
         printf("Failed to set device %i: %u \n", dev_idx, err);
         goto Error;
     }
-    err = hipGetDeviceFlags(&flag);
-    if (err != hipSuccess)
-    {
-        printf("Failed to get the device flags %i: %s\n", dev_idx, 
-            hipGetErrorString(err));
-    }
     // now try to get affiliated device
     while(true)
     {
@@ -460,7 +454,7 @@ extern "C" int cf_hookDev(int dev_idx)
         }
         // printf("Dev = %i, flag = %i \n", dev_idx, flag);
         if (flag != hipDeviceScheduleYield && memusage < 50)
-        // if (memusage < 45)
+        // if (memusage < 50)
         // if (flag != hipDeviceScheduleYield)
         {
             // If the number of HIP contexts is greater than the number of 

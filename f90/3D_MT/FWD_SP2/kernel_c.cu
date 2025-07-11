@@ -515,12 +515,6 @@ extern "C" int cf_hookDev(int dev_idx)
         printf("Failed to set device %i: %u \n", dev_idx, err);
         goto Error;
     }
-    err = cudaGetDeviceFlags(&flag);
-    if (err != cudaSuccess)
-    {
-        printf("Failed to get the device flags %i: %s\n", dev_idx, 
-            cudaGetErrorString(err));
-    }
     while(true)
     {
         // see if this device is available
