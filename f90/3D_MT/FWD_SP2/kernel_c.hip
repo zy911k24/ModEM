@@ -342,6 +342,93 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
     return;
 }
 
+#if defined(FG)
+// This function is copied from rccl
+static __inline__ int rcclTypeSize(rcclDataType_t type) {
+  switch (type) {
+    case rcclInt8:
+    case rcclUint8:
+      return 1;
+    case rcclFloat16:
+      return 2;
+    case rcclInt32:
+    case rcclUint32:
+    case rcclFloat32:
+      return 4;
+    case rcclInt64:
+    case rcclUint64:
+    case rcclFloat64:
+      return 8;
+    default:
+      return -1;
+  }
+}
+// a homebrew allgatherv method by stitching the basic rccl apis togather
+extern "C" rcclResult_t rcclAllGatherV(void *sendbuff, size_t sendcount,
+	rcclDataType_t senddatatype, void *recvbuff,
+	size_t recvcounts[], size_t recvdispls[],
+	int root, int n, rcclComm_t comm, hipStream_t stream)
+{
+    int rank_rccl;
+    int size_rccl;
+    hipError_t hipErr;
+    rcclResult_t Err;
+    // need to check the rccl interface here
+    rcclCommUserRank(comm, &rank_rccl);
+    rcclCommCount(comm, &size_rccl);
+    // for debug
+    // printf("#C rank = %i, size = %i \n", rank_rccl, size_rccl);
+    // for debug
+    // printf("#C rank = %i, sizes = %ld \n", rank_rccl, recvcounts[rank_rccl]);
+    // for debug
+    // printf("#C rank = %i, displs = %ld \n",rank_rccl, recvdispls[rank_rccl]);
+    // firstly gather to root
+    // send to root (if you are not)
+    if(rank_rccl!=root) {
+	// non-root send the data
+        // printf("#C sending data to %i @ %i\n", 0, rank_rccl);
+        Err = rcclSend(sendbuff, sendcount, senddatatype,
+		root, comm, stream);
+        if(Err){
+            return Err;
+	}
+    }
+    else {
+        // root firstly copy sendbuff to recvbuff
+        size_t self_displ = recvdispls[rank_rccl];
+        hipErr = hipMemcpyAsync(static_cast<std::byte*>(recvbuff) +
+	    rcclTypeSize(senddatatype) * self_displ,
+            sendbuff, sendcount * rcclTypeSize(senddatatype),
+            hipMemcpyDeviceToDevice, stream);
+	if (hipErr != hipSuccess) return rcclSystemError;
+	// then recieve the data from other processes
+        for(int i=0;i<size_rccl;++i){
+            if(i == root) continue; //skip the root
+            // printf("#C waiting for data from %i @ %i\n", i, rank_rccl);
+            Err=rcclRecv(static_cast<std::byte*>(recvbuff)+
+	        rcclTypeSize(senddatatype)*recvdispls[i],
+                recvcounts[i], senddatatype, i, comm, stream);
+            if(Err){
+		 return Err;
+	    }
+	}
+    }
+    // now broadcast to all
+    size_t total = 0;
+    for (int i = 0; i < size_rccl; i++){
+        total += recvcounts[i];
+    }
+    // for debug
+    // now broadcast the full vector
+    // printf("#C now broadcasting @ %i\n", rank_rccl);
+    Err=rcclBcast(recvbuff, total, senddatatype, 0, comm, stream);
+    if(Err){
+        return Err;
+    }
+    return rcclSuccess;
+}
+#endif
+
 // function called from main fortran program 
 extern "C" int cf_resetFlag(int dev_idx)
 {

@@ -428,9 +428,76 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
     }
     return ncclSuccess;
 }
+
+// a homebrew allgatherv method by stitching the basic nccl apis togather
+extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
+	ncclDataType_t senddatatype, void *recvbuff,
+        size_t recvcounts[], size_t recvdispls[],
+        int root, int n, ncclComm_t comm, cudaStream_t stream)
+{
+    int rank_nccl;
+    int size_nccl;
+    cudaError_t cuErr;
+    ncclResult_t Err;
+
+    // Get the rank and size of the communicator
+    Err = ncclCommUserRank(comm, &rank_nccl);
+    if (Err != ncclSuccess) return Err;
+    Err = ncclCommCount(comm, &size_nccl);
+    if (Err != ncclSuccess) return Err;
+
+    // firstly everyone copies the local sendbuff to recvbuff
+    size_t size_byte  = sendcount * ncclTypeSize(senddatatype);
+    size_t displ_byte = recvdispls[rank_nccl] * ncclTypeSize(senddatatype);
+    cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + displ_byte,
+            sendbuff, size_byte, cudaMemcpyDeviceToDevice,stream);
+    if (cuErr != cudaSuccess) {
+        printf("Failed to copy the device Mem: %s\n",
+           cudaGetErrorString(cuErr));
+        return ncclSystemError;
+    }
+
+    // Perform the allgather operation using a ring communication pattern
+    // find the right and left neighbour
+    int left = (rank_nccl - 1 + size_nccl) % size_nccl;
+    int right = (rank_nccl + 1) % size_nccl;
+
+    // we perform an in-place send and recv to avoid frequent alloc/dealloc
+    // operations
+    // For each rank, we'll send and receive data
+    // except the local one (as we already have that)
+    for (int i = 1; i < size_nccl; ++i) {
+        // Synchronize the gather operation
+        Err = ncclGroupStart();
+        if (Err != ncclSuccess) return Err;
+        // always Send data to the right neighbor, use the size
+	// and displs from the last iteration
+        Err = ncclSend(static_cast<std::byte*>(recvbuff) + displ_byte,
+                      size_byte, senddatatype, right, comm, stream);
+        if (Err) {
+            return Err;
+        }
+	// size and displs to receive from the rank to the left
+	int next = (i + rank_nccl - 2 + size_nccl) % size_nccl;
+	size_byte = recvcounts[next] * ncclTypeSize(senddatatype);
+	displ_byte = recvdispls[next] * ncclTypeSize(senddatatype);
+        // always Receive data from the left neighbor
+        Err = ncclRecv(static_cast<std::byte*>(recvbuff) + displ_byte,
+                      size_byte, senddatatype, left, comm, stream);
+        if (Err) {
+            return Err;
+        }
+        // Synchronize the gather operation
+        Err = ncclGroupEnd();
+        if (Err != ncclSuccess) return Err;
+    }
+
+    return ncclSuccess;
+}
+
+// function called from main fortran program
 #endif
 
-// function called from main fortran program 
 extern "C" int cf_resetFlag(int dev_idx)
 {
     cudaError_t err;

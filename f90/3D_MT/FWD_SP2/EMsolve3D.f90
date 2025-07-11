@@ -1083,14 +1083,14 @@ Contains
      loop: do while ((.not.converged).and.(.not.failed))
          ! fine-grained parallel version 
 #if defined(CUDA) || defined(HIP)
-         if ((device_id.ge.0) .and. (size_local .lt. 2)) then
+         if ((device_id.ge.0) .and. (size_local .gt. 1)) then
              ! before start, need to tell if the device is available
              ierr = cf_hookDev(device_id)
              if (trim(solver_name) .ne. 'BICG') then
-                 write(*,*) '[WARNING] the GPU ', solver_name, &
+                 write(6,*) '[WARNING] the GPU ', solver_name, &
     &                    'algorithm is not yet implemented'
-                 write(*,*) '[WARNING] Fall back to BICG GPU solver'
-                 write(*,*) 'I am using BICG with initial relative error ', &
+                 write(6,*) '[WARNING] Fall back to BICG GPU solver'
+                 write(6,*) 'I am using BICG with initial relative error ', &
     &                    KSSiter%rerr(1)
              endif
              call reset_time(timer)

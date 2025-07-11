@@ -2524,7 +2524,7 @@ Subroutine Worker_job(sigma,d)
              endif
 #endif
 #if defined(FG) && (defined(CUDA) || defined(HIP))
-             if ((size_local .gt. 1) .and. (ncclIsInit .ne. 0)) then
+             if ((size_local .gt. 1) .and. (ncclIsInit .eq. 0)) then
                ! we have enough workers 
                ! now init the NCCL communicator
                if (rank_local .eq. 0) then
@@ -2588,7 +2588,7 @@ Subroutine Worker_job(sigma,d)
                    ! all workers report finished
              end if
 #if defined(FG) && (defined(CUDA) || defined(HIP))
-             if ((size_local .gt. 1) .and. (ncclIsInit .eq. 0)) then
+             if ((size_local .gt. 1) .and. (ncclIsInit .ne. 0)) then
              ! for debug
              ! write(6,*) 'finalizing NCCL communicator... @ ', rank_nccl
                  ierr = ncclCommFinalize(comm_nccl) 
