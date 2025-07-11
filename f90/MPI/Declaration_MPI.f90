@@ -39,7 +39,7 @@ integer        :: hostname_len, ngroup
 ! 3 : dynamic grouping, variable number of procs per each fwd/trn task, 
 !     for load-balancing
 #if defined(FG) && (defined(CUDA) || defined(HIP))
-integer        :: para_method = 2 ! use 1 for debug only
+integer        :: para_method = 1 ! use 1 for debug only
 #elif defined(FG)
 integer        :: para_method = 2
 #elif defined(PETSC) 
@@ -50,21 +50,23 @@ integer        :: para_method = 0
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
+   integer,target         :: size_gpu = 0 
+   integer,target         :: size_gpu_total = 0 
 #if defined(CUDA) || defined(HIP)
-   integer(c_int),target  :: size_gpu = 0 
-   integer(c_int),target  :: size_gpu_total = 0 
    type(c_ptr)            :: size_gpuPtr
    type(c_ptr)            :: size_gpu_totalPtr
-#else
-   integer                :: size_gpu = 0 
-   integer                :: size_gpu_total = 0 
 #endif
 ! change the cpus_per_gpu if you want to use more than one cpus to 
 ! feed one gpu, modify at your own risk! 
 #if defined(FG) && (defined(CUDA) || defined(HIP))
-integer                   :: cpus_per_gpu = 1 ! override for GPU+FG
+   type(ncclComm)         :: comm_nccl        ! nccl/rccl communicator
+   integer                :: rank_nccl        ! nccl/rccl rank
+   integer                :: size_nccl        ! nccl/rccl size
+   integer                :: ncclIsInit=0     ! flag
+   type(ncclUniqueId)     :: uid              ! nccl id
+   integer                :: cpus_per_gpu = 1 ! override for GPU+FG
 #else
-integer                   :: cpus_per_gpu = 3 ! hard coded here 
+   integer                :: cpus_per_gpu = 3 ! hard coded here 
 #endif
 integer                   :: device_id = -1
 ! this is used to store the timer of each mpi sub-process

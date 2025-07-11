@@ -177,6 +177,27 @@ module hipFortMap
      type (c_ptr),value :: devPtr
    end function hipFree
 
+   ! hipMallocHost
+   integer (c_int) function hipMallocHost(hostPtr, count ) &
+    &              bind (C, name="hipMallocHost" ) 
+     ! allocate count bytes of memory pointed by devPtr 
+     use iso_c_binding
+     implicit none
+     ! devPtr is the *host* pointer to memory 
+     type (c_ptr)  :: hostPtr
+     integer (c_size_t), value :: count
+   end function hipMallocHost
+
+   ! hipFreeHost
+   integer (c_int) function hipFreeHost(hostPtr) & 
+    &              bind(C, name="hipFreeHost")
+     ! free the chunk of memory used by buffer
+     use iso_c_binding
+     implicit none
+     ! devPtr is the *host* pointer to memory that you want to free
+     type (c_ptr),value :: hostPtr
+   end function hipFreeHost
+
    ! hipMemcpy
    integer (c_int) function hipMemcpy ( dst, src, count, kind ) & 
     &              bind (C, name="hipMemcpy" )

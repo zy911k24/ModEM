@@ -1932,14 +1932,6 @@ Subroutine Worker_job(sigma,d)
                  call set_e_soln(pol_index,e0)
                  call create_rhsVector(grid,iTx,b0)
              end if
-             if (rank_local.ge.cpu_only_ranks) then
-                 ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &               size_gpu)
-             else
-                 ! no gpu left, use CPU to calculate
-                 device_id = -1
-             endif
              if ((para_method.eq.0).or.(size_local.eq.1)) then
                  ! you are on your own, bro!
                  call fwdSolve(per_index,e0,b0,device_id) 
@@ -2073,14 +2065,6 @@ Subroutine Worker_job(sigma,d)
              end if
              ! loop over functionals  (e.g., for 2D TE/TM impedances 
              ! nFunc = 1)
-             if (rank_local.ge.cpu_only_ranks) then 
-                 ! assign the GPU(s) to the last procs
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &            size_gpu)
-             else
-                 ! no gpu left, use CPU to calculate
-                 device_id = -1
-             endif
              do iFunc = 1,nFunc
                  ! solve transpose problem for each of nFunc functionals
                  call zero_rhsVector(comb)
@@ -2198,14 +2182,6 @@ Subroutine Worker_job(sigma,d)
                  call create_rhsVector(grid,iTx,comb)
              end if
 
-             if (rank_local.ge.cpu_only_ranks) then
-                 ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &               size_gpu)
-             else
-                 ! no gpu left, use CPU to calculate
-                 device_id = -1
-             endif
              if ((para_method.eq.0).or.(size_local.eq.1)) then
                  ! you are on your own, amigo!
                  call sensSolve(per_index,TRN,e,comb,device_id)
@@ -2284,13 +2260,6 @@ Subroutine Worker_job(sigma,d)
                  call create_rhsVector(grid,iTx,comb)
              end if
              call set_e_soln(pol_index,e)
-             if (rank_local.ge.cpu_only_ranks) then
-                 ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &           size_gpu)
-             else
-                 device_id = -1
-             endif
              if ((para_method.eq.0).or.(size_local.eq.1)) then
                  ! you are on your own, aibo!
                  call sensSolve(per_index,FWD,e,comb,device_id)
@@ -2515,7 +2484,7 @@ Subroutine Worker_job(sigma,d)
              ! physical nodes 
              size_gpuPtr = c_loc(size_gpu) ! kind of crude here
              ierr = cudaGetDeviceCount(size_gpuPtr)
-             if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
+             if ((ctrl%output_level .gt. 3).and. (rank_local .eq. 0)) then
                  write(6,*) 'number of available GPU devices = ', size_gpu
              end if
              ! see if we have at least one GPU to spare in this group
@@ -2534,6 +2503,49 @@ Subroutine Worker_job(sigma,d)
 #else
              size_gpu = 0
              cpu_only_ranks = size_local
+#endif
+             if (rank_local.ge.cpu_only_ranks) then
+                 ! assign the GPU(s) to the last leaders
+                 device_id = mod((rank_local - cpu_only_ranks),&
+     &               size_gpu)
+             else
+                 ! no gpu left, use CPU to calculate
+                 device_id = -1
+             endif
+#if defined(CUDA) || defined(HIP)
+             ! if we already have a device...
+             if (device_id .ge. 0) then
+                 ierr = cudaSetDevice(device_id);
+             endif
+#endif
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+             if ((size_local .gt. 1) .and. (ncclIsInit .ne. 0)) then
+               ! we have enough workers 
+               ! now init the NCCL communicator
+               if (rank_local .eq. 0) then
+                ! leader generating the uniqueId
+                 ierr = ncclGetUniqueId(uid)
+                 if (ierr .ne. 0) then
+                     write(6,*) 'error getting NCCL unique id on device:', ierr
+                     stop
+                 endif
+               endif
+               ! distribute the ID to all workers, using MPI
+               call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, 0, &
+           &           comm_local, ierr)
+               rank_nccl = rank_local
+               size_nccl = size_local
+               ! for debug
+               ! write(6,*) 'uid = ', uid%internal, ' @rank: ', rank_nccl
+               ierr = ncclCommInitRank(comm_nccl, size_nccl, uid, rank_nccl)
+               ! for debug
+               ! write(6,*) 'initializing NCCL communicator... @ ', rank_nccl
+               if (ierr.ne.0) then
+                   write(0,'(A, I4)') 'Error initializing nccl ',ierr
+                   stop
+               end if 
+               ncclIsInit = 1 ! set the flag
+             end if
 #endif
              ! now reset the timer
              time_passed = 0.0
@@ -2570,6 +2582,23 @@ Subroutine Worker_job(sigma,d)
                  end do
                    ! all workers report finished
              end if
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+             if ((size_local .gt. 1) .and. (ncclIsInit .eq. 0)) then
+             ! for debug
+             ! write(6,*) 'finalizing NCCL communicator... @ ', rank_nccl
+                 ierr = ncclCommFinalize(comm_nccl) 
+                 if (ierr .ne. 0 ) then
+                     write(6, '(A, I2)') " nccl comm finalize error: ", ierr
+                     stop
+                 end if
+                 ierr = ncclCommDestroy(comm_nccl) 
+                 if (ierr .ne. 0 ) then
+                     write(6, '(A, I2)') " nccl comm destroy error: ", ierr
+                     stop
+                 end if
+                 ncclIsInit = 0 ! set the flag
+             endif
+#endif
              worker_job_task%what_to_do='Job Completed'
              worker_job_task%taskid=taskid
              call Pack_worker_job_task

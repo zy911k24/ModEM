@@ -19,12 +19,12 @@ module EMsolve3D
   public        :: createSolverDiag, getEMsolveDiag, setEMsolveControl
   private       :: SdivCorr
 
+#ifdef FG
   interface FWDSolve3D
-#ifdef MPI
      MODULE PROCEDURE FWDSolve3D
-#endif
      MODULE PROCEDURE FWDSolve3Dfg
   end interface
+#endif
 
   type :: emsolve_control
     ! Values of solver control parameters, e.g., read in from file
@@ -134,7 +134,7 @@ Contains
 ! For a physical source j, this is equivalent to Div(sigma E) + Div(j) = 0;
 ! but the divergence correction may be applied also for non-physical sources,
 ! such  as in Jmult ('FWD') and JmultT ('TRN').
-  subroutine FWDsolve3D(bRHS,omega,eSol,device_id)
+  subroutine FWDSolve3D(bRHS,omega,eSol,device_id)
 
     ! redefine some of the interfaces (locally) for our convenience
     use sg_vector !, only: copy => copy_cvector, &
@@ -544,7 +544,7 @@ Contains
 
   end subroutine FWDsolve3D
 
-#ifdef MPI
+#if defined(MPI) && defined(FG)
   ! fine-grained parallel version
   subroutine FWDsolve3Dfg(bRHS,omega,eSol,device_id,comm_local)
 !----------------------------------------------------------------------
@@ -1074,13 +1074,16 @@ Contains
      KSSiter%rerr = 0.0
      converged = .false.
      failed = .false.
+     if (output_level > 3) then
+         write (*,'(a12,a30)') node_info,'finished transmitting data...'
+     endif
 !------------------------------------------------------------------------------
 !     iteration starts
 !------------------------------------------------------------------------------
      loop: do while ((.not.converged).and.(.not.failed))
          ! fine-grained parallel version 
 #if defined(CUDA) || defined(HIP)
-         if (device_id.ge.0) then
+         if ((device_id.ge.0) .and. (size_local .lt. 2)) then
              ! before start, need to tell if the device is available
              ierr = cf_hookDev(device_id)
              if (trim(solver_name) .ne. 'BICG') then
@@ -1093,7 +1096,9 @@ Contains
              call reset_time(timer)
              call BiCG(blocal,xlocal,KSSiter,comm_local,device_id)
          else
-             write(*,*) '[WARNING] could not find a valid CUDA or HIP GPU '
+             write(6,*) '[WARNING] could not find enough/valid CUDA or HIP GPUs '
+             write(6,*) '[WARNING] fall back to CPU FG '
+             call reset_time(timer)
              call BiCG(blocal,xlocal,KSSiter,comm_local)
          endif
 #else

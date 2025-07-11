@@ -236,7 +236,8 @@ extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
 
 // function called from main fortran program
 // hadamard multiply complex version
-extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
+		int Np, cudaStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -250,14 +251,15 @@ extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_cmplx<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_cmplx<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // xpby complex version
-extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, int Np)
+extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, 
+		int Np, cudaStream_t cstream)
 {
     //double  *x_d;  // declare GPU vector double 
     //double  *y_d;  // declare GPU vector double
@@ -274,14 +276,14 @@ extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d,
     // get lower 64 bit
     double bi = cimag(b);
     // call function on GPU
-    xpby_cmplx<<< grids, blocks >>>( x_d, br, bi, y_d, N);
+    xpby_cmplx<<< grids, blocks, 0, cstream>>>( x_d, br, bi, y_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update p complex version
-extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np)
+extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np, cudaStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -302,7 +304,7 @@ extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    p_update_cmplx<<< grids, blocks >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
+    p_update_cmplx<<< grids, blocks, 0, cstream >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
 
     return;
 }
@@ -550,7 +552,7 @@ extern "C" int cf_hookDev(int dev_idx)
             break;
         }
         // else let it spin
-        sleep(0.05);
+        sleep(0.02);
     }
     printf(" # Dev Selected: %i. %s \n", dev_idx, dev_prop.name);
     return 0;

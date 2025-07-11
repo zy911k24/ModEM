@@ -12,8 +12,11 @@ module solver
    use math_constants   ! math/ physics constants
    use utilities, only: isnan
    use spoptools        ! for sparse-matrix operations
-#if defined(FG)
+#if defined(FG) 
    use mpi
+#if (defined(CUDA) || defined(HIP))
+   use Declaration_MPI, only: comm_nccl
+#endif
 #endif
 #if defined(CUDA)
    use cudaFortMap      ! cuda GPU api bindings for fortran
@@ -44,7 +47,7 @@ module solver
   interface BICG
       module procedure BiCG
       module procedure BiCGfg
-#if defined(CUDA)
+#if defined(CUDA) 
       module procedure cuBiCGfg
 #endif 
   end interface
@@ -1201,7 +1204,6 @@ subroutine BiCGfg(b,x,KSPiter,comm_local,adjt)
           xmin = x
           imin = iter
       end if
-      stop
   end do
  
   if (.not. converged) then 
@@ -1775,7 +1777,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = cusparseDnVecSetValues(vecX, devPtrX)
       ierr2 = ierr2 + ierr
       ! R = Diag(iwus)*X <-- diagonal
-      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n)
+      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n, cuStream)
       ierr = cusparseDnVecSetValues(vecY, devPtrR)
       ierr2 = ierr2 + ierr
       ! now calculate the y = Ax
@@ -1817,7 +1819,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ! ierr = cublasZaxpy(cublasHandle,n,C_ONE,devPtrRHS,1,devPtrR,1)
       ! ierr2 = ierr2 + ierr
       ! TEST: R = b - Ax with an all-in-one kernel of xpby
-      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n)
+      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n, cuStream)
       ! rnorm = nrm2(b - Ax)
       ierr = cublasZnrm2(cublasHandle,n,devPtrR,1,rnormPtr)
       ierr2 = ierr2 + ierr
@@ -1891,9 +1893,10 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             ! ierr = cublasZaxpy(cublasHandle,n,C_ONE,devPtrR,1,devPtrP,1)
             ! ierr2 = ierr2 + ierr
             ! TEST: P = R + BETA * P  with an all-in-one kernel 
-            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n)
+            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n, cuStream)
             ! TEST: update P with an all-in-one kernel 
-            call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n)
+            call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n,&
+       &            cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I2)') " Error steering search direction ", ierr2
               stop
@@ -1959,7 +1962,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecSetValues(vecX, devPtrPH)
         ierr2 = ierr2 + ierr
         ! V = Diag(iwus)*PH
-        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, n)
+        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, n, cuStream)
         ierr = cusparseDnVecSetValues(vecY, devPtrV)
         ierr2 = ierr2 + ierr
         ! V = CC*PH + Diag(iwus)*PH
@@ -2080,7 +2083,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecSetValues(vecX, devPtrSH)
         ierr2 = ierr2 + ierr
         ! T = Diag(iwus)*SH
-        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, n)
+        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, n, cuStream)
         ierr = cusparseDnVecSetValues(vecY, devPtrT)
         ierr2 = ierr2 + ierr
         ! T = A*SH + Diag(iwus)*SH
@@ -2156,7 +2159,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             ierr = cusparseDnVecSetValues(vecX, devPtrX)
             ierr2 = ierr2 + ierr
             ! R = Diag(iwus)*X
-            call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n)
+            call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n, cuStream)
             ierr = cusparseDnVecSetValues(vecY, devPtrR)
             ierr2 = ierr2 + ierr
             ! R = CC*X + Diag(iwus)*X
@@ -2178,7 +2181,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             ! ierr = cublasZaxpy(cublasHandle,n,C_ONE,devPtrRHS,1,devPtrR,1)
             ! ierr2 = ierr2 + ierr
             ! TEST: R = b - Ax with an all-in-one kernel of xpby
-            call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n)
+            call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n, cuStream)
             ! rnorm = norm(R)
             ierr = cublasZnrm2(cublasHandle,n,devPtrR,1,rnormPtr)
             ierr2 = ierr2 + ierr
@@ -2898,7 +2901,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cusparseDnVecSetValues(vecX, devPtrX)
       ierr2 = ierr2 + ierr
       ! R = Diag(iwus)*X
-      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n)
+      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n, cuStream)
       ierr = cusparseDnVecSetValues(vecY, devPtrR)
       ierr2 = ierr2 + ierr
       ! now calculate the y = Ax
@@ -2939,7 +2942,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ! ierr = cublasZaxpy(cublasHandle,n,C_ONE,devPtrRHS,1,devPtrR,1)
       ! ierr2 = ierr2 + ierr
       ! TEST: R = b - Ax with an all-in-one kernel of xpby
-      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n)
+      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n, cuStream)
       ! rnorm = nrm2(b - Ax)
       ierr = cublasZnrm2(cublasHandle,n,devPtrR,1,rnormPtr)
       ierr2 = ierr2 + ierr
@@ -3010,9 +3013,10 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             ! ierr = cublasZaxpy(cublasHandle,n,C_ONE,devPtrR,1,devPtrP,1)
             ! ierr2 = ierr2 + ierr
             ! TEST: P = R + BETA * P with an all-in-one kernel of xpby
-            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n)
+            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n, cuStream)
             ! TEST: update P with an all-in-one kernel 
-            call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n)
+            call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n, &
+      &         cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I2)') " Error steering search direction ", ierr2
               stop
@@ -3082,7 +3086,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecSetValues(vecX, devPtrPH)
         ierr2 = ierr2 + ierr
         ! V = Diag(iwus)*PH
-        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, n)
+        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, n, cuStream)
         ierr = cusparseDnVecSetValues(vecY, devPtrV)
         ierr2 = ierr2 + ierr
         ! V = CC*PH + Diag(iwus)*PH
@@ -3199,7 +3203,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecSetValues(vecX, devPtrSH)
         ierr2 = ierr2 + ierr
         ! T = Diag(iwus)*SH
-        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, n)
+        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, n, cuStream)
         ierr = cusparseDnVecSetValues(vecY, devPtrT)
         ierr2 = ierr2 + ierr
         ! T = A*SH + Diag(iwus)*SH
@@ -3277,7 +3281,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             ierr = cusparseDnVecSetValues(vecX, devPtrX)
             ierr2 = ierr2 + ierr
             ! R = Diag(iwus)*X
-            call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n)
+            call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n, cuStream)
             ierr = cusparseDnVecSetValues(vecY, devPtrR)
             ierr2 = ierr2 + ierr
             ! R = CC*X + Diag(iwus)*X
@@ -3299,7 +3303,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             ! ierr = cublasZaxpy(cublasHandle,n,C_ONE,devPtrRHS,1,devPtrR,1)
             ! ierr2 = ierr2 + ierr
             ! TEST: R = b - Ax with an all-in-one kernel of xpby
-            call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n)
+            call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n, cuStream)
             ! rnorm = norm(R)
             ierr = cublasZnrm2(cublasHandle,n,devPtrR,1,rnormPtr)
             ierr2 = ierr2 + ierr
@@ -3482,7 +3486,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       complex (kind=prec),pointer,dimension(:)   :: iwus
 
       real    (kind=prec), target                :: rnorm, bnorm, rnorm0, btol
-      complex (kind=prec), target                :: bdotLoc, bdot
+      complex (kind=prec), target                :: bdot
       real    (kind=prec), target                :: xnorm
       complex (kind=prec)                        :: RHO1, ALPHA, BETA, OMEGA
       complex (kind=prec), target                :: RTV,TT,RHO
@@ -3498,6 +3502,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       integer                                        :: rank_local, size_local
       integer,target                                 :: size_nccl, rank_nccl
       complex (kind=prec),pointer, dimension(:)      :: xbuff, rbuff, bbuff
+      complex (kind=prec),target                     :: bdotLoc
       integer (c_size_t), allocatable, dimension(:)  :: isizes, displs
       integer (c_size_t)                             :: fsize, lsize
 
@@ -3544,8 +3549,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       type(c_ptr) :: xBuffPtr
       type(c_ptr) :: bBuffPtr
       type(c_ptr) :: rBuffPtr
-      type(ncclUniqueId)  :: uid          ! nccl id
-      type(ncclComm)      :: comm_nccl    ! nccl communicator
+      ! type(ncclUniqueId)  :: uid          ! nccl id
+      ! type(ncclComm)      :: comm_nccl    ! nccl communicator
       type(c_ptr)         :: rankPtr      
       type(c_ptr)         :: sizePtr      
       ! -------------------- pointers to *device* memory ----------------- ! 
@@ -3649,16 +3654,14 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       bPtr  = c_loc(b)  ! b = ones(n,1) --> local b
       ! buffer
       allocate(xbuff(fsize))
-      allocate(rbuff(fsize))
       allocate(bbuff(fsize))
       xBuffPtr  = c_loc(xbuff)  ! full x
-      rBuffPtr  = c_loc(rbuff)  ! full r
       bBuffPtr  = c_loc(bbuff)  ! full b
+      bdotLocPtr = c_loc(bdotLoc)
       allocate(iwus(nrow))
       ! only the local part of iwus
       iwus = VOmegaMuSigLoc*ISIGN*CMPLX(0.0,1.0,8)
       iwusPtr = c_loc(iwus) ! i V omega mu sigma (local)
-      bdotLocPtr = c_loc(bdotLoc)
       rnormPtr0 = c_loc(rnorm0)
       rhoPtr = c_loc(RHO)
       rtvPtr = c_loc(rtv)
@@ -3677,8 +3680,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
 
       ! select the current cuda device 
       ! note this only works for physical devices (not working for MIG devices)
-      ierr = cudaSetDevice(device_idx);
-      ierr2 = ierr2 + ierr
+      ! ierr = cudaSetDevice(device_idx);
+      ! ierr2 = ierr2 + ierr
       ! firstly define the CUDA Stream and cuda handles
       ierr = cudaStreamCreateWithFlags(cuStream, cudaStreamNonBlocking) 
       ierr2 = ierr2 + ierr
@@ -3701,33 +3704,36 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
           write(6,'(A, I4)') 'Error during cuda initialize ',ierr2
           stop
       end if 
-      ! and init the NCCL communicator
-      if (rank_local .eq. 0) then
-          ! leader generating the uniqueId
-          ierr = ncclGetUniqueId(uid)
-          ierr2 = ierr2 + ierr
-          if (ierr2 .ne. 0) then
-              write(0,*) 'error getting NCCL unique id on device:', ierr
-              stop
-          endif
-      endif
-      ! distribute the ID to all workers, using MPI
-      call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, 0, &
-    &         comm_local, ierr)
-      ! for debug
-      ! write(6,*) 'uid = ', uid%internal, ' @rank: ', rank_local
+      ! if (ncclIsInit.eq.0) then
+      !        ! and init the NCCL communicator
+      !        if (rank_local .eq. 0) then
+      !            ! leader generating the uniqueId
+      !            ierr = ncclGetUniqueId(uid)
+      !            ierr2 = ierr2 + ierr
+      !            if (ierr2 .ne. 0) then
+      !               write(0,*) 'error getting NCCL unique id on device:', ierr
+      !               stop
+      !            endif
+      !        endif
+      !        ! distribute the ID to all workers, using MPI
+      !        call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, 0, &
+      !      &         comm_local, ierr)
+      !        ! for debug
+      !        ! write(6,*) 'uid = ', uid%internal, ' @rank: ', rank_local
       sizePtr = c_loc(size_nccl)
       rankPtr = c_loc(rank_nccl)
       size_nccl = size_local
       rank_nccl = rank_local
-      ! for debug
-      ! write(6,*) 'initializing NCCL communicator... @ ', rank_nccl
-      ierr = ncclCommInitRank(comm_nccl, size_nccl, uid, rank_nccl)
-      ierr2 = ierr2 + ierr
-      if (ierr2.ne.0) then
-          write(6,'(A, I4)') 'Error initializing nccl ',ierr2
-          stop
-      end if 
+      !        ! for debug
+      !        write(0,*) 'initializing NCCL communicator... @ ', rank_nccl
+      !        ierr = ncclCommInitRank(comm_nccl, size_nccl, uid, rank_nccl)
+      !        ierr2 = ierr2 + ierr
+      !        if (ierr2.ne.0) then
+      !            write(0,'(A, I4)') 'Error initializing nccl ',ierr2
+      !            stop
+      !        end if 
+      !        ncclIsInit = 1
+      ! end if
       ierr = ncclCommUserRank(comm_nccl, rankPtr)
       ierr2 = ierr2 + ierr
       ierr = ncclCommCount(comm_nccl, sizePtr)
@@ -4080,13 +4086,23 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       !     write(6, *) " error recording the time ", ierr2
       !     stop
       ! end if
-
+      ! firstly pin the host memory using cudaHostRegister
+      ! ierr = cudaHostRegister(bdotLocPtr, INT8(16), 1)
+      ! ierr2 = ierr2 + ierr
+      ! if (ierr2 .ne. 0 ) then
+      !     write(0, *) " error pinning the host memory ", ierr
+      !     stop
+      ! end if
       ! Norm of rhs
       ! the idea is to calculate the dot product of blocal for all processes and
       ! sum the result
       ! bnorm = nrm2(b)
       ierr = cublasZdot(cublasHandle,nrow,devPtrRHS,1,devPtrRHS,1,bdotLocPtr)
       ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(0, *) " error with Zdot operation ", ierr
+          stop
+      end if
       ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
       call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM,    &
  &        comm_local, ierr)
@@ -4110,7 +4126,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ! now Compute the initial residual
       ! write(6,*) 'Computing initial residual'
       ! R = Diag(iwus)*X <-- diagonal
-      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, nrow)
+      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, nrow, cuStream)
       ! setup the vecX and vecY
       ierr = cusparseDnVecSetValues(vecX, devPtrXbuff)
       ierr2 = ierr2 + ierr
@@ -4139,7 +4155,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ! ierr = cublasZaxpy(cublasHandle,nrow,C_ONE,devPtrRHS,1,devPtrR,1)
       ! ierr2 = ierr2 + ierr
       ! TEST: R = b - Ax with an all-in-one kernel of xpby
-      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, nrow)
+      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, nrow, cuStream)
       ! rnorm = nrm2(b - Ax)
       ierr = cublasZdot(cublasHandle,nrow,devPtrR,1,devPtrR,1,bdotLocPtr)
       ierr2 = ierr2 + ierr
@@ -4234,7 +4250,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
             ! TEST: P = R + BETA * P  with an all-in-one kernel 
             ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n)
             ! TEST: update (local) P with an all-in-one kernel 
-            call kernelc_update_pc(devPtrR, devPtrV,BETA,OMEGA, devPtrP,nrow)
+            call kernelc_update_pc(devPtrR, devPtrV,BETA,OMEGA, devPtrP,nrow,&
+      &         cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I2)') " Error steering search direction ", ierr2
               stop
@@ -4302,8 +4319,6 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr =  ncclAllGatherV(devPtrPH, lsize*2, ncclFloat64, devPtrXbuff, &
      &     isizes*2, displs*2, 0, size_nccl, comm_nccl, cuStream)
         ierr2 = ierr2 + ierr
-        ierr = cudaDeviceSynchronize()
-        ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error gathering PH ", ierr2
             stop
@@ -4313,7 +4328,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! now calculate V = A * PH (local)
         ! V = Diag(iwus)*PH (local)
-        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, nrow)
+        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, nrow, cuStream)
         ierr = cusparseDnVecSetValues(vecY, devPtrV)
         ierr2 = ierr2 + ierr
         ! V = CC*PH + Diag(iwus)*PH (local)
@@ -4447,13 +4462,11 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr =  ncclAllGatherV(devPtrSH, lsize*2, ncclFloat64, devPtrXbuff, &
      &     isizes*2, displs*2, 0, size_nccl, comm_nccl, cuStream)
         ierr2 = ierr2 + ierr
-        ierr = cudaDeviceSynchronize()
-        ierr2 = ierr2 + ierr
         ! still need to use the vecX/Y types
         ierr = cusparseDnVecSetValues(vecX, devPtrXbuff)
         ierr2 = ierr2 + ierr
         ! T = Diag(iwus)*SH (local)
-        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, nrow)
+        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, nrow, cuStream)
         ierr = cusparseDnVecSetValues(vecY, devPtrT)
         ierr2 = ierr2 + ierr
         ! T = A*SH + Diag(iwus)*SH (local)
@@ -4550,28 +4563,14 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
                 cudaMemcpyDeviceToDevice)
             ierr2 = ierr2 + ierr
         end if
+        ierr = cudaDeviceSynchronize()
+        ierr2 = ierr2 + ierr
       end do kspLoop
  9527 continue
-      ierr = cudaDeviceSynchronize()
-      ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error synchronizing after iterations ", ierr2
           stop
       end if
-      ! for debug
-      ! write(6,*) 'finalizing NCCL communicator... @ ', rank_nccl
-      ierr = ncclCommFinalize(comm_nccl) 
-      if (ierr .ne. 0 ) then
-          write(6, '(A, I2)') " nccl comm finalize error: ", ierr
-          stop
-      end if
-      ierr2 = ierr2 + ierr
-      ierr = ncclCommDestroy(comm_nccl) 
-      if (ierr .ne. 0 ) then
-          write(6, '(A, I2)') " nccl comm destroy error: ", ierr
-          stop
-      end if
-      ierr2 = ierr2 + ierr
       ! for debug
       ! write(6,'(A)') ' Copy solution from GPU to CPU'
       if (.not. converged) then ! solution not found 
@@ -4587,7 +4586,15 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
           write(6, '(A, I2)') " cudaMemcpy back to host error: ", ierr
           stop
       end if
+      ! ierr = cudaHostUnregister(bdotLocPtr)
+      ! ierr2 = ierr2 + ierr
+      ! if (ierr2 .ne. 0 ) then
+      !     write(0, *) " error unpinning the host memory ", ierr2
+      !     stop
+      ! end if
       ! \activiate lightsaber
+      deallocate(xbuff)
+      deallocate(bbuff)
       ! clear gpu mem
       ierr = cudaFree(devPtrArow)
       ierr2 = ierr2 + ierr
@@ -5241,7 +5248,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = hipsparseDnVecSetValues(vecX, devPtrX)
       ierr2 = ierr2 + ierr
       ! R = Diag(iwus)*X <-- diagonal
-      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n)
+      call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n, cuStream)
       ierr = hipsparseDnVecSetValues(vecY, devPtrR)
       ierr2 = ierr2 + ierr
       ! now calculate the y = Ax
@@ -5283,7 +5290,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
       ! ierr = hipblasZaxpy(hipblasHandle,n,C_ONE,devPtrRHS,1,devPtrR,1)
       ! ierr2 = ierr2 + ierr
       ! TEST: R = b - Ax with an all-in-one kernel of xpby
-      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n)
+      call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n, cuStream)
       ! rnorm = nrm2(b - Ax)
       ierr = hipblasZnrm2(hipblasHandle,n,devPtrR,1,rnormPtr)
       ierr2 = ierr2 + ierr
@@ -5357,9 +5364,10 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
             ! ierr = hipblasZaxpy(hipblasHandle,n,C_ONE,devPtrR,1,devPtrP,1)
             ! ierr2 = ierr2 + ierr
             ! TEST: P = R + BETA * P  with an all-in-one kernel 
-            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n)
+            ! call kernelc_xpbyc(devPtrR, BETA, devPtrP, n, cuStream)
             ! TEST: update P with an all-in-one kernel 
-            call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n)
+            call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n,&
+       &            cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I2)') " Error steering search direction ", ierr2
               stop
@@ -5425,7 +5433,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = hipsparseDnVecSetValues(vecX, devPtrPH)
         ierr2 = ierr2 + ierr
         ! V = Diag(iwus)*PH
-        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, n)
+        call kernelc_hadac(devPtrPH, devPtriwus, devPtrV, n, cuStream)
         ierr = hipsparseDnVecSetValues(vecY, devPtrV)
         ierr2 = ierr2 + ierr
         ! V = CC*PH + Diag(iwus)*PH
@@ -5546,7 +5554,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = hipsparseDnVecSetValues(vecX, devPtrSH)
         ierr2 = ierr2 + ierr
         ! T = Diag(iwus)*SH
-        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, n)
+        call kernelc_hadac(devPtrSH, devPtriwus, devPtrT, n, cuStream)
         ierr = hipsparseDnVecSetValues(vecY, devPtrT)
         ierr2 = ierr2 + ierr
         ! T = A*SH + Diag(iwus)*SH
@@ -5622,7 +5630,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
             ierr = hipsparseDnVecSetValues(vecX, devPtrX)
             ierr2 = ierr2 + ierr
             ! R = Diag(iwus)*X
-            call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n)
+            call kernelc_hadac(devPtrX, devPtriwus, devPtrR, n, cuStream)
             ierr = hipsparseDnVecSetValues(vecY, devPtrR)
             ierr2 = ierr2 + ierr
             ! R = CC*X + Diag(iwus)*X
@@ -5644,7 +5652,7 @@ subroutine hipBiCG(b,x,KSPiter,device_idx,adjt)
             ! ierr = hipblasZaxpy(hipblasHandle,n,C_ONE,devPtrRHS,1,devPtrR,1)
             ! ierr2 = ierr2 + ierr
             ! TEST: R = b - Ax with an all-in-one kernel of xpby
-            call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n)
+            call kernelc_xpbyc(devPtrRHS, C_MINUSONE, devPtrR, n, cuStream)
             ! rnorm = norm(R)
             ierr = hipblasZnrm2(hipblasHandle,n,devPtrR,1,rnormPtr)
             ierr2 = ierr2 + ierr

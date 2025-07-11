@@ -183,6 +183,27 @@ module cudaFortMap
      type (c_ptr),value :: devPtr
    end function cudaFree
 
+   ! cudaMallocHost
+   integer (c_int) function cudaMallocHost(hostPtr, count ) &
+    &              bind (C, name="cudaMallocHost" ) 
+     ! allocate count bytes of memory pointed by devPtr 
+     use iso_c_binding
+     implicit none
+     ! devPtr is the *host* pointer to memory 
+     type (c_ptr)  :: hostPtr
+     integer (c_size_t), value :: count
+   end function cudaMallocHost
+
+   ! cudaFreeHost
+   integer (c_int) function cudaFreeHost(hostPtr) & 
+    &              bind(C, name="cudaFreeHost")
+     ! free the chunk of memory used by buffer
+     use iso_c_binding
+     implicit none
+     ! devPtr is the *host* pointer to memory that you want to free
+     type (c_ptr),value :: hostPtr
+   end function cudaFreeHost
+
    ! cudaMemcpy
    integer (c_int) function cudaMemcpy ( dst, src, count, kind ) & 
     &              bind (C, name="cudaMemcpy" )
@@ -212,6 +233,25 @@ module cudaFortMap
      ! cudaMemcpyDeviceToHost = 2
      ! cudaMemcpyDeviceToDevice = 3
    end function cudaMemcpyAsync
+
+   ! cudaHostRegister
+   integer (c_int) function cudaHostRegister(hostPtr, size, flag)  &
+    &     bind(C, name="cudaHostRegister")
+     use iso_c_binding
+     implicit none
+     type(c_ptr),value       :: hostPtr  ! host pointer
+     integer(c_size_t),value :: size  ! memory in bytes
+     integer, value          :: flag ! mem type 
+   end function cudaHostRegister
+
+   ! cudaHostUnregister
+   integer (c_int) function cudaHostUnregister(hostPtr)  &
+    &     bind(C, name="cudaHostUnregister")
+     use iso_c_binding
+     implicit none
+     type(c_ptr),value       :: hostPtr  ! host pointer
+   end function cudaHostUnregister
+
 
    ! cudaMemGetInfo
    integer (c_int) function cudaMemGetInfo(free, total)  &
@@ -1531,19 +1571,20 @@ module cudaFortMap
    end subroutine kernelc_hadar
 
    ! kernelc_hadac
-   subroutine kernelc_hadac( a, b, c, count ) & 
+   subroutine kernelc_hadac( a, b, c, count, cstream ) & 
     &              bind (C, name="kernelc_hadac" )
      use iso_c_binding
      implicit none
      ! perform hadamard multiply c = a*b, (complex)
      ! force convert two doubles into one complex double
-     type (c_ptr),value   :: a, b, c ! pointers
+     type (c_ptr),value     :: a, b, c ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
+     type (c_ptr),value     :: cstream ! cudaStream
    end subroutine kernelc_hadac
 
    ! kernelc_xpbyc
-   subroutine kernelc_xpbyc( a, b, c, count ) & 
+   subroutine kernelc_xpbyc( a, b, c, count , cstream) & 
     &              bind (C, name="kernelc_xpbyc" )
      use iso_c_binding
      implicit none
@@ -1553,10 +1594,11 @@ module cudaFortMap
      complex(c_double), value    :: b ! scaler b
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value      :: count 
+     type (c_ptr),value          :: cstream ! cudaStream
    end subroutine kernelc_xpbyc
 
    ! kernelc_update_p
-   subroutine kernelc_update_pc( r, v, beta, omega, p, count ) & 
+   subroutine kernelc_update_pc( r, v, beta, omega, p, count, cstream ) & 
     &              bind (C, name="kernelc_update_pc" )
      use iso_c_binding
      implicit none
@@ -1567,6 +1609,7 @@ module cudaFortMap
      complex(c_double), value    :: omega ! scaler omega
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value      :: count 
+     type (c_ptr),value          :: cstream ! cudaStream
    end subroutine kernelc_update_pc
 
    ! kernelc_update_x
