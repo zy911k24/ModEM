@@ -2,7 +2,6 @@
 Module Declaration_MPI
      use math_constants
 #ifdef MPI
-! include 'mpif.h'
      use mpi
 #if defined(CUDA)
      use cudaFortMap
@@ -34,11 +33,13 @@ integer        :: hostname_len, ngroup
 ! on-the-fly modification, 
 ! TODO: need to think about it - if we really need an on-the-fly config
 ! 0 : simple grouping, 1 proc per each fwd/trn task (default)
-! 1 : topology grouping, 1 node per each fwd/trn task
+! 1 : topology grouping, 1 node per each fwd/trn task, for debug purpose
 ! 2 : equal grouping, n procs per each fwd/trn task
 ! 3 : dynamic grouping, variable number of procs per each fwd/trn task, 
 !     for load-balancing
-#if defined(FG)
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+integer        :: para_method = 1 ! use 1 for debug only
+#elif defined(FG)
 integer        :: para_method = 2
 #elif defined(PETSC) 
 integer        :: para_method = 2
@@ -48,18 +49,24 @@ integer        :: para_method = 0
 !********************************************************************
 ! additional parameters needed by CUDA acceleration
 !********************************************************************
+   integer,target         :: size_gpu = 0 
+   integer,target         :: size_gpu_total = 0 
 #if defined(CUDA) || defined(HIP)
-   integer(c_int),target  :: size_gpu = 0 
-   integer(c_int),target  :: size_gpu_total = 0 
    type(c_ptr)            :: size_gpuPtr
    type(c_ptr)            :: size_gpu_totalPtr
-#else
-   integer                :: size_gpu = 0 
-   integer                :: size_gpu_total = 0 
 #endif
 ! change the cpus_per_gpu if you want to use more than one cpus to 
 ! feed one gpu, modify at your own risk! 
-integer                   :: cpus_per_gpu = 3 ! hard coded here 
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+   type(ncclComm)         :: comm_nccl        ! nccl/rccl communicator
+   integer                :: rank_nccl        ! nccl/rccl rank
+   integer                :: size_nccl        ! nccl/rccl size
+   integer                :: ncclIsInit=0     ! flag
+   type(ncclUniqueId)     :: uid              ! nccl id
+   integer                :: cpus_per_gpu = 1 ! override for GPU+FG
+#else
+   integer                :: cpus_per_gpu = 3 ! hard coded here 
+#endif
 integer                   :: device_id = -1
 ! this is used to store the timer of each mpi sub-process
 DOUBLE PRECISION          :: previous_time
@@ -123,45 +130,6 @@ type :: define_worker_job
  end type define_worker_job
 type(define_worker_job), save :: worker_job_task
 !********************************************************************
-
-#if defined(CUDA)
-
-!  interface
-   ! kernelc_getDevNum --> call cuda c kernel code with iso_c_binding
-   !integer(c_int) function kernelc_getDevNum() & 
-   ! &              bind (C, name="kernelc_getDevNum" )
-   !  ! interface to get the number of GPU devices - 
-   !  ! only useful if you have any!   
-   !  use iso_c_binding
-   !  implicit none
-   ! end function kernelc_getDevNum
-
-!    ! cudaGetDevCount 
-!    integer(c_int) function cudaGetDeviceCount(device_count) & 
-!     &              bind (C, name="cudaGetDeviceCount" )
-!      use iso_c_binding
-!      implicit none
-!      integer(c_int),value ::  device_count
-!      ! get the number of devices (with Cumpute Capability > 2.0)
-!      ! on this machine
-!    end function cudaGetDeviceCount
-! end interface
-
-#elif defined(HIP)
-
-! interface
-!    ! hipGetDevCount 
-!    integer(c_int) function hipGetDeviceCount(device_count) & 
-!     &              bind (C, name="hipGetDeviceCount" )
-!      use iso_c_binding
-!      implicit none
-!      integer(c_int),value ::  device_count
-!      ! get the number of devices 
-!      ! on this machine
-!    end function hipGetDeviceCount
-! end interface
-
-#endif
 
 Contains
 

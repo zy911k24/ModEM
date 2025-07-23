@@ -3,8 +3,10 @@
 #include <string.h>
 #include <complex.h>
 #include <cuda.h>
-// #include <nvml.h>
 #include <cuda_runtime.h>
+#if defined(FG)
+#include <nccl.h>
+#endif
 
 // simple kernel function that converts double vectors to single
 __global__ void real64to32(const double *in, float *out, const int N)
@@ -215,7 +217,8 @@ extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
 
 // function called from main fortran program
 // hadamard multiply real version
-extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
+		int Np, cudaStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -229,14 +232,15 @@ extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_real<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_real<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // hadamard multiply complex version
-extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
+		int Np, cudaStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -250,14 +254,15 @@ extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_cmplx<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_cmplx<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // xpby complex version
-extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, int Np)
+extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d,
+		int Np, cudaStream_t cstream)
 {
     //double  *x_d;  // declare GPU vector double 
     //double  *y_d;  // declare GPU vector double
@@ -274,14 +279,14 @@ extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d,
     // get lower 64 bit
     double bi = cimag(b);
     // call function on GPU
-    xpby_cmplx<<< grids, blocks >>>( x_d, br, bi, y_d, N);
+    xpby_cmplx<<< grids, blocks, 0, cstream>>>( x_d, br, bi, y_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update p complex version
-extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np)
+extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np, cudaStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -302,14 +307,16 @@ extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    p_update_cmplx<<< grids, blocks >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
+    p_update_cmplx<<< grids, blocks, 0, cstream >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update x complex version
-extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double _Complex alpha, double _Complex omega, double *x_d, int Np)
+extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
+		double _Complex alpha, double _Complex omega, double *x_d,
+		int Np, cudaStream_t cstream)
 {
     //double  *ph_d;  // declare GPU vector double 
     //double  *sh_d;  // declare GPU vector double
@@ -331,12 +338,166 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    x_update_cmplx<<< grids, blocks >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
+    x_update_cmplx<<< grids, blocks, 0, cstream >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
 
     return;
 }
 
-// function called from main fortran program 
+#if defined(FG)
+// This function is copied from nccl
+static __inline__ int ncclTypeSize(ncclDataType_t type) {
+  switch (type) {
+    case ncclInt8:
+    case ncclUint8:
+      return 1;
+    case ncclFloat16:
+      return 2;
+    case ncclInt32:
+    case ncclUint32:
+    case ncclFloat32:
+      return 4;
+    case ncclInt64:
+    case ncclUint64:
+    case ncclFloat64:
+      return 8;
+    default:
+      return -1;
+  }
+}
+// a homebrew allgatherv method by stitching the basic nccl apis togather  
+extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
+	ncclDataType_t senddatatype, void *recvbuff,
+	size_t recvcounts[], size_t recvdispls[], 
+	int root, int n, ncclComm_t comm, cudaStream_t stream)
+{
+    int rank_nccl;
+    int size_nccl;
+    cudaError_t cuErr;
+    ncclResult_t Err;
+    // need to check the nccl interface here
+    ncclCommUserRank(comm, &rank_nccl);
+    ncclCommCount(comm, &size_nccl);
+    // for debug
+    // printf("#C rank = %i, size = %i \n", rank_nccl, size_nccl);
+    // for debug
+    // printf("#C rank = %i, sizes = %ld \n", rank_nccl, recvcounts[rank_nccl]);
+    // for debug
+    // printf("#C rank = %i, displs = %ld \n",rank_nccl, recvdispls[rank_nccl]);
+    // firstly gather to root
+    // send to root (if you are not)
+    if(rank_nccl!=root) {
+	// non-root send the data
+        // printf("#C sending data to %i @ %i\n", 0, rank_nccl);
+        Err = ncclSend(sendbuff, sendcount, senddatatype,
+        	root, comm, stream);
+        if(Err){
+            return Err;
+	}
+    }
+    else {
+        // root firstly copy sendbuff to recvbuff 
+        size_t self_displ = recvdispls[rank_nccl];
+        cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + 
+	    ncclTypeSize(senddatatype) * self_displ,
+            sendbuff, sendcount * ncclTypeSize(senddatatype),
+            cudaMemcpyDeviceToDevice, stream);
+	if (cuErr != cudaSuccess) return ncclSystemError;
+	// then recieve the data from other processes
+        for(int i=0;i<size_nccl;++i){
+            if(i == root) continue; //skip the root
+            // printf("#C waiting for data from %i @ %i\n", i, rank_nccl);
+            Err=ncclRecv(static_cast<std::byte*>(recvbuff)+
+	        ncclTypeSize(senddatatype)*recvdispls[i],
+                recvcounts[i], senddatatype, i, comm, stream);
+            if(Err){
+        	 return Err;
+	    }
+	}
+    }
+    // now broadcast to all
+    size_t total = 0;
+    for (int i = 0; i < size_nccl; i++){
+        total += recvcounts[i];
+    }
+    // for debug
+    // now broadcast the full vector
+    // printf("#C now broadcasting @ %i\n", rank_nccl);
+    Err=ncclBcast(recvbuff, total, senddatatype, 0, comm, stream);
+    if(Err){
+        return Err;
+    }
+    return ncclSuccess;
+}
+
+// a homebrew allgatherv method by stitching the basic nccl apis togather
+extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
+	ncclDataType_t senddatatype, void *recvbuff,
+        size_t recvcounts[], size_t recvdispls[],
+        int root, int n, ncclComm_t comm, cudaStream_t stream)
+{
+    int rank_nccl;
+    int size_nccl;
+    cudaError_t cuErr;
+    ncclResult_t Err;
+
+    // Get the rank and size of the communicator
+    Err = ncclCommUserRank(comm, &rank_nccl);
+    if (Err != ncclSuccess) return Err;
+    Err = ncclCommCount(comm, &size_nccl);
+    if (Err != ncclSuccess) return Err;
+
+    // firstly everyone copies the local sendbuff to recvbuff
+    size_t size_byte  = sendcount * ncclTypeSize(senddatatype);
+    size_t displ_byte = recvdispls[rank_nccl] * ncclTypeSize(senddatatype);
+    cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + displ_byte,
+            sendbuff, size_byte, cudaMemcpyDeviceToDevice,stream);
+    if (cuErr != cudaSuccess) {
+        printf("Failed to copy the device Mem: %s\n",
+           cudaGetErrorString(cuErr));
+        return ncclSystemError;
+    }
+
+    // Perform the allgather operation using a ring communication pattern
+    // find the right and left neighbour
+    int left = (rank_nccl - 1 + size_nccl) % size_nccl;
+    int right = (rank_nccl + 1) % size_nccl;
+
+    // we perform an in-place send and recv to avoid frequent alloc/dealloc
+    // operations
+    // For each rank, we'll send and receive data
+    // except the local one (as we already have that)
+    for (int i = 1; i < size_nccl; ++i) {
+        // Synchronize the gather operation
+        Err = ncclGroupStart();
+        if (Err != ncclSuccess) return Err;
+        // always Send data to the right neighbor, use the size
+	// and displs from the last iteration
+        Err = ncclSend(static_cast<std::byte*>(recvbuff) + displ_byte,
+                      size_byte, senddatatype, right, comm, stream);
+        if (Err) {
+            return Err;
+        }
+	// size and displs to receive from the rank to the left
+	int next = (i + rank_nccl - 2 + size_nccl) % size_nccl;
+	size_byte = recvcounts[next] * ncclTypeSize(senddatatype);
+	displ_byte = recvdispls[next] * ncclTypeSize(senddatatype);
+        // always Receive data from the left neighbor
+        Err = ncclRecv(static_cast<std::byte*>(recvbuff) + displ_byte,
+                      size_byte, senddatatype, left, comm, stream);
+        if (Err) {
+            return Err;
+        }
+        // Synchronize the gather operation
+        Err = ncclGroupEnd();
+        if (Err != ncclSuccess) return Err;
+    }
+
+    return ncclSuccess;
+}
+
+// function called from main fortran program
+#endif
+
 extern "C" int cf_resetFlag(int dev_idx)
 {
     cudaError_t err;
@@ -421,12 +582,6 @@ extern "C" int cf_hookDev(int dev_idx)
         printf("Failed to set device %i: %u \n", dev_idx, err);
         goto Error;
     }
-    err = cudaGetDeviceFlags(&flag);
-    if (err != cudaSuccess)
-    {
-        printf("Failed to get the device flags %i: %s\n", dev_idx, 
-            cudaGetErrorString(err));
-    }
     while(true)
     {
         // see if this device is available
@@ -465,7 +620,7 @@ extern "C" int cf_hookDev(int dev_idx)
             break;
         }
         // else let it spin
-        sleep(0.05);
+        sleep(0.02);
     }
     printf(" # Dev Selected: %i. %s \n", dev_idx, dev_prop.name);
     return 0;

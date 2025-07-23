@@ -1,4 +1,4 @@
-! this is a re-structured version of the two-layered parallel structure in
+
 ! the develop branch, which worked a testing bed for the PETSc version
 ! the main purpose is to utilize more cpus for the FWD/ADJ calculations
 !
@@ -252,7 +252,8 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
 !           in a group - efficient when you have a lot of nodes at service. 
 !           use one entire node (many procs) to calculate one FWD problem
 !           currently through PETSc, or FG only. In this case only the leaders
-!           communicate with the master, or:
+!           communicate with the master.
+!           Mainly for debug purpose.
 ! def = 2 - equal group settings - the idea is to use a same number of
 !           Lprocs per task - let's say we have 3 processes per Tx/pol, 
 !           we will group Nworkers into  Nworkers/3 groups
@@ -322,14 +323,15 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  workload=workload/sum(log(2.0+group_sizes(2:nG))/log(3.0))
              endif
          endif
-         if (def.eq.0) then 
-             ! just put each one in its own group, default 
-             nG = number_of_workers+1
-         elseif (def.eq.1) then  
+         !if (def .eq. 0) then
+         !    ! just put each one in its own group, default
+         !    nG = number_of_workers+1
+         !elseif (def .eq. 1) then
+         if (def .le. 1) then
              ! group according to topography - put all procs from one host in 
              ! a group, useful for GPU 
              nG = size(host_sizes)
-         elseif (def.eq.2) then  
+         elseif (def .eq. 2) then  
              ! equal group, but also consider the topology, i.e. one group 
              ! should not be distributed to more than one host
              ! for simplicity, we use a groups of 3 for each per/pol
@@ -341,7 +343,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  ! fall back
                  def = 0
              endif
-         elseif (def.eq.3) then
+         elseif (def .eq. 3) then
              ! dynamic - give more procs to harder jobs
              ! note this is only possible when nG > number_of_workers+1
              nG = size(walltime)
@@ -356,20 +358,20 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
      call MPI_BCAST(nG, 1, MPI_INTEGER, root, comm_current, ierr)
      if ((rank_world .eq. 0) .and. (output_level .gt. 2)) then 
          ! master 
-         write(6,*) '# current group number is: ', nG
+         write(6,*) '# current number of groups is : ', nG
      endif
      allocate(group_sizes(nG))
      ! now determine the detailed grouping
      if (rank_world.eq.0) then ! the root process determine the grouping
-         if (def.eq.0) then ! 1 group for everyone
-             group_sizes = 1
-         elseif (def.eq.1) then ! 1 group for each machine
+         !if (def.eq.0) then ! 1 group for everyone
+         !    group_sizes = 1
+         !elseif (def .eq. 1) then ! 1 group for each (physical) machine
+         if (def.le.1) then ! 1 group for each (physical) machine
              group_sizes = 1 
              group_sizes(2:nG) = host_sizes(2:nG)
-         elseif (def.eq.2) then ! equally distribute the workers
-             ! evenly distribute...
-             a_size = number_of_workers/(nG-1)
+         elseif (def .eq. 2) then ! equally distribute the workers
              ! note that a_size is an integer
+             a_size = number_of_workers/(nG-1)
              if (a_size.ge.1) then
                  ! we have enough workers for each task 
                  nMore = number_of_workers-((nG-1)*a_size) ! number of workers 
@@ -383,7 +385,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  ! each task gets one worker 
                  group_sizes = 1
              endif !asize
-         elseif (def.eq.3) then ! dynamic balancing the workers
+         elseif (def .eq. 3) then ! dynamic balancing the workers
              group_sizes = 0
              ! root always has its own group
              group_sizes(1) = 1
@@ -392,7 +394,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              ! write(6,*) 'cputime = ', cputime
              ! write(6,*) 'workload= ', workload
              do i = 1,nG
-                 ! ratio should always larger (or equal) than 1 
+                 ! ratio should always be larger (or equal) than 1 
                  ratio = cputime(i)/workload
                  ! for debug
                  ! write(6,*) 'group ', idx(i), 'ratio =', ratio
@@ -409,7 +411,6 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              nMore = number_of_workers - sum(group_sizes(2:nG+1))
              ! if we happend to come across no extra workers, then go on
              if (nMore.lt.0) then ! we don't have that many workers
-                 ! debug 
                  do i = 1,nG
                      ! subtract workers from easier tasks
                      if (group_sizes(idx(i)+1).gt.1) then
@@ -421,7 +422,6 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                      endif
                  enddo
              elseif (nMore.gt.0) then ! too many workers
-                 ! debug 
                  do i = nG,1,-1
                      ! send extra workers to most difficult tasks
                      group_sizes(idx(i)+1) = group_sizes(idx(i)+1)+1
@@ -441,9 +441,9 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              deallocate(idx)
          else
              call errStop('ERROR: unknown grouping strategy')
-         endif !def = 0
+         endif !def
          ! here we also check the host topology
-         ! should avoid splitting a group onto two physical machines
+         ! should avoid splitting a group onto different physical machines
          if (def.gt.1) then
              k = 2 ! this includes the first host (always 1)
              ! for debug
@@ -529,14 +529,16 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
              endif
          endif
      endif ! rank = 0
+     ! now spread group sizes (of size nG) to all
      call MPI_BCAST(group_sizes,nG,MPI_INTEGER,root,comm_current,ierr)
      ! for debug
      ! write(6,*) 'current group sizes are as follows:',group_sizes 
      deallocate(host_sizes)
      return
 end subroutine set_group_sizes
-!########################   Master_Job_Regroup   ############################
-Subroutine Master_Job_Regroup(nTx, nPol, comm)
+
+!########################   Master_job_Regroup   ############################
+Subroutine Master_job_Regroup(nTx, nPol, comm)
      implicit none
      integer, intent(in)                :: nTx,nPol
      integer, intent(in), optional      :: comm
@@ -548,7 +550,11 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
+         if (comm .eq. MPI_COMM_NULL) then
+             comm_current = comm_world
+         else
+             comm_current = comm
+         endif
      else
          comm_current = comm_world
      end if
@@ -591,12 +597,12 @@ Subroutine Master_Job_Regroup(nTx, nPol, comm)
      ! end do
      deallocate(time_buff)
 
-end subroutine Master_Job_Regroup
+end subroutine Master_job_Regroup
 
 !----------------------------------------------------------------------------
-!##########################  Master_Job_fwdPred ############################
+!##########################  Master_job_fwdPred ############################
 
-Subroutine Master_Job_fwdPred(sigma,d1,eAll,comm)
+Subroutine Master_job_fwdPred(sigma,d1,eAll,comm)
 
      implicit none
      type(modelParam_t), intent(in)       :: sigma
@@ -616,10 +622,11 @@ Subroutine Master_Job_fwdPred(sigma,d1,eAll,comm)
      starttime = MPI_Wtime()
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -671,10 +678,10 @@ Subroutine Master_Job_fwdPred(sigma,d1,eAll,comm)
      write(ioMPI,*)'FWD: TIME REQUIERED: ',time_used ,'s'
      call deall (e0)
 
-end subroutine Master_Job_fwdPred
+end subroutine Master_job_fwdPred
 
 
-!#########################   Master_Job_Compute_J ##########################
+!#########################   Master_job_Compute_J ##########################
 
 Subroutine Master_job_calcJ(d,sigma,sens,eAll,comm)
 
@@ -695,10 +702,11 @@ Subroutine Master_job_calcJ(d,sigma,sens,eAll,comm)
 
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -714,7 +722,7 @@ Subroutine Master_job_calcJ(d,sigma,sens,eAll,comm)
      ! Check if an Esoln is passed    
      savedSolns = present(eAll)  
      if (.not. savedSolns )then
-         ! call Master_Job_fwdPred(sigma,d,eAll)
+         ! call Master_job_fwdPred(sigma,d,eAll)
      end if
       
      dest=0
@@ -949,16 +957,17 @@ Subroutine Master_job_JmultT(sigma,d,dsigma,eAll,s_hat,comm)
      returne_m_vectors= present(s_hat)
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
          else 
              comm_current = comm_leader
-         end if
+         endif
      end if
      ! nTX is number of transmitters;
      nTx = d%nTx
@@ -967,7 +976,7 @@ Subroutine Master_job_JmultT(sigma,d,dsigma,eAll,s_hat,comm)
      end if 
      if (.not. savedSolns )then
          d_temp=d
-         call Master_Job_fwdPred(sigma,d_temp,eAll_temp)
+         call Master_job_fwdPred(sigma,d_temp,eAll_temp)
      else
          eAll_temp=eAll 
      end if
@@ -1001,7 +1010,6 @@ Subroutine Master_job_JmultT(sigma,d,dsigma,eAll,s_hat,comm)
      call zero(dsigma)
      Qcomb = sigma
      call zero(Qcomb)
-  
      job_name= 'JmultT'
      call Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out,      &
     &     comm_current, eAll_temp)
@@ -1067,10 +1075,11 @@ Subroutine Master_job_Jmult(mHat,m,d,eAll,comm)
      savedSolns = present(eAll)
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1099,7 +1108,7 @@ Subroutine Master_job_Jmult(mHat,m,d,eAll,comm)
      end if
      if (.not. savedSolns )then
          d_temp=d
-         call Master_Job_fwdPred(m,d_temp,eAll_temp,comm_current)
+         call Master_job_fwdPred(m,d_temp,eAll_temp,comm_current)
      else
          eAll_temp=eAll 
      end if
@@ -1147,10 +1156,11 @@ Subroutine Master_job_Distribute_Data(d, comm)
 
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1167,6 +1177,7 @@ Subroutine Master_job_Distribute_Data(d, comm)
          call MPI_SEND(worker_job_package,Nbytes, MPI_PACKED,dest,      &
     &         FROM_MASTER, comm_current, ierr)
      end do
+     ! distribute the number of Txs
      call MPI_BCAST(nTx,1, MPI_INTEGER,0, comm_current,ierr)
 
      do dest=1,size_current-1
@@ -1178,6 +1189,7 @@ Subroutine Master_job_Distribute_Data(d, comm)
      end do
      call create_data_vec_place_holder(d)
      call Pack_data_para_vec(d)
+     ! distribute the packed data vector
      ! note that the *_para_vec are all public in declarition_MPI module
      call MPI_BCAST(data_para_vec,Nbytes, MPI_PACKED,0, comm_current,ierr)
      if (associated(sigma_para_vec)) then
@@ -1204,10 +1216,11 @@ Subroutine Master_job_Distribute_Model(sigma,delSigma,comm)
 
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1275,10 +1288,11 @@ Subroutine Master_job_Distribute_eAll(d,eAll, comm)
 
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1324,10 +1338,11 @@ Subroutine Master_job_Collect_eAll(d,eAll, comm)
    
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1379,10 +1394,11 @@ subroutine Master_job_keep_prev_eAll(comm)
      Integer                       :: comm_current, size_current
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1412,10 +1428,11 @@ Subroutine Master_job_Distribute_userdef_control(ctrl, comm)
      integer                       :: comm_current, size_current
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          comm_current = comm_world
      end if
@@ -1443,10 +1460,11 @@ Subroutine Master_job_Clean_Memory(comm)
      integer                       :: comm_current, size_current
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1480,10 +1498,11 @@ Subroutine Master_job_Stop_MESSAGE(comm)
      integer                       :: comm_current,size_current
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
-         if (comm .lt. 0) then
+         if (comm .eq. MPI_COMM_NULL) then
              comm_current = comm_world
-         end if
+         else
+             comm_current = comm
+         endif
      else
          if (para_method.eq.0) then
              comm_current = comm_world
@@ -1532,7 +1551,11 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      savedSolns = present(eAll_in)
      ! over-ride the default communicator, if needed
      if (present(comm)) then ! given communicator
-         comm_current = comm
+         if (comm .eq. MPI_COMM_NULL) then
+             comm_current = comm_world
+         else
+             comm_current = comm
+         endif
      else
          comm_current = comm_world
      end if
@@ -1540,7 +1563,7 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      if (rank_local.eq.-1) then ! first run!
      ! run initial regroup -- note this requires the comm to be
      ! comm_world as it is the only comm that works in this stage
-         call Master_Job_Regroup(nTx,nPol_MPI,comm)
+         call Master_job_Regroup(nTx,nPol_MPI,comm)
          if (para_method.gt.0) then
              comm_current = comm_leader
          else
@@ -1564,6 +1587,11 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      if (robin.lt.1) then
          robin = 1
      end if
+     ! for debug
+     ! if (trim(job_name).eq. 'JmultT') then
+     !     write(6,*)'robin = ', robin
+     !    write(6,*)'total jobs = ', total_jobs
+     ! endif
      do ijob=1,total_jobs !loop through all jobs
          ! loop through all jobs, until we run out of workers
          who=who+1
@@ -1579,7 +1607,7 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
          worker_job_task%pol_index = pol_index
          call create_worker_job_task_place_holder
          call Pack_worker_job_task
-         call MPI_SEND(worker_job_package,Nbytes, MPI_PACKED,who,&
+         call MPI_SEND(worker_job_package,Nbytes, MPI_PACKED, who, &
     &        FROM_MASTER, comm_current, ierr)
          if (trim(job_name).eq. 'JmultT' .or. trim(job_name).eq.     &
     &        'Jmult') then
@@ -1703,7 +1731,7 @@ subroutine Master_job_Distribute_Taskes(job_name,nTx,sigma,eAll_out, &
      if (trim(job_name).eq. 'JmultT') then
          ! only regroup after the ADJ calculation
          ! avoid the extra overheads
-         call Master_Job_Regroup(nTx,nPol_MPI,comm)
+         call Master_job_Regroup(nTx,nPol_MPI,comm)
      endif
      if (associated(eAll_para_vec)) then
          deallocate(eAll_para_vec)
@@ -1729,7 +1757,7 @@ end subroutine Master_job_Distribute_Taskes
      !Local
      Integer                                  :: iper, ipol, jobs
      ! a very silly (literally) subroutine to find the next job 
-     ! normally it should be nTx*nPol jobs
+     ! normally there should be nTx*nPol jobs
      ! but it is possible (in principle) that we don't have 2 pols at one per
      ! note this is not thread-safe - should only be called by the master 
      jobs = 0
@@ -1764,8 +1792,8 @@ end subroutine Master_job_Distribute_Taskes
      end if
     end subroutine find_next_job
 
-!###################   Worker_Job: High Level Subroutine   ###################
-Subroutine Worker_Job(sigma,d)
+!###################   Worker_job: High Level Subroutine   ###################
+Subroutine Worker_job(sigma,d)
      ! subroutine for *all* worker jobs -
      ! the general idea (from Naser, I believe) is:  
      ! 
@@ -1906,14 +1934,6 @@ Subroutine Worker_Job(sigma,d)
                  call set_e_soln(pol_index,e0)
                  call create_rhsVector(grid,iTx,b0)
              end if
-             if (rank_local.ge.cpu_only_ranks) then
-                 ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &               size_gpu)
-             else
-                 ! no gpu left, use CPU to calculate
-                 device_id = -1
-             endif
              if ((para_method.eq.0).or.(size_local.eq.1)) then
                  ! you are on your own, bro!
                  call fwdSolve(per_index,e0,b0,device_id) 
@@ -2047,14 +2067,6 @@ Subroutine Worker_Job(sigma,d)
              end if
              ! loop over functionals  (e.g., for 2D TE/TM impedances 
              ! nFunc = 1)
-             if (rank_local.ge.cpu_only_ranks) then 
-                 ! assign the GPU(s) to the last procs
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &            size_gpu)
-             else
-                 ! no gpu left, use CPU to calculate
-                 device_id = -1
-             endif
              do iFunc = 1,nFunc
                  ! solve transpose problem for each of nFunc functionals
                  call zero_rhsVector(comb)
@@ -2172,14 +2184,6 @@ Subroutine Worker_Job(sigma,d)
                  call create_rhsVector(grid,iTx,comb)
              end if
 
-             if (rank_local.ge.cpu_only_ranks) then
-                 ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &               size_gpu)
-             else
-                 ! no gpu left, use CPU to calculate
-                 device_id = -1
-             endif
              if ((para_method.eq.0).or.(size_local.eq.1)) then
                  ! you are on your own, amigo!
                  call sensSolve(per_index,TRN,e,comb,device_id)
@@ -2258,13 +2262,6 @@ Subroutine Worker_Job(sigma,d)
                  call create_rhsVector(grid,iTx,comb)
              end if
              call set_e_soln(pol_index,e)
-             if (rank_local.ge.cpu_only_ranks) then
-                 ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
-     &           size_gpu)
-             else
-                 device_id = -1
-             endif
              if ((para_method.eq.0).or.(size_local.eq.1)) then
                  ! you are on your own, aibo!
                  call sensSolve(per_index,FWD,e,comb,device_id)
@@ -2489,8 +2486,8 @@ Subroutine Worker_Job(sigma,d)
              ! physical nodes 
              size_gpuPtr = c_loc(size_gpu) ! kind of crude here
              ierr = cudaGetDeviceCount(size_gpuPtr)
-             if ((ctrl%output_level .gt. 3).and. (taskid .eq. 0)) then
-                 write(6,*) 'number of GPU devices = ', size_gpu
+             if ((ctrl%output_level .gt. 3).and. (rank_local .eq. 0)) then
+                 write(6,*) 'number of available GPU devices = ', size_gpu
              end if
              ! see if we have at least one GPU to spare in this group
              ! note this could be problematic, if the grouping is 
@@ -2508,6 +2505,52 @@ Subroutine Worker_Job(sigma,d)
 #else
              size_gpu = 0
              cpu_only_ranks = size_local
+#endif
+             if (rank_local.ge.cpu_only_ranks) then
+                 ! assign the GPU(s) to the last leaders
+                 device_id = mod((rank_local - cpu_only_ranks),&
+     &               size_gpu)
+             else
+                 ! no gpu left, use CPU to calculate
+                 device_id = -1
+             endif
+#if defined(CUDA) || defined(HIP)
+             ! if we have a device to use...
+             if (device_id .ge. 0) then
+                 if ((ctrl%output_level .gt. 3).and. (rank_local .eq. 0)) then
+                     write(6,*) ' hooking up the device #', device_id
+                 end if
+                 ierr = cudaSetDevice(device_id);
+             endif
+#endif
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+             if ((size_local .gt. 1) .and. (ncclIsInit .eq. 0)) then
+               ! we have enough workers 
+               ! now init the NCCL communicator
+               if (rank_local .eq. 0) then
+                ! leader generating the uniqueId
+                 ierr = ncclGetUniqueId(uid)
+                 if (ierr .ne. 0) then
+                     write(6,*) 'error getting NCCL unique id on device:', ierr
+                     stop
+                 endif
+               endif
+               ! distribute the ID to all workers, using MPI
+               call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, 0, &
+           &           comm_local, ierr)
+               rank_nccl = rank_local
+               size_nccl = size_local
+               ! for debug
+               ! write(6,*) 'uid = ', uid%internal, ' @rank: ', rank_nccl
+               ierr = ncclCommInitRank(comm_nccl, size_nccl, uid, rank_nccl)
+               ! for debug
+               ! write(6,*) 'initializing NCCL communicator... @ ', rank_nccl
+               if (ierr.ne.0) then
+                   write(0,'(A, I4)') 'Error initializing nccl ',ierr
+                   stop
+               end if 
+               ncclIsInit = 1 ! set the flag
+             end if
 #endif
              ! now reset the timer
              time_passed = 0.0
@@ -2544,6 +2587,23 @@ Subroutine Worker_Job(sigma,d)
                  end do
                    ! all workers report finished
              end if
+#if defined(FG) && (defined(CUDA) || defined(HIP))
+             if ((size_local .gt. 1) .and. (ncclIsInit .ne. 0)) then
+             ! for debug
+             ! write(6,*) 'finalizing NCCL communicator... @ ', rank_nccl
+                 ierr = ncclCommFinalize(comm_nccl) 
+                 if (ierr .ne. 0 ) then
+                     write(6, '(A, I2)') " nccl comm finalize error: ", ierr
+                     stop
+                 end if
+                 ierr = ncclCommDestroy(comm_nccl) 
+                 if (ierr .ne. 0 ) then
+                     write(6, '(A, I2)') " nccl comm destroy error: ", ierr
+                     stop
+                 end if
+                 ncclIsInit = 0 ! set the flag
+             endif
+#endif
              worker_job_task%what_to_do='Job Completed'
              worker_job_task%taskid=taskid
              call Pack_worker_job_task
@@ -2557,7 +2617,7 @@ Subroutine Worker_Job(sigma,d)
          worker_job_task%what_to_do='Waiting for new message'
      end do
 
-End Subroutine Worker_Job
+End Subroutine Worker_job
 
 !******************************************************************************
 

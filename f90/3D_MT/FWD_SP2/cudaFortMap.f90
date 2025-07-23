@@ -17,6 +17,8 @@ module cudaFortMap
    parameter (cudaMemcpyHostToDevice=1)
    parameter (cudaMemcpyDeviceToHost=2)
    parameter (cudaMemcpyDeviceToDevice=3)
+   integer*4         :: cudaSuccess
+   parameter (cudaSuccess=0)
    ! matrix operation (whether do transpose)
    ! note this is important as the tests confirm the non-transposed
    ! operation is much faster than transposed ones on GPU
@@ -64,11 +66,15 @@ module cudaFortMap
    parameter (CUSPARSE_DIAG_TYPE_NON_UNIT=0)
    ! Algorithm type for SpMV
    integer*4         :: CUSPARSE_SPMV_ALG_DEFAULT
+   integer*4         :: CUSPARSE_SPMV_COO_ALG1
    integer*4         :: CUSPARSE_SPMV_CSR_ALG1
    integer*4         :: CUSPARSE_SPMV_CSR_ALG2
+   integer*4         :: CUSPARSE_SPMV_COO_ALG2
    parameter (CUSPARSE_SPMV_ALG_DEFAULT=0)
+   parameter (CUSPARSE_SPMV_COO_ALG1=1)
    parameter (CUSPARSE_SPMV_CSR_ALG1=2)
    parameter (CUSPARSE_SPMV_CSR_ALG2=3)
+   parameter (CUSPARSE_SPMV_COO_ALG2=4)
    ! Algorithm type for SpSV
    integer*4         :: CUSPARSE_SPSV_ALG_DEFAULT
    parameter (CUSPARSE_SPSV_ALG_DEFAULT=0)
@@ -87,9 +93,38 @@ module cudaFortMap
    integer*4         :: cudaStreamDefault
    parameter (cudaStreamNonBlocking=1)
    parameter (cudaStreamDefault=0)
+   ! nccl enumerators
+   integer*4         :: ncclInt8
+   integer*4         :: ncclChar
+   integer*4         :: ncclInt
+   integer*4         :: ncclFloat
+   integer*4         :: ncclFloat64
+   integer*4         :: ncclDouble
+   integer*4         :: NCCL_UNIQUE_ID_BYTES
+   parameter (ncclInt8=0)
+   parameter (ncclChar=0)
+   parameter (ncclInt=2)
+   parameter (ncclFloat=7)
+   parameter (ncclFloat64=8)
+   parameter (ncclDouble=8)
+   parameter (NCCL_UNIQUE_ID_BYTES=128)
+   ! index base - we all use 1 in fortran
    ! additional C_ONE in FP32 - useful in mixed precision calculations
    complex(kind=SP)  :: C_ONEs
    parameter (C_ONEs=(1.0, 0.0))
+   ! ======================= NCCL C derived types ===================== !
+   ! ncclUniqueId
+   type, bind(c) :: ncclUniqueId
+       character(c_char) :: internal(NCCL_UNIQUE_ID_BYTES)
+   end type
+   ! ncclComm
+   type, bind(c) :: ncclComm
+       type(c_ptr) :: member
+   end type
+   ! ncclResult
+   type, bind(c) :: ncclResult
+       integer(c_int) :: member
+   end type
    ! ======================= CUDA C interfaces ======================== !
    interface
    ! I only included some "might-be-useful" interfaces here...
@@ -154,6 +189,27 @@ module cudaFortMap
      type (c_ptr),value :: devPtr
    end function cudaFree
 
+   ! cudaMallocHost
+   integer (c_int) function cudaMallocHost(hostPtr, count ) &
+    &              bind (C, name="cudaMallocHost" ) 
+     ! allocate count bytes of memory pointed by devPtr 
+     use iso_c_binding
+     implicit none
+     ! devPtr is the *host* pointer to memory 
+     type (c_ptr)  :: hostPtr
+     integer (c_size_t), value :: count
+   end function cudaMallocHost
+
+   ! cudaFreeHost
+   integer (c_int) function cudaFreeHost(hostPtr) & 
+    &              bind(C, name="cudaFreeHost")
+     ! free the chunk of memory used by buffer
+     use iso_c_binding
+     implicit none
+     ! devPtr is the *host* pointer to memory that you want to free
+     type (c_ptr),value :: hostPtr
+   end function cudaFreeHost
+
    ! cudaMemcpy
    integer (c_int) function cudaMemcpy ( dst, src, count, kind ) & 
     &              bind (C, name="cudaMemcpy" )
@@ -183,6 +239,25 @@ module cudaFortMap
      ! cudaMemcpyDeviceToHost = 2
      ! cudaMemcpyDeviceToDevice = 3
    end function cudaMemcpyAsync
+
+   ! cudaHostRegister
+   integer (c_int) function cudaHostRegister(hostPtr, size, flag)  &
+    &     bind(C, name="cudaHostRegister")
+     use iso_c_binding
+     implicit none
+     type(c_ptr),value       :: hostPtr  ! host pointer
+     integer(c_size_t),value :: size  ! memory in bytes
+     integer, value          :: flag ! mem type 
+   end function cudaHostRegister
+
+   ! cudaHostUnregister
+   integer (c_int) function cudaHostUnregister(hostPtr)  &
+    &     bind(C, name="cudaHostUnregister")
+     use iso_c_binding
+     implicit none
+     type(c_ptr),value       :: hostPtr  ! host pointer
+   end function cudaHostUnregister
+
 
    ! cudaMemGetInfo
    integer (c_int) function cudaMemGetInfo(free, total)  &
@@ -229,6 +304,171 @@ module cudaFortMap
      implicit none
      type(c_ptr), value ::stream ! streamid
    end function cudaStreamDestroy
+
+   ! ==================================================================== !
+   ! ======================= NCCL API INTERFACES ======================== !
+   ! ==================================================================== !
+
+   ! ncclGetErrorString
+   character(c_char) function ncclGetErrorString(ierr) &
+    &              bind (C, name="ncclGetErrorString" )
+     ! getting error string
+     use iso_c_binding
+     implicit none
+     integer(c_int), value :: ierr
+   end function ncclGetErrorString
+
+   ! ncclGetUniqueId
+   integer (c_int) function ncclGetUniqueId(uid) &
+    &              bind (C, name="ncclGetUniqueId" )
+     ! get the unique id for a device
+     use iso_c_binding
+     import ncclUniqueId
+     implicit none
+     type(ncclUniqueID)          :: uid ! address of
+   end function ncclGetUniqueId
+
+   ! ncclCommInitRank
+   integer (c_int) function ncclCommInitRank(comm, nDevice, uid, rank) &
+    &              bind (C, name="ncclCommInitRank" )
+     ! initialize the Communicator for a certain rank
+     use iso_c_binding
+     import ncclUniqueId
+     import ncclComm
+     implicit none
+     type(ncclComm)         :: comm ! address of
+     ! type(c_ptr)                :: commPtr ! address of
+     type(ncclUniqueId),value   :: uid
+     integer(c_int), value  :: nDevice
+     integer(c_int), value  :: rank
+   end function ncclCommInitRank
+   
+   ! ncclCommInitAll
+   integer (c_int) function ncclCommInitAll(comm, nDevice, devs) &
+    &              bind (C, name="ncclCommInitAll" )
+     ! initialize the Communicator for all devices
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm)         :: comm
+     integer(c_int), value  :: nDevice
+     integer(c_int)         :: devs(nDevice)
+   end function ncclCommInitAll
+
+   ! ncclCommUserRank
+   integer (c_int) function ncclCommUserRank(comm, rank) &
+    &              bind (C, name="ncclCommUserRank" )
+     ! initialize the Communicator for a certain rank
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm), value  :: comm
+     type(c_ptr)            :: rank
+   end function ncclCommUserRank
+
+   ! ncclCommCount
+   integer (c_int) function ncclCommCount(comm, count) &
+    &              bind (C, name="ncclCommCount" )
+     ! initialize the Communicator for a certain rank
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm), value  :: comm
+     type(c_ptr)            :: count
+   end function ncclCommCount
+
+   integer(c_int) function ncclSend(sendbuff, count, datatype, &
+    &              peer, comm, stream)  bind (C, name="ncclSend" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+     ! type(c_ptr),value   :: comm
+     ! return the device assoicated with the come
+     type (c_ptr), value       :: sendbuff,  stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value :: datatype,  peer
+   end function ncclSend
+   
+   ! ncclRecv
+   integer(c_int) function ncclRecv(recvbuff, count, datatype, &
+    &              peer, comm, stream)  bind (C, name="ncclRecv" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+     ! type(c_ptr),value   :: comm
+     ! return the device assoicated with the come
+     type (c_ptr), value       :: recvbuff,  stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value    :: datatype,  peer
+   end function ncclRecv
+
+
+   ! ncclAllReduce
+   integer(c_int) function ncclAllReduce(sendbuff, recvbuff, count, datatype, &
+    &              comm, stream)  bind (C, name="ncclAllReduce" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm), value     :: comm
+     ! type(c_ptr),value   :: comm
+     ! return the device assoicated with the comm
+     type (c_ptr), value       :: sendbuff, recvbuff, stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value    ::  datatype
+   end function ncclAllReduce
+
+   ! ncclAllGather
+   integer(c_int) function ncclAllGather(sendbuff, recvbuff, count, datatype, &
+    &              comm, stream)  bind (C, name="ncclAllGather" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     ! return the device assoicated with the comm
+     type(ncclComm),value      :: comm
+     type (c_ptr), value       :: sendbuff, recvbuff
+     type (c_ptr), value       :: stream! pointer
+     integer (c_size_t), value :: count
+     integer (c_int), value    :: datatype
+   end function ncclAllGather
+
+   ! ncclAllGatherV
+   integer(c_int) function ncclAllGatherV(sendbuff, sendcount, datatype, &
+    &              recvbuff, recvcounts, displs, root, n, comm, stream)  &
+    &              bind (C, name="ncclAllGatherV" )
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     ! return the device assoicated with the comm
+     type(ncclComm),value      :: comm
+     type (c_ptr), value       :: sendbuff, recvbuff
+     type (c_ptr), value       :: stream! pointer
+     integer (c_size_t), value :: sendcount
+     integer (c_int), value    :: datatype, root, n
+     integer (c_size_t)        :: recvcounts(n), displs(n)
+   end function ncclAllGatherV
+
+   ! ncclCommFinalize
+   integer (c_int) function ncclCommFinalize(comm) &
+    &              bind (C, name="ncclCommFinalize" )
+     ! destroy the Communicator
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+     ! type(c_ptr),value          :: comm
+   end function ncclCommFinalize
+
+   ! ncclCommDestroy
+   integer (c_int) function ncclCommDestroy(comm) &
+    &              bind (C, name="ncclCommDestroy" )
+     ! destroy the Communicator
+     use iso_c_binding
+     import ncclComm
+     implicit none
+     type(ncclComm),value      :: comm
+   end function ncclCommDestroy
 
    ! ==================================================================== !
    ! ===================== CUDA EVENT INTERFACES ======================== !
@@ -1337,19 +1577,20 @@ module cudaFortMap
    end subroutine kernelc_hadar
 
    ! kernelc_hadac
-   subroutine kernelc_hadac( a, b, c, count ) & 
+   subroutine kernelc_hadac( a, b, c, count, cstream ) & 
     &              bind (C, name="kernelc_hadac" )
      use iso_c_binding
      implicit none
      ! perform hadamard multiply c = a*b, (complex)
      ! force convert two doubles into one complex double
-     type (c_ptr),value   :: a, b, c ! pointers
+     type (c_ptr),value     :: a, b, c ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
+     type (c_ptr),value     :: cstream ! cudaStream
    end subroutine kernelc_hadac
 
    ! kernelc_xpbyc
-   subroutine kernelc_xpbyc( a, b, c, count ) & 
+   subroutine kernelc_xpbyc( a, b, c, count , cstream) & 
     &              bind (C, name="kernelc_xpbyc" )
      use iso_c_binding
      implicit none
@@ -1359,10 +1600,11 @@ module cudaFortMap
      complex(c_double), value    :: b ! scaler b
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value      :: count 
+     type (c_ptr),value          :: cstream ! cudaStream
    end subroutine kernelc_xpbyc
 
    ! kernelc_update_p
-   subroutine kernelc_update_pc( r, v, beta, omega, p, count ) & 
+   subroutine kernelc_update_pc( r, v, beta, omega, p, count, cstream ) & 
     &              bind (C, name="kernelc_update_pc" )
      use iso_c_binding
      implicit none
@@ -1373,6 +1615,7 @@ module cudaFortMap
      complex(c_double), value    :: omega ! scaler omega
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value      :: count 
+     type (c_ptr),value          :: cstream ! cudaStream
    end subroutine kernelc_update_pc
 
    ! kernelc_update_x
@@ -1399,15 +1642,17 @@ module cudaFortMap
    end subroutine cf_free
 
    ! cf_resetFlags
-   integer(c_int) function cf_resetFlags(device_idx) &
-                   bind (C, name="cf_resetFlags" )
-     ! reset the device flag (to a certain value)
+   integer(c_int) function cf_resetFlag(device_idx) &
+                   bind (C, name="cf_resetFlag" )
+     ! reset the computation flag of the GPU device
      ! see the c code in kernel_c for details
+     ! can be "cudaDeviceScheduleSpin" or
+     ! "cudaDeviceScheduleYield"
      use iso_c_binding
      implicit none
      integer(c_int),value ::  device_idx
      ! this calls resetflags from the c side
-   end function cf_resetFlags
+   end function cf_resetFlag
 
    ! kernelc_hookDev
    integer(c_int) function cf_hookDev(device_idx) & 
@@ -1423,17 +1668,6 @@ module cudaFortMap
      ! get the current device idx
    end function cf_hookDev
 
-  ! cf_resetFlag
-   integer(c_int) function cf_resetFlag(device_idx) & 
-    &              bind (C, name="cf_resetFlag" )
-     ! reset the computation flag of the GPU device
-     ! can be "hipDeviceScheduleSpin" or 
-     ! "hipDeviceScheduleYield"
-     use iso_c_binding
-     implicit none
-     ! the current device idx
-     integer(c_int),value ::  device_idx
-   end function cf_resetFlag
 
    ! TODO
    ! currently do not need it here, since we already defined this at 
