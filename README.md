@@ -282,6 +282,8 @@ included as branches in this repository under the following names:
 
 # Citations
 
+If you use ModEM in your work, please cite the following two sources:
+
 Anna Kelbert, Naser Meqbel, Gary D. Egbert, Kush Tandon, ModEM: A modular system
 for inversion of electromagnetic geophysical data, Computers & Geosciences,
 Volume 66, 2014, Pages 40-53, ISSN 0098-3004,
@@ -290,6 +292,9 @@ https://doi.org/10.1016/j.cageo.2014.01.010.
 Egbert, Gary & Kelbert, Anna. (2012). Computational recipes for electromagnetic
 inverse problems. Geophysical Journal International. 189. 251-267.
 10.1111/j.1365-246X.2011.05347.x. 
+
+If you use the CUDA/HIP interfaces of ModEM in your work, please also
+cite the following source:
 
 Hao Dong, Kai Sun, Gary Egbert, Anna Kelbert, Naser Meqbel, Hybrid CPU-GPU
 solution to regularized divergence-free curl-curl equations for electromagnetic
