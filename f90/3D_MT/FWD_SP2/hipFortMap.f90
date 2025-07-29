@@ -22,7 +22,7 @@ module hipFortMap
    ! however, our fortran subroutines know nothing about those
    ! as such they need to be explicitly setup here
    ! memcpy to host or to device
-   integer*8         :: cudaMemcpyDeviceToHost
+   integer*8         :: cudaMemcpyDeviceToHost 
    integer*8         :: cudaMemcpyHostToDevice
    integer*8         :: cudaMemcpyDeviceToDevice
    parameter (cudaMemcpyHostToDevice=1)
@@ -56,7 +56,7 @@ module hipFortMap
    ! fill mode - upper or lower triangular 
    integer*4         :: CUSPARSE_FILL_MODE_LOWER
    integer*4         :: CUSPARSE_FILL_MODE_UPPER
-   parameter (CUSPARSE_FILL_MODE_LOWER=0)
+   parameter (CUSPARSE_FILL_MODE_LOWER=0) 
    parameter (CUSPARSE_FILL_MODE_UPPER=1)
    ! mat index type
    integer*4         :: CUSPARSE_INDEX_16U, CUSPARSE_INDEX_32I
@@ -71,8 +71,8 @@ module hipFortMap
    parameter (CUDA_R_64F=1)
    parameter (CUDA_C_64F=5)
    ! diag type  unit or not
-   integer*4         :: CUSPARSE_DIAG_TYPE_UNIT
-   integer*4         :: CUSPARSE_DIAG_TYPE_NON_UNIT
+   integer*4         :: CUSPARSE_DIAG_TYPE_UNIT 
+   integer*4         :: CUSPARSE_DIAG_TYPE_NON_UNIT 
    parameter (CUSPARSE_DIAG_TYPE_UNIT=1)
    parameter (CUSPARSE_DIAG_TYPE_NON_UNIT=0)
    ! Algorithm type for SpMV
@@ -129,12 +129,12 @@ module hipFortMap
    type, bind(c) :: ncclUniqueId
        character(c_char) :: internal(NCCL_UNIQUE_ID_BYTES)
    end type
-   ! ncclComm
-   type, bind(c) :: ncclComm
+   ! rcclComm
+   type, bind(c) :: rcclComm
        type(c_ptr) :: member
    end type
-   ! ncclResult
-   type, bind(c) :: ncclResult
+   ! rcclResult
+   type, bind(c) :: rcclResult
        integer(c_int) :: member
    end type
 #endif
@@ -202,7 +202,7 @@ module hipFortMap
    end function cudaMalloc
 
    ! hipFree
-   integer (c_int) function cudaFree(devPtr) &
+   integer (c_int) function cudaFree(devPtr) & 
     &              bind(C, name="hipFree")
      ! free the chunk of memory used by buffer
      use iso_c_binding
@@ -223,7 +223,7 @@ module hipFortMap
    end function cudaMallocHost
 
    ! hipFreeHost
-   integer (c_int) function cudaFreeHost(hostPtr) &
+   integer (c_int) function cudaFreeHost(hostPtr) & 
     &              bind(C, name="hipFreeHost")
      ! free the chunk of memory used by buffer
      use iso_c_binding
@@ -233,7 +233,7 @@ module hipFortMap
    end function cudaFreeHost
 
    ! hipMemcpy
-   integer (c_int) function cudaMemcpy ( dst, src, count, kind ) &
+   integer (c_int) function cudaMemcpy ( dst, src, count, kind ) & 
     &              bind (C, name="hipMemcpy" )
      use iso_c_binding
      implicit none
@@ -248,14 +248,15 @@ module hipFortMap
    end function cudaMemcpy
 
    ! hipMemcpyAsync
-   integer (c_int) function cudaMemcpyAsync( dst, src, count, kind ) &
-    &              bind (C, name="hipMemcpy" )
+   integer (c_int) function cudaMemcpyAsync( dst, src, count, kind, stream ) & 
+    &              bind (C, name="hipMemcpyAsync" )
      use iso_c_binding
      implicit none
      ! copy a chunk of memory from *src* to *dst*
-     type (c_ptr), value :: dst, src
+     type (c_ptr), value       :: dst, src
      ! count is the size of memory (with unit of size_t)
      integer (c_size_t), value :: count, kind 
+     type(c_ptr),value         :: stream ! streamid
      ! kind specifies the direction 
      ! cudaMemcpyHostToDevice = 1
      ! cudaMemcpyDeviceToHost = 2
@@ -278,7 +279,7 @@ module hipFortMap
      implicit none
      type(c_ptr),value       :: hostPtr  ! host pointer
      integer(c_size_t),value :: size  ! memory in bytes
-     integer, value          :: flag ! mem type
+     integer, value          :: flag ! mem type 
    end function cudaHostRegister
 
    ! cudaHostUnregister
@@ -297,7 +298,7 @@ module hipFortMap
    end function cudaDeviceSynchronize
 
    ! hipStreamCreate
-   integer(c_int) function cudaStreamCreate(stream) &
+   integer(c_int) function cudaStreamCreate(stream) & 
     &            bind(C,name="hipStreamCreate")
      use iso_c_binding
      implicit none
@@ -305,7 +306,7 @@ module hipFortMap
    end function cudaStreamCreate
 
    ! hipStreamCreateWithFlags
-   integer(c_int) function cudaStreamCreateWithFlags(stream,flag ) &
+   integer(c_int) function cudaStreamCreateWithFlags(stream,flag ) & 
     &            bind(C,name="hipStreamCreate")
      ! this creates cuda stream (with non-blocking flag)
      use iso_c_binding
@@ -313,12 +314,12 @@ module hipFortMap
      type(c_ptr)::stream ! streamid, out
      integer(c_int),value :: flag ! in
      ! can be 
-     ! cudaStreamDefault
+     ! cudaStreamDefault     
      ! cudaStreamNonBlocking
    end function cudaStreamCreateWithFlags
 
    ! hipStreamDestroy
-   integer(c_int) function cudaStreamDestroy(stream) &
+   integer(c_int) function cudaStreamDestroy(stream) & 
     &            bind(C,name="hipStreamDestroy")
      ! this eliminates a cuda stream
      use iso_c_binding
@@ -355,24 +356,24 @@ module hipFortMap
     &              bind (C, name="rcclCommInitRank" )
      ! initialize the Communicator for a certain rank
      use iso_c_binding
-     import ncclUniqueId
-     import ncclComm
+     import rcclUniqueId
+     import rcclComm
      implicit none
-     type(ncclComm)         :: comm ! address of
+     type(rcclComm)         :: comm ! address of
      ! type(c_ptr)                :: commPtr ! address of
-     type(ncclUniqueId),value   :: uid
+     type(rcclUniqueId),value   :: uid
      integer(c_int), value  :: nDevice
      integer(c_int), value  :: rank
    end function ncclCommInitRank
-
+   
    ! ncclCommInitAll
    integer (c_int) function ncclCommInitAll(comm, nDevice, devs) &
     &              bind (C, name="rcclCommInitAll" )
      ! initialize the Communicator for all devices
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm)         :: comm
+     type(rcclComm)         :: comm
      integer(c_int), value  :: nDevice
      integer(c_int)         :: devs(nDevice)
    end function ncclCommInitAll
@@ -382,9 +383,9 @@ module hipFortMap
     &              bind (C, name="rcclCommUserRank" )
      ! initialize the Communicator for a certain rank
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm), value  :: comm
+     type(rcclComm), value  :: comm
      type(c_ptr)            :: rank
    end function ncclCommUserRank
 
@@ -393,32 +394,32 @@ module hipFortMap
     &              bind (C, name="rcclCommCount" )
      ! initialize the Communicator for a certain rank
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm), value  :: comm
+     type(rcclComm), value  :: comm
      type(c_ptr)            :: count
    end function ncclCommCount
 
    integer(c_int) function ncclSend(sendbuff, count, datatype, &
     &              peer, comm, stream)  bind (C, name="rcclSend" )
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm),value      :: comm
+     type(rcclComm),value      :: comm
      ! type(c_ptr),value   :: comm
      ! return the device assoicated with the come
      type (c_ptr), value       :: sendbuff,  stream! pointer
      integer (c_size_t), value :: count
      integer (c_int), value :: datatype,  peer
    end function ncclSend
-
+   
    ! ncclRecv
    integer(c_int) function ncclRecv(recvbuff, count, datatype, &
     &              peer, comm, stream)  bind (C, name="rcclRecv" )
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm),value      :: comm
+     type(rcclComm),value      :: comm
      ! type(c_ptr),value   :: comm
      ! return the device assoicated with the come
      type (c_ptr), value       :: recvbuff,  stream! pointer
@@ -431,9 +432,9 @@ module hipFortMap
    integer(c_int) function ncclAllReduce(sendbuff, recvbuff, count, datatype, &
     &              comm, stream)  bind (C, name="rcclAllReduce" )
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm), value     :: comm
+     type(rcclComm), value     :: comm
      ! type(c_ptr),value   :: comm
      ! return the device assoicated with the comm
      type (c_ptr), value       :: sendbuff, recvbuff, stream! pointer
@@ -445,10 +446,10 @@ module hipFortMap
    integer(c_int) function ncclAllGather(sendbuff, recvbuff, count, datatype, &
     &              comm, stream)  bind (C, name="rcclAllGather" )
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
      ! return the device assoicated with the comm
-     type(ncclComm),value      :: comm
+     type(rcclComm),value      :: comm
      type (c_ptr), value       :: sendbuff, recvbuff
      type (c_ptr), value       :: stream! pointer
      integer (c_size_t), value :: count
@@ -460,15 +461,15 @@ module hipFortMap
     &              recvbuff, recvcounts, displs, root, n, comm, stream)  &
     &              bind (C, name="rcclAllGatherV" )
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
      ! return the device assoicated with the comm
-     type(ncclComm),value      :: comm
      type (c_ptr), value       :: sendbuff, recvbuff
-     type (c_ptr), value       :: stream! pointer
      integer (c_size_t), value :: sendcount
      integer (c_int), value    :: datatype, root, n
      integer (c_size_t)        :: recvcounts(n), displs(n)
+     type(rcclComm),value      :: comm
+     type (c_ptr), value       :: stream! pointer
    end function ncclAllGatherV
 
    ! ncclCommFinalize
@@ -476,9 +477,9 @@ module hipFortMap
     &              bind (C, name="rcclCommFinalize" )
      ! destroy the Communicator
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm),value      :: comm
+     type(rcclComm),value      :: comm
      ! type(c_ptr),value          :: comm
    end function ncclCommFinalize
 
@@ -487,9 +488,9 @@ module hipFortMap
     &              bind (C, name="rcclCommDestroy" )
      ! destroy the Communicator
      use iso_c_binding
-     import ncclComm
+     import rcclComm
      implicit none
-     type(ncclComm),value      :: comm
+     type(rcclComm),value      :: comm
    end function ncclCommDestroy
 #endif
 
@@ -805,7 +806,7 @@ module hipFortMap
    ! ==================================================================== !
 
    ! hipsparseCreate - need to be called to initialize hipsparse
-   integer(c_int) function cusparseCreate(cusparseHandle) &
+   integer(c_int) function cusparseCreate(cusparseHandle) & 
     &            bind(C,name="hipsparseCreate")
      use iso_c_binding
      implicit none
@@ -1567,7 +1568,7 @@ module hipFortMap
    ! =========================================================================!
 
    ! kernelc_s2d 
-   subroutine kernelc_s2d( single, double, count ) & 
+   subroutine kernelc_s2d( single, double, count, stream) & 
     &              bind (C, name="kernelc_s2d" )
      use iso_c_binding
      implicit none
@@ -1575,10 +1576,11 @@ module hipFortMap
      type (c_ptr), value :: single, double ! pointers 
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
+     type (c_ptr), value :: stream
    end subroutine kernelc_s2d
 
    ! kernelc_d2s 
-   subroutine kernelc_d2s( double, single, count ) & 
+   subroutine kernelc_d2s( double, single, count, stream) & 
     &              bind (C, name="kernelc_d2s" )
      use iso_c_binding
      implicit none
@@ -1586,10 +1588,11 @@ module hipFortMap
      type (c_ptr),value   :: double, single ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
+     type (c_ptr), value :: stream
    end subroutine kernelc_d2s
 
    ! kernelc_hadar
-   subroutine kernelc_hadar( a, b, c, count, cstream) &
+   subroutine kernelc_hadar( a, b, c, count, cstream) & 
     &              bind (C, name="kernelc_hadar" )
      use iso_c_binding
      implicit none
@@ -1597,24 +1600,24 @@ module hipFortMap
      type (c_ptr),value   :: a, b, c ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
-     type (c_ptr),value          :: cstream ! hipStream
+     type (c_ptr),value     :: cstream ! hipStream
    end subroutine kernelc_hadar
 
    ! kernelc_hadac
-   subroutine kernelc_hadac( a, b, c, count, cstream ) &
+   subroutine kernelc_hadac( a, b, c, count, cstream ) & 
     &              bind (C, name="kernelc_hadac" )
      use iso_c_binding
      implicit none
      ! perform hadamard multiply c = a*b, (complex)
      ! force convert two doubles into one complex double
-     type (c_ptr),value   :: a, b, c ! pointers
+     type (c_ptr),value     :: a, b, c ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
-     type (c_ptr),value          :: cstream ! hipStream
+     type (c_ptr),value     :: cstream ! hipStream
    end subroutine kernelc_hadac
 
    ! kernelc_xpbyc
-   subroutine kernelc_xpbyc( a, b, c, count, cstream) &
+   subroutine kernelc_xpbyc( a, b, c, count, cstream) & 
     &              bind (C, name="kernelc_xpbyc" )
      use iso_c_binding
      implicit none
@@ -1627,7 +1630,7 @@ module hipFortMap
    end subroutine kernelc_xpbyc
 
    ! kernelc_update_p
-   subroutine kernelc_update_pc( r, v, beta, omega, p, count, cstream ) &
+   subroutine kernelc_update_pc( r, v, beta, omega, p, count, cstream ) & 
     &              bind (C, name="kernelc_update_pc" )
      use iso_c_binding
      implicit none

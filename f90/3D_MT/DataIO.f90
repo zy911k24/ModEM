@@ -594,7 +594,9 @@ Contains
     call setup_typeDict()
 
     ! Now, allocate ample storage for the receiver dictionary
+    write(6,*) 'about to allocate rxDict'
     call setup_rxDict(MAX_NRX)
+    write(6,*) 'rxDict allocated'
 
     ! Save the user preferences
     nTxt = 5

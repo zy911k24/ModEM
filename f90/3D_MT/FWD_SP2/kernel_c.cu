@@ -4,7 +4,7 @@
 #include <complex.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#if defined(FG)
+#if defined(FG) 
 #include <nccl.h>
 #endif
 
@@ -177,7 +177,8 @@ void sleep(int seconds)
 
 // function called from main fortran program
 // single to double conversion
-extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np)
+extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np,
+		cudaStream_t cstream)
 {
     //uint32_t  *a_d;  // declare GPU vector double (but stored as uint)
     //uint64_t  *b_d;  // declare GPU vector float
@@ -190,14 +191,15 @@ extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np)
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    real32to64<<< grids, blocks >>>( a_d, b_d, N);
+    real32to64<<< grids, blocks, 0, cstream >>>( a_d, b_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // double to single conversion
-extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
+extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np,
+		cudaStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //float  *b_d;  // declare GPU vector float
@@ -210,7 +212,7 @@ extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    real64to32<<< grids, blocks >>>( a_d, b_d, N);
+    real64to32<<< grids, blocks, 0, cstream >>>( a_d, b_d, N);
 
     return;
 }
@@ -314,8 +316,8 @@ extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _
 
 // function called from main fortran program
 // update x complex version
-extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
-		double _Complex alpha, double _Complex omega, double *x_d,
+extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, 
+		double _Complex alpha, double _Complex omega, double *x_d, 
 		int Np, cudaStream_t cstream)
 {
     //double  *ph_d;  // declare GPU vector double 
@@ -343,7 +345,7 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
     return;
 }
 
-#if defined(FG)
+#if defined(FG) 
 // This function is copied from nccl
 static __inline__ int ncclTypeSize(ncclDataType_t type) {
   switch (type) {
@@ -365,7 +367,7 @@ static __inline__ int ncclTypeSize(ncclDataType_t type) {
   }
 }
 // a homebrew allgatherv method by stitching the basic nccl apis togather  
-extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
+extern "C" ncclResult_t ncclAllGatherV0(void *sendbuff, size_t sendcount,
 	ncclDataType_t senddatatype, void *recvbuff,
 	size_t recvcounts[], size_t recvdispls[], 
 	int root, int n, ncclComm_t comm, cudaStream_t stream)
@@ -395,17 +397,10 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
 	}
     }
     else {
-        // root firstly copy sendbuff to recvbuff 
-        size_t self_displ = recvdispls[rank_nccl];
-        cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + 
-	    ncclTypeSize(senddatatype) * self_displ,
-            sendbuff, sendcount * ncclTypeSize(senddatatype),
-            cudaMemcpyDeviceToDevice, stream);
-	if (cuErr != cudaSuccess) return ncclSystemError;
-	// then recieve the data from other processes
+	// rootrecieve the data from other processes
         for(int i=0;i<size_nccl;++i){
             if(i == root) continue; //skip the root
-            // printf("#C waiting for data from %i @ %i\n", i, rank_nccl);
+                // printf("#C waiting for data from %i @ %i\n", i, rank_nccl);
             Err=ncclRecv(static_cast<std::byte*>(recvbuff)+
 	        ncclTypeSize(senddatatype)*recvdispls[i],
                 recvcounts[i], senddatatype, i, comm, stream);
@@ -413,6 +408,13 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
         	 return Err;
 	    }
 	}
+        // root copy sendbuff to recvbuff 
+        size_t self_displ = recvdispls[rank_nccl];
+        cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + 
+	    ncclTypeSize(senddatatype) * self_displ,
+            sendbuff, sendcount * ncclTypeSize(senddatatype),
+            cudaMemcpyDeviceToDevice, stream);
+	if (cuErr != cudaSuccess) return ncclSystemError;
     }
     // now broadcast to all
     size_t total = 0;
@@ -429,8 +431,8 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
     return ncclSuccess;
 }
 
-// a homebrew allgatherv method by stitching the basic nccl apis togather
-extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
+// a homebrew allgatherv method by stitching the basic nccl apis togather  
+extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
 	ncclDataType_t senddatatype, void *recvbuff,
         size_t recvcounts[], size_t recvdispls[],
         int root, int n, ncclComm_t comm, cudaStream_t stream)
@@ -446,13 +448,22 @@ extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
     Err = ncclCommCount(comm, &size_nccl);
     if (Err != ncclSuccess) return Err;
 
+    // for debug
+    // printf("#C rank = %i, size = %i \n", rank_nccl, size_nccl);
+    // for debug
+    // printf("#C rank = %i, sizes = %ld \n", rank_nccl, recvcounts[rank_nccl]);
+    // for debug
+    // printf("#C rank = %i, displs = %ld \n",rank_nccl, recvdispls[rank_nccl]);
+
     // firstly everyone copies the local sendbuff to recvbuff
     size_t size_byte  = sendcount * ncclTypeSize(senddatatype);
     size_t displ_byte = recvdispls[rank_nccl] * ncclTypeSize(senddatatype);
+    // printf("Base: %p, Offset: %zu bytes, Final: %p\n", recvbuff, displ_byte, 
+    // 	    static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
     cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + displ_byte,
             sendbuff, size_byte, cudaMemcpyDeviceToDevice,stream);
-    if (cuErr != cudaSuccess) {
-        printf("Failed to copy the device Mem: %s\n",
+    if (cuErr != cudaSuccess) { 
+        printf("Failed to copy the device Mem: %s\n",  
            cudaGetErrorString(cuErr));
         return ncclSystemError;
     }
@@ -465,28 +476,36 @@ extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
     // we perform an in-place send and recv to avoid frequent alloc/dealloc
     // operations
     // For each rank, we'll send and receive data
-    // except the local one (as we already have that)
+    // except the local one (as we already have that) 
     for (int i = 1; i < size_nccl; ++i) {
         // Synchronize the gather operation
         Err = ncclGroupStart();
         if (Err != ncclSuccess) return Err;
-        // always Send data to the right neighbor, use the size
+	int crnt = (rank_nccl  - i + 1 + size_nccl) % size_nccl;
+        // always Send data to the right neighbor, use the size 
 	// and displs from the last iteration
         Err = ncclSend(static_cast<std::byte*>(recvbuff) + displ_byte,
-                      size_byte, senddatatype, right, comm, stream);
+                      recvcounts[crnt], senddatatype, right, comm, stream);
         if (Err) {
             return Err;
         }
+        // printf("Send to right:  %i, from Rank: %i\n", right, rank_nccl);
+        // printf("Send: %p, Offset: %zu bytes, Final: %p\n",
+        //	recvbuff, displ_byte,  
+        //	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
 	// size and displs to receive from the rank to the left
-	int next = (i + rank_nccl - 2 + size_nccl) % size_nccl;
-	size_byte = recvcounts[next] * ncclTypeSize(senddatatype);
+	int next = (rank_nccl  - i + size_nccl) % size_nccl;
 	displ_byte = recvdispls[next] * ncclTypeSize(senddatatype);
         // always Receive data from the left neighbor
         Err = ncclRecv(static_cast<std::byte*>(recvbuff) + displ_byte,
-                      size_byte, senddatatype, left, comm, stream);
+                      recvcounts[next], senddatatype, left, comm, stream);
         if (Err) {
             return Err;
         }
+        // printf("Recv from left:  %i, to Rank: %i\n", left, rank_nccl);
+        // printf("Recv: %p, Offset: %zu bytes, Final: %p\n",
+	// 	recvbuff, displ_byte, 
+	//	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
         // Synchronize the gather operation
         Err = ncclGroupEnd();
         if (Err != ncclSuccess) return Err;
@@ -495,7 +514,7 @@ extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
     return ncclSuccess;
 }
 
-// function called from main fortran program
+// function called from main fortran program 
 #endif
 
 extern "C" int cf_resetFlag(int dev_idx)
