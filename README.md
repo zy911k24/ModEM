@@ -18,9 +18,9 @@ Modular Electromagnetic Inversion Software (ModEM)
 > [ModEM-Tools][ModEM-Tools] and [ModEM-Examples][ModEM-Examples] repositories,
 > respectively.
 
-[trunk-branch]: https://github.com/MiCurry/ModEM-Model/tree/trunk
-[main-branch]: https://github.com/MiCurry/ModEM-Model/tree/main
-[classic-branch]: https://github.com/MiCurry/ModEM-Model/tree/classic
+[trunk-branch]: https://github.com/magnetotellurics/ModEM/tree/trunk
+[main-branch]: https://github.com/magnetotellurics/ModEM/tree/main
+[classic-branch]: https://github.com/magnetotellurics/ModEM/tree/classic
 
 # Contents
 
@@ -44,8 +44,8 @@ You can download this source code by cloning or downloading this repository. To
 clone with git run `git clone`:
 
 ``` bash
-$ git clone https://github.com/MiCurry/ModEM-Model.git
-Cloning into 'ModEM-Model'...
+$ git clone https://github.com/magnetotellurics/ModEM.git
+Cloning into 'ModEM'...
 remote: Enumerating objects: 18608, done.
 remote: Counting objects: 100% (199/199), done.
 remote: Compressing objects: 100% (54/54), done.
