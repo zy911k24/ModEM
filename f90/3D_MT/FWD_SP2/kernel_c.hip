@@ -178,8 +178,7 @@ void sleep(float seconds)
 
 // function called from main fortran program
 // single to double conversion
-extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np,
-		hipStream_t cstream)
+extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np)
 {
     //uint32_t  *a_d;  // declare GPU vector double (but stored as uint)
     //uint64_t  *b_d;  // declare GPU vector float
@@ -192,15 +191,14 @@ extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    real32to64<<< grids, blocks, 0, cstream >>>( a_d, b_d, N);
+    real32to64<<< grids, blocks >>>( a_d, b_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // double to single conversion
-extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np,
-		hipStream_t cstream)
+extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
 {
     //double  *a_d;  // declare GPU vector double 
     //float  *b_d;  // declare GPU vector float
@@ -213,7 +211,7 @@ extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    real64to32<<< grids, blocks, 0, cstream >>>( a_d, b_d, N);
+    real64to32<<< grids, blocks >>>( a_d, b_d, N);
 
     return;
 }
@@ -316,8 +314,8 @@ extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _
 
 // function called from main fortran program
 // update x complex version
-extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, 
-		double _Complex alpha, double _Complex omega, double *x_d, 
+extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
+		double _Complex alpha, double _Complex omega, double *x_d,
 		int Np, hipStream_t cstream)
 {
     //double  *ph_d;  // declare GPU vector double 
@@ -344,7 +342,7 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d,
     return;
 }
 
-#if defined(FG) 
+#if defined(FG)
 // This function is copied from rccl
 static __inline__ int rcclTypeSize(rcclDataType_t type) {
   switch (type) {
@@ -365,10 +363,10 @@ static __inline__ int rcclTypeSize(rcclDataType_t type) {
       return -1;
   }
 }
-// a homebrew allgatherv method by stitching the basic rccl apis togather  
-extern "C" rcclResult_t rcclAllGatherV0(void *sendbuff, size_t sendcount,
+// a homebrew allgatherv method by stitching the basic rccl apis togather
+extern "C" rcclResult_t rcclAllGatherV(void *sendbuff, size_t sendcount,
 	rcclDataType_t senddatatype, void *recvbuff,
-	size_t recvcounts[], size_t recvdispls[], 
+	size_t recvcounts[], size_t recvdispls[],
 	int root, int n, rcclComm_t comm, hipStream_t stream)
 {
     int rank_rccl;
@@ -390,15 +388,15 @@ extern "C" rcclResult_t rcclAllGatherV0(void *sendbuff, size_t sendcount,
 	// non-root send the data
         // printf("#C sending data to %i @ %i\n", 0, rank_rccl);
         Err = rcclSend(sendbuff, sendcount, senddatatype,
-        	root, comm, stream);
+		root, comm, stream);
         if(Err){
             return Err;
 	}
     }
     else {
-        // root firstly copy sendbuff to recvbuff 
+        // root firstly copy sendbuff to recvbuff
         size_t self_displ = recvdispls[rank_rccl];
-        hipErr = hipMemcpyAsync(static_cast<std::byte*>(recvbuff) + 
+        hipErr = hipMemcpyAsync(static_cast<std::byte*>(recvbuff) +
 	    rcclTypeSize(senddatatype) * self_displ,
             sendbuff, sendcount * rcclTypeSize(senddatatype),
             hipMemcpyDeviceToDevice, stream);
@@ -411,7 +409,7 @@ extern "C" rcclResult_t rcclAllGatherV0(void *sendbuff, size_t sendcount,
 	        rcclTypeSize(senddatatype)*recvdispls[i],
                 recvcounts[i], senddatatype, i, comm, stream);
             if(Err){
-        	 return Err;
+		 return Err;
 	    }
 	}
     }
@@ -430,89 +428,6 @@ extern "C" rcclResult_t rcclAllGatherV0(void *sendbuff, size_t sendcount,
     return rcclSuccess;
 }
 #endif
-#
-// a homebrew allgatherv method by stitching the basic rccl apis togather  
-extern "C" rcclResult_t rcclAllGatherV(void *sendbuff, size_t sendcount,
-	rcclDataType_t senddatatype, void *recvbuff,
-        size_t recvcounts[], size_t recvdispls[],
-        int root, int n, rcclComm_t comm, hipStream_t stream)
-{
-    int rank_rccl;
-    int size_rccl;
-    hipError_t hipErr;
-    rcclResult_t Err;
-
-    // Get the rank and size of the communicator
-    Err = rcclCommUserRank(comm, &rank_rccl);
-    if (Err != rcclSuccess) return Err;
-    Err = rcclCommCount(comm, &size_rccl);
-    if (Err != rcclSuccess) return Err;
-
-    // for debug
-    // printf("#C rank = %i, size = %i \n", rank_rccl, size_rccl);
-    // for debug
-    // printf("#C rank = %i, sizes = %ld \n", rank_rccl, recvcounts[rank_rccl]);
-    // for debug
-    // printf("#C rank = %i, displs = %ld \n",rank_rccl, recvdispls[rank_rccl]);
-
-    // firstly everyone copies the local sendbuff to recvbuff
-    size_t size_byte  = sendcount * rcclTypeSize(senddatatype);
-    size_t displ_byte = recvdispls[rank_rccl] * rcclTypeSize(senddatatype);
-    // printf("Base: %p, Offset: %zu bytes, Final: %p\n", recvbuff, displ_byte, 
-    // 	    static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
-    hipErr = hipMemcpyAsync(static_cast<std::byte*>(recvbuff) + displ_byte,
-            sendbuff, size_byte, hipMemcpyDeviceToDevice,stream);
-    if (hipErr != hipSuccess) { 
-        printf("Failed to copy the device Mem: %s\n",  
-           hipGetErrorString(hipErr));
-        return rcclSystemError;
-    }
-
-    // Perform the allgather operation using a ring communication pattern
-    // find the right and left neighbour
-    int left = (rank_rccl - 1 + size_rccl) % size_rccl;
-    int right = (rank_rccl + 1) % size_rccl;
-
-    // we perform an in-place send and recv to avoid frequent alloc/dealloc
-    // operations
-    // For each rank, we'll send and receive data
-    // except the local one (as we already have that) 
-    for (int i = 1; i < size_rccl; ++i) {
-        // Synchronize the gather operation
-        Err = rcclGroupStart();
-        if (Err != rcclSuccess) return Err;
-	int crnt = (rank_rccl  - i + 1 + size_rccl) % size_rccl;
-        // always Send data to the right neighbor, use the size 
-	// and displs from the last iteration
-        Err = rcclSend(static_cast<std::byte*>(recvbuff) + displ_byte,
-                      recvcounts[crnt], senddatatype, right, comm, stream);
-        if (Err) {
-            return Err;
-        }
-        // printf("Send to right:  %i, from Rank: %i\n", right, rank_rccl);
-        // printf("Send: %p, Offset: %zu bytes, Final: %p\n",
-        //	recvbuff, displ_byte,  
-        //	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
-	// size and displs to receive from the rank to the left
-	int next = (rank_rccl  - i + size_rccl) % size_rccl;
-	displ_byte = recvdispls[next] * rcclTypeSize(senddatatype);
-        // always Receive data from the left neighbor
-        Err = rcclRecv(static_cast<std::byte*>(recvbuff) + displ_byte,
-                      recvcounts[next], senddatatype, left, comm, stream);
-        if (Err) {
-            return Err;
-        }
-        // printf("Recv from left:  %i, to Rank: %i\n", left, rank_rccl);
-        // printf("Recv: %p, Offset: %zu bytes, Final: %p\n",
-	// 	recvbuff, displ_byte, 
-	//	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
-        // Synchronize the gather operation
-        Err = rcclGroupEnd();
-        if (Err != rcclSuccess) return Err;
-    }
-
-    return rcclSuccess;
-}
 
 // function called from main fortran program 
 extern "C" int cf_resetFlag(int dev_idx)
