@@ -1233,8 +1233,8 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
   ! A x = b 
   ! solves for the interior (edge) field
   !
-  ! modified (no hell no) to call the CUDA/HIP lib to calculate with GPU
-  ! this is now a version of things.
+  ! modified (no hell no) to call the CUDA/HIP lib to calculate with GPU 
+  ! this is now a version of things.  
   ! I kept the naming convention from my BiCGStab (see above CPU version)
   ! for instance X -> devPtrX, T -> devPtrT to manipulate the GPU memory
   ! also added the optional adjoint to solve adjoint system A^Tx = b
@@ -1479,7 +1479,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during CUDA allocation: ',ierr2
+          write(6,'(A, I4)') 'Error during CUDA allocation: ',ierr2
           stop
       end if 
       ! write(6,*) 'reset GPU memory to all zeros'
@@ -1522,23 +1522,23 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I3)') 'Error during device memory reseting : ',ierr2
+          write(6,'(A, I4)') 'Error during device memory reseting : ',ierr2
           stop
       end if 
       ! transfer memory over to GPU
       ! write(6,*) 'Transferring memory to GPU'
       ! initialize A
       ierr = cudaMemcpyAsync(devPtrArow,ArowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrAcol,AcolPtr,Annz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrAval,AvalPtr,Annz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtriwus,iwusPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! finally need to create the SpMatDescr 
       ierr = cusparseCreateCsr(matA, n, n, nnz, devPtrArow, devPtrAcol, &
@@ -1546,15 +1546,15 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
      &       CUSPARSE_INDEX_BASE_ONE, CUDA_R_64F) 
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error assembling system matrix ", ierr2
+          write(6, '(A,I4)') " error assembling system matrix ", ierr2
           stop
       end if
       ! initialize rhs and x
       ierr = cudaMemcpyAsync(devPtrX,xPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrRHS,bPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
@@ -1585,7 +1585,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
      &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG2, bsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for spMV ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for spMV ",  ierr2
           stop
       end if
       ! and finally (re)allocate the buffer
@@ -1627,13 +1627,13 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       ! now copy the values to device
       ierr = cudaMemcpyAsync(devPtrLval,MvalPtr,Lnnz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrLcol,McolPtr,Lnnz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrLrow,MrowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! finish synchronizing
       ierr = cudaDeviceSynchronize()
@@ -1644,7 +1644,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
      &       CUSPARSE_INDEX_BASE_ONE, CUDA_C_64F) 
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error assembling L matrix ", ierr2
+          write(6, '(A,I4)') " error assembling L matrix ", ierr2
           stop
       end if
       ! now start messing up with SpSV
@@ -1665,7 +1665,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
 
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for Lsolve ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for Lsolve ",  ierr2
           stop
       end if
       ierr = cudaMalloc(bufferL, lbsize)
@@ -1709,13 +1709,13 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       ! now copy the values to device
       ierr = cudaMemcpyAsync(devPtrUval,MvalPtr,Unnz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrUcol,McolPtr,Unnz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrUrow,MrowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! finally need to create the SpMatDescr 
       ierr = cusparseCreateCsr(matU, n, n, nnz, devPtrUrow, devPtrUcol, &
@@ -1738,7 +1738,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
      &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle, ubsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for Usolve ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for Usolve ",  ierr2
           stop
       end if
       ! write(6,*) 'spsv Usolve buffersize = ', ubsize
@@ -1857,7 +1857,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             OMEGA = C_ONE
             restart = .FALSE.
             if (ierr2 .ne. 0 ) then
-              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              write(6, '(A, I4)') " Error steering search direction ", ierr2
               stop
             end if
         else
@@ -1888,7 +1888,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n,&
        &            cuStream)
             if (ierr2 .ne. 0 ) then
-              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              write(6, '(A, I4)') " Error steering search direction ", ierr2
               stop
             end if
         end if
@@ -1911,7 +1911,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrPT)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Lsolve ", ierr2
+          write(6, '(A, I4)') " Error during Lsolve ", ierr2
           stop
         end if
         ! U solve --> U*PH = PT
@@ -1929,7 +1929,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrPH)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          write(6, '(A, I4)') " Error during Usolve ", ierr2
           stop
         end if
         ! record - end of two SPSVs
@@ -1994,7 +1994,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! S = R
         ierr = cudaMemcpyAsync(devPtrS, devPtrR, Arow_d_size, &
-       &       cudaMemcpyDeviceToDevice)
+       &       cudaMemcpyDeviceToDevice,cuStream)
         ierr2 = ierr2 + ierr
         ! S = R - ALPHA * V
         ierr = cublasZaxpy(cublasHandle,n,-(ALPHA),devPtrV,1,devPtrS,1)
@@ -2026,7 +2026,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrST)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Lsolve ", ierr2
+          write(6, '(A, I4)') " Error during Lsolve ", ierr2
           stop
         end if
         
@@ -2049,7 +2049,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrSH)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          write(6, '(A, I4)') " Error during Usolve ", ierr2
           stop
         end if
 
@@ -2121,7 +2121,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! R = S
         ierr = cudaMemcpyAsync(devPtrR, devPtrS, Arow_d_size, &
-       &       cudaMemcpyDeviceToDevice)
+       &       cudaMemcpyDeviceToDevice,cuStream)
         ierr2 = ierr2 + ierr
         ! R = S - OMEGA * T
         ierr = cublasZaxpy(cublasHandle,n,-(OMEGA),devPtrT,1,devPtrR,1)
@@ -2186,7 +2186,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         if (rnorm .lt. rnorm0) then
             rnorm0 = rnorm
             ierr = cudaMemCpyAsync(devPtrX0, devPtrX, Arow_d_size, &
-                cudaMemcpyDeviceToDevice)
+                cudaMemcpyDeviceToDevice,cuStream)
             ierr2 = ierr2 + ierr
         end if
       end do kspLoop
@@ -2208,7 +2208,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
           ierr = cudaMemcpy(xPtr,devPtrX,Arow_d_size,cudaMemcpyDeviceToHost)
       end if
       if (ierr .ne. 0 ) then
-          write(6, '(A, I2)') " cudaMemcpy back to host error: ", ierr
+          write(6, '(A, I4)') " cudaMemcpy back to host error: ", ierr
           stop
       end if
       ! \activiate lightsaber
@@ -2268,7 +2268,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = cudaFree(bufferU)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cudafree: ',ierr2
+          write(6,'(A, I4)') 'Error during cudafree: ',ierr2
           stop
       end if 
       ierr = cusparseSpSV_destroyDescr(LsolveHandle)
@@ -2292,13 +2292,13 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = cudaStreamDestroy(cuStream)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cuda handle destruction: ',ierr2
+          write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
           stop
       end if 
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error setting device flags: ',ierr2
+          write(6,'(A, I4)') 'Error setting device flags: ',ierr2
           stop
       end if 
       return
@@ -2515,7 +2515,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cudaEventCreate(cuEvent2)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cuda initialize ',ierr2
+          write(6,'(A, I4)') 'Error during cuda initialize ',ierr2
           stop
       end if 
       ! record, start allocating the device mem
@@ -2565,7 +2565,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during CUDA allocation: ',ierr2
+          write(6,'(A, I4)') 'Error during CUDA allocation: ',ierr2
           stop
       end if 
       ! write(6,*) 'reset GPU memory to all zeros'
@@ -2612,19 +2612,19 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I3)') 'Error during device memory reseting : ',ierr2
+          write(6,'(A, I4)') 'Error during device memory reseting : ',ierr2
           stop
       end if 
       ! now we need to transfer memory over to GPU
       ! initialize rhs and x
       ierr = cudaMemcpyAsync(devPtrX,xPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrX0,devPtrX,Arow_d_size, &
-     &        cudaMemcpyDeviceToDevice)
+     &        cudaMemcpyDeviceToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrRHS,bPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
@@ -2636,16 +2636,16 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ! note we should not do this before L/U as we use devPtrAval when
       ! converting L/U to single
       ierr = cudaMemcpyAsync(devPtrArow,ArowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrAcol,AcolPtr,Annz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrAval,AvalPtr,Annz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtriwus,iwusPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! finally need to create the SpMatDescr (now as real)
       ierr = cusparseCreateCsr(matA, n, n, nnz, devPtrArow, devPtrAcol, &
@@ -2656,7 +2656,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error assembling system matrix ", ierr2
+          write(6, '(A,I4)') " error assembling system matrix ", ierr2
           stop
       end if
       ! now deallocate temp array
@@ -2682,7 +2682,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
      &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG2, bsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for spMV ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for spMV ",  ierr2
           stop
       end if
       ! and finally (re)allocate the buffer
@@ -2725,14 +2725,14 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       ! now copy the values to device
       ierr = cudaMemcpyAsync(devPtrMval,MvalPtr,Lnnz_d_size*2, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
-      call kernelc_d2s(devPtrMval, devPtrLval, nnzL)
+      call kernelc_d2s(devPtrMval, devPtrLval, nnzL, cuStream)
       ierr = cudaMemcpyAsync(devPtrLcol,McolPtr,Lnnz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrLrow,MrowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! finish synchronizing
       ierr = cudaDeviceSynchronize()
@@ -2749,7 +2749,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
     &        Ldiagtype, 4)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error assembling L matrix ", ierr2
+          write(6, '(A,I4)') " error assembling L matrix ", ierr2
           stop
       end if
       ! now start messing up with SpSV
@@ -2771,7 +2771,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
      &        CUDA_C_32F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle, lbsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for Lsolve ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for Lsolve ",  ierr2
           stop
       end if
       ierr = cudaMalloc(bufferL, lbsize)
@@ -2815,14 +2815,14 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       ! now copy the values to device
       ierr = cudaMemcpyAsync(devPtrMval,MvalPtr,Unnz_d_size*2, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
-      call kernelc_d2s(devPtrMval, devPtrUval, nnzU)
+      call kernelc_d2s(devPtrMval, devPtrUval, nnzU, cuStream)
       ierr = cudaMemcpyAsync(devPtrUcol,McolPtr,Unnz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrUrow,MrowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! now deallocate the temp val
       ierr = cudaFree(devPtrMval)
@@ -2842,7 +2842,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
     &        Udiagtype, 4)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error assembling U matrix ", ierr2
+          write(6, '(A,I4)') " error assembling U matrix ", ierr2
           stop
       end if
       ! now estimate the buffersize needed by SpSV (Usolve)
@@ -2855,7 +2855,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
      &        CUDA_C_32F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle, ubsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for Usolve ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for Usolve ",  ierr2
           stop
       end if
       ! write(6,*) 'spsv Usolve buffersize = ', ubsize
@@ -2973,7 +2973,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             OMEGA = C_ONE
             restart = .FALSE.
             if (ierr2 .ne. 0 ) then
-              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              write(6, '(A, I4)') " Error steering search direction ", ierr2
               stop
             end if
         else
@@ -3001,7 +3001,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             call kernelc_update_pc(devPtrR, devPtrV, BETA, OMEGA, devPtrP, n, &
       &         cuStream)
             if (ierr2 .ne. 0 ) then
-              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              write(6, '(A, I4)') " Error steering search direction ", ierr2
               stop
             end if
         end if
@@ -3012,7 +3012,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ! ierr = cudaEventRecord(cuEvent1, cuStream)
         ! ierr2 = ierr2 + ierr
         ! firstly need to convert P to FP32
-        call kernelc_d2s(devPtrP, devPtr32, n)
+        call kernelc_d2s(devPtrP, devPtr32, n, cuStream)
         ierr = cusparseDnVecSetValues(vecXs, devPtr32)
         ierr2 = ierr2 + ierr
         ierr = cusparseDnVecSetValues(vecYs, devPtrPT)
@@ -3026,7 +3026,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecYs, devPtrPT)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Lsolve ", ierr2
+          write(6, '(A, I4)') " Error during Lsolve ", ierr2
           stop
         end if
         ! U solve --> U*PH = PT
@@ -3044,11 +3044,11 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecYs, devPtr32)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          write(6, '(A, I4)') " Error during Usolve ", ierr2
           stop
         end if
         ! still need to convert PH to FP64
-        call kernelc_s2d(devPtr32, devPtrPH, n)
+        call kernelc_s2d(devPtr32, devPtrPH, n, cuStream)
         ! record - end of SPSVs
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
         ! ierr = cudaDeviceSynchronize()
@@ -3113,7 +3113,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! S = R
         ierr = cudaMemCpyAsync(devPtrS, devPtrR, Arow_d_size, &
-     &       cudaMemcpyDeviceToDevice)
+     &       cudaMemcpyDeviceToDevice,cuStream)
         ierr2 = ierr2 + ierr
         ! S = R - ALPHA*V
         ierr = cublasZaxpy(cublasHandle,n,-(ALPHA),devPtrV,1,devPtrS,1)
@@ -3125,7 +3125,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ! write(6,'(A)') ' Lsolve '
         ! L solve --> L*ST = S
         ! still need to convert S to FP32
-        call kernelc_d2s(devPtrS, devPtr32, n)
+        call kernelc_d2s(devPtrS, devPtr32, n, cuStream)
         ierr = cusparseDnVecSetValues(vecXs, devPtr32)
         ierr2 = ierr2 + ierr
         ierr = cusparseDnVecSetValues(vecYs, devPtrST)
@@ -3142,7 +3142,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecYs, devPtrST)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Lsolve ", ierr2
+          write(6, '(A, I4)') " Error during Lsolve ", ierr2
           stop
         end if
         
@@ -3161,11 +3161,11 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecYs, devPtr32)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          write(6, '(A, I4)') " Error during Usolve ", ierr2
           stop
         end if
         ! still need to convert SH to double
-        call kernelc_s2d(devPtr32, devPtrSH, n)
+        call kernelc_s2d(devPtr32, devPtrSH, n, cuStream)
         ! record - end of 2 SPSVs
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
         ! ierr2 = ierr2 + ierr
@@ -3234,7 +3234,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! R = S
         ierr = cudaMemCpyAsync(devPtrR, devPtrS, Arow_d_size, &
-     &       cudaMemcpyDeviceToDevice)
+     &       cudaMemcpyDeviceToDevice,cuStream)
         ierr2 = ierr2 + ierr
         ! R = S - OMEGA * T
         ierr = cublasZaxpy(cublasHandle,n,-(OMEGA),devPtrT,1,devPtrR,1)
@@ -3301,7 +3301,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         if (rnorm .lt. rnorm0) then
             rnorm0 = rnorm
             ierr = cudaMemCpyAsync(devPtrX0, devPtrX, Arow_d_size, &
-     &           cudaMemcpyDeviceToDevice)
+     &           cudaMemcpyDeviceToDevice,cuStream)
             ierr2 = ierr2 + ierr
         end if
       end do kspLoop
@@ -3323,7 +3323,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
           ierr = cudaMemcpy(xPtr,devPtrX,Arow_d_size,cudaMemcpyDeviceToHost)
       end if
       if (ierr .ne. 0 ) then
-          write(6, '(A, I2)') " cudaMemcpy back to host error: ", ierr
+          write(6, '(A, I4)') " cudaMemcpy back to host error: ", ierr
           stop
       end if
       ! \activiate lightsaber
@@ -3385,7 +3385,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cudaFree(bufferU)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cudafree: ',ierr2
+          write(6,'(A, I4)') 'Error during cudafree: ',ierr2
           stop
       end if 
       ierr = cusparseSpSV_destroyDescr(LsolveHandle)
@@ -3417,15 +3417,15 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cudaStreamDestroy(cuStream)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cuda handle destruction: ',ierr2
+          write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
           stop
       end if 
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cuda flag rest: ',ierr2
+          write(6,'(A, I4)') 'Error during cuda flag rest: ',ierr2
           stop
-      end if
+      end if 
       return
 end subroutine cuBiCGmix ! cuBiCGmix
 
@@ -3767,7 +3767,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during CUDA allocation: ',ierr2
+          write(6,'(A, I4)') 'Error during CUDA allocation: ',ierr2
           stop
       end if 
       ! write(6,*) 'reset GPU memory to all zeros'
@@ -3813,23 +3813,27 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I3)') 'Error during device memory reseting : ',ierr2
+          write(6,'(A, I4)') 'Error during device memory reseting : ',ierr2
           stop
       end if 
       ! transfer memory over to GPU
       ! write(6,*) 'Transferring (local) memory to GPU'
       ! initialize (local) A
       ierr = cudaMemcpyAsync(devPtrArow,ArowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I4)') " error copying system matrix ", ierr2
+          stop
+      end if
       ierr = cudaMemcpyAsync(devPtrAcol,AcolPtr,Annz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrAval,AvalPtr,Annz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtriwus,iwusPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ! finally need to create the SpMatDescr 
       ierr = cusparseCreateCsr(matA, nrow, ncol, nnz, devPtrArow, devPtrAcol, &
@@ -3838,15 +3842,15 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, *) " local matrix size = ", nrow, ' * ', ncol
-          write(6, '(A,I2)') " error assembling system matrix ", ierr2
+          write(6, '(A,I4)') " error assembling system matrix ", ierr2
           stop
       end if
       ! initialize rhs and x
       ierr = cudaMemcpyAsync(devPtrX,xPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrRHS,bPtr,Arow_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice,cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
@@ -3892,7 +3896,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
      &        CUDA_C_64F, CUSPARSE_SPMV_CSR_ALG2, bsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for spMV ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for spMV ",  ierr2
           stop
       end if
       ! and finally (re)allocate the buffer
@@ -3934,13 +3938,13 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       ! now copy the values to device
       ierr = cudaMemcpyAsync(devPtrLval,MvalPtr,Lnnz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice, cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrLcol,McolPtr,Lnnz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice, cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrLrow,MrowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice, cuStream)
       ierr2 = ierr2 + ierr
       ! finish synchronizing
       ierr = cudaDeviceSynchronize()
@@ -3951,7 +3955,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
      &       CUSPARSE_INDEX_BASE_ONE, CUDA_C_64F) 
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error assembling L matrix ", ierr2
+          write(6, '(A,I4)') " error assembling L matrix ", ierr2
           stop
       end if
       ! now start messing up with SpSV
@@ -3972,7 +3976,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
 
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for Lsolve ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for Lsolve ",  ierr2
           stop
       end if
       ierr = cudaMalloc(bufferL, lbsize)
@@ -4016,13 +4020,13 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       ! now copy the values to device
       ierr = cudaMemcpyAsync(devPtrUval,MvalPtr,Unnz_d_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice, cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrUcol,McolPtr,Unnz_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice, cuStream)
       ierr2 = ierr2 + ierr
       ierr = cudaMemcpyAsync(devPtrUrow,MrowPtr,Arowp1_i_size, &
-     &        cudaMemcpyHostToDevice)
+     &        cudaMemcpyHostToDevice, cuStream)
       ierr2 = ierr2 + ierr
       ! finally need to create the SpMatDescr 
       ierr = cusparseCreateCsr(matU, nrow, nrow, nnz, devPtrUrow, devPtrUcol, &
@@ -4045,7 +4049,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
      &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, UsolveHandle, ubsize)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A,I2)') " error estimating buffer for Usolve ",  ierr2
+          write(6, '(A,I4)') " error estimating buffer for Usolve ",  ierr2
           stop
       end if
       ! write(6,*) 'spsv Usolve buffersize = ', ubsize
@@ -4200,7 +4204,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
             ierr2 = ierr2 + ierr
             restart = .FALSE.
             if (ierr2 .ne. 0 ) then
-              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              write(6, '(A, I4)') " Error steering search direction ", ierr2
               stop
             end if
         else
@@ -4235,7 +4239,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
             call kernelc_update_pc(devPtrR, devPtrV,BETA,OMEGA, devPtrP,nrow,&
       &         cuStream)
             if (ierr2 .ne. 0 ) then
-              write(6, '(A, I2)') " Error steering search direction ", ierr2
+              write(6, '(A, I4)') " Error steering search direction ", ierr2
               stop
             end if
         end if
@@ -4258,7 +4262,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrPT)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Lsolve ", ierr2
+          write(6, '(A, I4)') " Error during Lsolve ", ierr2
           stop
         end if
         ! U solve --> U*PH = PT
@@ -4276,7 +4280,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrPH)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          write(6, '(A, I4)') " Error during Usolve ", ierr2
           stop
         end if
         ! record - end of two SPSVs
@@ -4364,7 +4368,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! S = R (local)
         ierr = cudaMemcpyAsync(devPtrS, devPtrR, Arow_d_size, &
-       &       cudaMemcpyDeviceToDevice)
+       &       cudaMemcpyDeviceToDevice, cuStream)
         ierr2 = ierr2 + ierr
         ! S = R - ALPHA * V (local)
         ierr = cublasZaxpy(cublasHandle,nrow,-(ALPHA),devPtrV,1,devPtrS,1)
@@ -4396,7 +4400,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrST)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-            write(6, '(A, I2)') " Error during Lsolve ", ierr2
+            write(6, '(A, I4)') " Error during Lsolve ", ierr2
             stop
         end if
         ! U solve --> U*SH = ST
@@ -4418,7 +4422,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrSH)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-            write(6, '(A, I2)') " Error during Usolve ", ierr2
+            write(6, '(A, I4)') " Error during Usolve ", ierr2
             stop
         end if
 
@@ -4509,7 +4513,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         ! R = S
         ierr = cudaMemcpyAsync(devPtrR, devPtrS, Arow_d_size, &
-       &       cudaMemcpyDeviceToDevice)
+       &       cudaMemcpyDeviceToDevice, cuStream)
         ierr2 = ierr2 + ierr
         ! R = S - OMEGA * T (local)
         ierr = cublasZaxpy(cublasHandle,nrow,-(OMEGA),devPtrT,1,devPtrR,1)
@@ -4542,7 +4546,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         if (rnorm .lt. rnorm0) then
             rnorm0 = rnorm
             ierr = cudaMemCpyAsync(devPtrX0, devPtrX, Arow_d_size, &
-                cudaMemcpyDeviceToDevice)
+                cudaMemcpyDeviceToDevice,cuStream)
             ierr2 = ierr2 + ierr
         end if
         ierr = cudaDeviceSynchronize()
@@ -4565,7 +4569,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
           ierr = cudaMemcpy(xPtr,devPtrX,Arow_d_size,cudaMemcpyDeviceToHost)
       end if
       if (ierr .ne. 0 ) then
-          write(6, '(A, I2)') " cudaMemcpy back to host error: ", ierr
+          write(6, '(A, I4)') " cudaMemcpy back to host error: ", ierr
           stop
       end if
       ! ierr = cudaHostUnregister(bdotLocPtr)
@@ -4635,7 +4639,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaFree(devPtrXbuff)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cudafree: ',ierr2
+          write(6,'(A, I4)') 'Error during cudafree: ',ierr2
           stop
       end if 
       ierr = cusparseSpSV_destroyDescr(LsolveHandle)
@@ -4661,13 +4665,13 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaStreamDestroy(cuStream)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error during cuda handle destruction: ',ierr2
+          write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
           stop
       end if 
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I2)') 'Error setting device flags: ',ierr2
+          write(6,'(A, I4)') 'Error setting device flags: ',ierr2
           stop
       end if 
       return

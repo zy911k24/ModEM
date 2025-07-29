@@ -72,7 +72,7 @@ module cudaFortMap
    integer*4         :: CUSPARSE_SPMV_COO_ALG2
    parameter (CUSPARSE_SPMV_ALG_DEFAULT=0)
    parameter (CUSPARSE_SPMV_COO_ALG1=1)
-   parameter (CUSPARSE_SPMV_CSR_ALG1=2)
+   parameter (CUSPARSE_SPMV_CSR_ALG1=2) 
    parameter (CUSPARSE_SPMV_CSR_ALG2=3)
    parameter (CUSPARSE_SPMV_COO_ALG2=4)
    ! Algorithm type for SpSV
@@ -226,18 +226,19 @@ module cudaFortMap
    end function cudaMemcpy
 
    ! cudaMemcpyAsync
-   integer (c_int) function cudaMemcpyAsync( dst, src, count, kind ) & 
-    &              bind (C, name="cudaMemcpy" )
+   integer (c_int) function cudaMemcpyAsync( dst, src, count, kind, stream) &
+    &              bind (C, name="cudaMemcpyAsync" )
      use iso_c_binding
      implicit none
      ! copy a chunk of memory from *src* to *dst*
-     type (c_ptr), value :: dst, src
+     type (c_ptr), value       :: dst, src
      ! count is the size of memory (with unit of size_t)
      integer (c_size_t), value :: count, kind 
      ! kind specifies the direction 
      ! cudaMemcpyHostToDevice = 1
      ! cudaMemcpyDeviceToHost = 2
      ! cudaMemcpyDeviceToDevice = 3
+     type(c_ptr),value         :: stream ! streamid
    end function cudaMemcpyAsync
 
    ! cudaHostRegister
@@ -426,11 +427,11 @@ module cudaFortMap
      import ncclComm
      implicit none
      ! return the device assoicated with the comm
-     type(ncclComm),value      :: comm
      type (c_ptr), value       :: sendbuff, recvbuff
-     type (c_ptr), value       :: stream! pointer
      integer (c_size_t), value :: count
      integer (c_int), value    :: datatype
+     type(ncclComm),value      :: comm
+     type (c_ptr), value       :: stream! pointer
    end function ncclAllGather
 
    ! ncclAllGatherV
@@ -441,12 +442,12 @@ module cudaFortMap
      import ncclComm
      implicit none
      ! return the device assoicated with the comm
-     type(ncclComm),value      :: comm
      type (c_ptr), value       :: sendbuff, recvbuff
-     type (c_ptr), value       :: stream! pointer
      integer (c_size_t), value :: sendcount
      integer (c_int), value    :: datatype, root, n
      integer (c_size_t)        :: recvcounts(n), displs(n)
+     type(ncclComm),value      :: comm
+     type (c_ptr), value       :: stream! pointer
    end function ncclAllGatherV
 
    ! ncclCommFinalize
@@ -1544,7 +1545,7 @@ module cudaFortMap
    ! =========================================================================!
 
    ! kernelc_s2d 
-   subroutine kernelc_s2d( single, double, count ) & 
+   subroutine kernelc_s2d( single, double, count, stream ) & 
     &              bind (C, name="kernelc_s2d" )
      use iso_c_binding
      implicit none
@@ -1552,10 +1553,11 @@ module cudaFortMap
      type (c_ptr), value :: single, double ! pointers 
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
+     type (c_ptr),value     :: stream ! cudaStream
    end subroutine kernelc_s2d
 
    ! kernelc_d2s 
-   subroutine kernelc_d2s( double, single, count ) & 
+   subroutine kernelc_d2s( double, single, count, stream ) & 
     &              bind (C, name="kernelc_d2s" )
      use iso_c_binding
      implicit none
@@ -1563,6 +1565,7 @@ module cudaFortMap
      type (c_ptr),value   :: double, single ! pointers
      ! count is the size of memory (with unit of size_t)
      integer (c_int), value :: count 
+     type (c_ptr),value     :: stream ! cudaStream
    end subroutine kernelc_d2s
 
    ! kernelc_hadar
@@ -1646,7 +1649,7 @@ module cudaFortMap
                    bind (C, name="cf_resetFlag" )
      ! reset the computation flag of the GPU device
      ! see the c code in kernel_c for details
-     ! can be "cudaDeviceScheduleSpin" or
+     ! can be "cudaDeviceScheduleSpin" or 
      ! "cudaDeviceScheduleYield"
      use iso_c_binding
      implicit none
