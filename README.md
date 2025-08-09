@@ -157,8 +157,8 @@ The examples below will use data and model files from the
 [ModEM-Examples][ModEM-Examples] repo. You will need to clone or download this
 repository to obtain the data files and examples.
 
-[BLOCK2-Example]: https://github.com/MiCurry/ModEM-Examples/tree/main/Magnetotelluric/3D_MT/BLOCK2
-[Users-Guide]: https://github.com/MiCurry/ModEM-Model/blob/main/doc/userguide/ModEM_UserGuide.pdf
+[BLOCK2-Example]: https://github.com/magnetotellurics/ModEM-Examples/tree/main/Magnetotelluric/3D_MT/BLOCK2
+[Users-Guide]: https://github.com/magnetotellurics/ModEM/blob/main/doc/userguide/ModEM_UserGuide.pdf
 
 ## Forward Modeling
 
@@ -167,7 +167,7 @@ example:
 
 ``` bash
 $ cd ModEM-Examples/Magnetotelluric/3D_MT/BLOCK2
-$ ln -s ~/ModEM-Model/f90/Mod3DMT . # Link or copy if you prefer.
+$ ln -s ~/ModEM/f90/Mod3DMT . # Link or copy if you prefer.
 ```
 
 Then we can run ModEM with `-F` to run the forward model:
@@ -260,8 +260,8 @@ to manipulate ModEM input and output files.
 * [ModEM-Examples][ModEM-Examples] - A collection of 2D and 3D
 examples
 
-[ModEM-Tools]: https://github.com/MiCurry/ModEM-Tools
-[ModEM-Examples]: https://github.com/MiCurry/ModEM-Examples
+[ModEM-Tools]: https://github.com/magnetotellurics/ModEM-Tools
+[ModEM-Examples]: https://github.com/magnetotellurics/ModEM-Examples
 
 ## ModEM-ON and ModEM-OO
 
@@ -277,8 +277,8 @@ included as branches in this repository under the following names:
 > branch have unrelated git-history than other branches. Thus, these branches
 > should not be merged into other branches.
 
-[Object-Oriented-Branch]: https://github.com/MiCurry/ModEM-Model/tree/object-oriented
-[CSEM-Branch]: https://github.com/MiCurry/ModEM-Model/tree/CSEM
+[Object-Oriented-Branch]: https://github.com/magnetotellurics/ModEM/tree/object-oriented
+[CSEM-Branch]: https://github.com/magnetotellurics/ModEM/tree/CSEM
 
 # Citations
 
