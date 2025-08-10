@@ -103,7 +103,7 @@ implicit none
       INTEGER ix1,ix2,iy1,iy2
 
       IF ((y01-y00.NE.x01-x00).or.(y11-y10.NE.x11-x10)) THEN
-        call errStop('!!! ATTENTION, ERROR COPY VECTOR !!!')
+        call errStop('!!! ATTENTION, ERROR COPY MATRIX !!!')
       ENDIF
 
       ix1 = x00
@@ -127,7 +127,7 @@ implicit none
       INTEGER i_1,i_2,ia
 
       IF ((e2-s2+1)*(e1-s1+1).NE.(ea-sa+1)) THEN
-        call errStop('!!! ATTENTION, ERROR COPY VECTOR !!!')
+        call errStop('!!! ATTENTION, ERROR COPY MATRIX !!!')
       ENDIF
 
       ia = sa

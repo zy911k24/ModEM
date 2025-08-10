@@ -4098,7 +4098,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       bnorm = sqrt(abs(bdot))
       if (isnan(bnorm)) then
       ! this usually means an inadequate model, in which case Maxwell's fails
-          write(6,'*') 'Error: b in BICG contains NaNs; exiting...'
+          write(6,*) 'Error: b in BICG contains NaNs; exiting...'
           call ModEM_abort()
       else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
           write(0,*) 'Warning: b in BICG has all zeros, returning zero &
