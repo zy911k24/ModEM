@@ -23,9 +23,30 @@ Contains
     character(*), intent(in)  :: msg
     write(0,'(a9)',advance='no') 'Error: '
     write(0,*) trim(msg)
-    stop
 
-  end subroutine errStop
+    call ModEM_abort()
+
+  end subroutine errStop 
+
+  subroutine ModEM_abort()
+
+    use, intrinsic :: iso_fortran_env, only: stderr=>error_unit
+#ifdef MPI
+    use mpi
+#endif
+
+    implicit none
+
+#ifdef MPI
+    integer :: ierr, error_code
+#endif
+
+#ifdef MPI
+    call MPI_Abort(MPI_COMM_WORLD, error_code, ierr)
+#endif
+    stop 1
+
+  end subroutine
 
   ! **************************************************************************
   subroutine warning(msg)
@@ -689,8 +710,7 @@ recursive subroutine QSort(a, ia, i0, i1)
   integer,intent(in),optional                :: i0, i1
   integer                                    :: first,last,i, j, it, nA
   if (size(a).ne.size(ia)) then
-      write(6,*) 'error, array and array index is not of same size in QSort!'
-      stop
+      call errStop('error, array and array index is not of same size in QSort!')
   endif
   if (.not.present(i0)) then
       first = 1
@@ -703,8 +723,7 @@ recursive subroutine QSort(a, ia, i0, i1)
       last = i1
   endif
   if(first.gt.last) then 
-     write(6,*) 'error, first index is larger than the last in QSort!'
-     stop
+     call errStop('error, first index is larger than the last in QSort!')
   elseif(first.eq.last) then !only one element, no need to sort now
 !     write(6,*) 'no need to sort, only one element left'
      return

@@ -29,6 +29,8 @@ implicit none
      real (kind=prec)   :: alpha_1
      real (kind=prec)   :: startdm
      real (kind=prec)   :: gamma
+     ! output only every nskipth iterations, to reduce disk usage
+     integer            :: nskip
   end type DCGiterControl_t
     type(DCGiterControl_t), private, save :: DCGiterControl
     
@@ -87,6 +89,10 @@ subroutine set_DCGiterControl(DCGiterControl)
      DCGiterControl%startdm = 20.
      ! optional relaxation parameter (Renormalised Steepest Descent algorithm)
      DCGiterControl%gamma = 0.99
+     ! output only every nskipth iterations, to reduce disk usage
+     ! i.e. 1 = output every iteration
+     !      2 = output every second iteration, etc.
+     DCGiterControl%nskip = 1 ! not used - DCG doesn't take many iterations
 
 
 end subroutine set_DCGiterControl

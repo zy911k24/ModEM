@@ -1,6 +1,15 @@
 module ModEM_timers
 
-    use iso_fortran_env, only : int64, int32
+! By default, this module will use Fortran's SYSTEM_CLOCK as it's Monotonic; however, it
+! has the capability to use C timers. Because ModEM's makefile generation tool doesn't
+! automatically compile C files, in order to use the C timers you will need to do the 
+! following:
+! 
+! 1. Compile ModEM_machine_timers.c - By manually editing your makefile, see instructions
+!  in ModEM_machine_timers.c on how to do this and makefile rules to use.
+! 2. Compile this module with USE_C_TIMERS defined (Add `-DUSE_C_TIMERS` to FFLAGS).
+!
+    use iso_fortran_env, only : int64
     use iso_c_binding, only : c_int
 
     implicit none
@@ -16,12 +25,12 @@ module ModEM_timers
         integer :: hours = 0
         integer :: mins = 0
         integer :: secs = 0
-        integer(kind=16) :: nsecs = 0
+        integer(kind=int64) :: nsecs = 0
 
         integer (c_int) :: secs_c = 0
         integer (c_int) :: nsecs_c = 0
-        integer (kind=16) :: total_secs = 0
-        integer (kind=16) :: total_nsecs = 0
+        integer (kind=int64) :: total_secs = 0
+        integer (kind=int64) :: total_nsecs = 0
 
         type (ModEM_timer_t), pointer :: next => null()
     end type ModEM_timer_t
@@ -402,7 +411,7 @@ module ModEM_timers
         type (ModEM_timer_t), pointer :: timer
 
         integer(c_int) :: remainder
-        integer(kind=16) :: converted_nsecs
+        integer(kind=int64) :: converted_nsecs
 
         timer % total_nsecs = timer % total_nsecs + timer % nsecs_c
 

@@ -4,6 +4,29 @@
 #include <unistd.h>
 #include <math.h>
 
+/* In order to use these C routines in ModEM, place the following manually in
+ your makefile:
+
+ 1. Define -DUSE_C_TIMERS
+ 2. Set CC env variable to your desired C compiler: e.g.: `export CC=mpicc`
+ 3. Manually add rules/prerequisit to your makefile by doing the following:
+
+```
+$(OBJDIR)/ModEM_machine_timers.o: UTILS/ModEM_machine_timers.c
+	 $(CC) -c UTILS/ModEM_machine_timers.c -o $(OBJDIR)/ModEM_machine_timers.o
+```
+
+You will then need add `$(OBJDIR)/ModEM_machine_timers.o` to both the `OBJ`
+variable (append to the end) *and* to the prerequisit of the
+`$(OBJDIR)/ModEM_timing.o` rule in the makefile:
+
+```
+$(OBJDIR)/ModEM_timing.o:UTILS/ModEM_timing.f90 $(OBJDIR)/ModEM_machine_timers.o
+	 $(F90) -c $(MODULE) $(FFLAGS) $(MPIFLAGS) UTILS/ModEM_timing.f90 -o $(OBJDIR)/ModEM_timing.o
+```
+
+*/
+
 /* This file contatins the following timing functions:
 
     rdtscp(i)

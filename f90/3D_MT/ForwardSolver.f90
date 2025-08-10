@@ -838,7 +838,7 @@ end subroutine unpack_BC_from_file
       write(*,'(a12,a3,a25,i3,a14,es15.7)') 'Solving the ','FWD', &
                   ' problem for transmitter ',iTx,' at frequency ',txDict(iTx)%PERIOD
       call zero_solnVector(e0)
-      call FWDsolve3D(b0%b(1),omega,e0%pol(1))
+      call FWDSolve3D(b0%b(1),omega,e0%pol(1))
 
       !   add primary field to secondary field
       !e0%pol(1)=E_p
@@ -860,7 +860,7 @@ end subroutine unpack_BC_from_file
 		   write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, 'Solving the ','SFF', &
 			   	' problem for period ',iTx,': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
          call zero(e0%pol(iMode))
-		   call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
+		   call FWDSolve3D(b0%b(iMode),omega,e0%pol(iMode))
 		   write (6,*)node_info,'FINISHED solve, nPol',e0%nPol
          ! now add primary field to secondary field
          call add(E_p,e0%pol(iMode),e0%pol(iMode))
@@ -878,15 +878,19 @@ end subroutine unpack_BC_from_file
          write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, &
                  'Solving the ','FWD', ' problem for period ',iTx,   &
                  ': ',(2*PI)/omega,' secs & mode # ',e0%Pol_index(iMode)
-         if (present(device_id)) then
-             if (present(comm_local)) then
-                 call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id, &
-    &               comm_local)
-             else
-                 call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id)
-             end if
+
+         if (.not. present(device_id)) then
+             call FWDSolve3D(b0%b(iMode),omega,e0%pol(iMode))
+#ifdef MPI
          else
-             call FWDsolve3D(b0%b(iMode),omega,e0%pol(iMode))
+            if (present(comm_local)) then
+#ifdef FG
+                 call FWDSolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id, comm_local)
+#endif 
+            else
+                 call FWDSolve3D(b0%b(iMode),omega,e0%pol(iMode), device_id)
+            endif
+#endif
          end if
          ! write (6,*) node_info,' finished solving, nPol', e0%nPol
          write (*,'(a12,a24,i4)') node_info, &
@@ -927,7 +931,7 @@ end subroutine unpack_BC_from_file
 
 !  zero starting solution, solve for all modes
    call zero_solnVector(e)
-   
+
    if (txDict(iTx)%Tx_type=='MT' .or. txDict(iTx)%Tx_type=='CSEM' ) then 
    	omega = txDict(iTx)%omega
    	period = txDict(iTx)%period
@@ -936,17 +940,20 @@ end subroutine unpack_BC_from_file
       	write (*,'(a12,a12,a3,a20,i4,a2,es13.6,a15,i2)') node_info, &
      &          'Solving the ',FWDorADJ, ' problem for period ',iTx,&
      &          ': ',(2*PI)/omega,' secs & mode # ',e%Pol_index(iMode)
-        if (present(device_id)) then
-            if (present(comm_local)) then
-                call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
-     &           e%pol(imode), device_id, comm_local)
-            else
-                call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,       &
-     &           e%pol(imode), device_id)
-            end if
+
+        if (.not. present(device_id)) then
+            call FWDSolve3D(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
+#ifdef MPI
         else
-            call FWDsolve3d(comb%b(e%Pol_index(iMode)),omega,e%pol(imode))
-        end if
+            if (present(comm_local)) then
+#ifdef FG
+               call FWDSolve3D(comb%b(e%Pol_index(iMode)), omega, e%pol(imode), device_id, comm_local)
+#endif
+            else
+               call FWDSolve3D(comb%b(e%Pol_index(iMode)),omega, e%pol(imode), device_id)
+            end if
+#endif
+        endif
       enddo
    else
        write(0,*) node_info,'Unknown FWD problem type',trim(txDict(iTx)%Tx_type),'; unable to run sensSolve'

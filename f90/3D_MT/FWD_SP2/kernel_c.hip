@@ -4,6 +4,10 @@
 #include <string.h>
 #include <complex.h>
 #include "hip/hip_runtime.h"
+#if defined(FG)
+#include "hip/rccl.h"
+#endif
+
 
 // simple kernel function that converts double vectors to single
 __global__ void real64to32(const double *in, float *out, const int N)
@@ -174,7 +178,8 @@ void sleep(float seconds)
 
 // function called from main fortran program
 // single to double conversion
-extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np)
+extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np,
+		hipStream_t cstream)
 {
     //uint32_t  *a_d;  // declare GPU vector double (but stored as uint)
     //uint64_t  *b_d;  // declare GPU vector float
@@ -187,14 +192,15 @@ extern "C" void kernelc_s2d(const uint32_t *a_d, uint64_t *b_d, int Np)
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    real32to64<<< grids, blocks >>>( a_d, b_d, N);
+    real32to64<<< grids, blocks, 0, cstream >>>( a_d, b_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // double to single conversion
-extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
+extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np,
+		hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //float  *b_d;  // declare GPU vector float
@@ -207,14 +213,15 @@ extern "C" void kernelc_d2s(const double *a_d, float *b_d, int Np)
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    real64to32<<< grids, blocks >>>( a_d, b_d, N);
+    real64to32<<< grids, blocks, 0, cstream >>>( a_d, b_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // hadamard multiply real version
-extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
+		int Np, hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -228,14 +235,15 @@ extern "C" void kernelc_hadar(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_real<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_real<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // hadamard multiply complex version
-extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d, int Np)
+extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
+		int Np, hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -249,14 +257,14 @@ extern "C" void kernelc_hadac(const double *a_d, const double *b_d, double *c_d,
     dim3 grids(ngrid,1,1);
     dim3 blocks(32,8,1);
     // call function on GPU
-    hada_cmplx<<< grids, blocks >>>( a_d, b_d, c_d, N);
+    hada_cmplx<<< grids, blocks, 0, cstream >>>( a_d, b_d, c_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // xpby complex version
-extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, int Np)
+extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d, int Np, hipStream_t cstream)
 {
     //double  *x_d;  // declare GPU vector double 
     //double  *y_d;  // declare GPU vector double
@@ -273,14 +281,14 @@ extern "C" void kernelc_xpbyc(const double *x_d, double _Complex b, double *y_d,
     // get lower 64 bit
     double bi = cimag(b);
     // call function on GPU
-    xpby_cmplx<<< grids, blocks >>>( x_d, br, bi, y_d, N);
+    xpby_cmplx<<< grids, blocks, 0, cstream>>>( x_d, br, bi, y_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update p complex version
-extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np)
+extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _Complex beta, double _Complex omega, double *p_d, int Np, hipStream_t cstream)
 {
     //double  *a_d;  // declare GPU vector double 
     //double  *b_d;  // declare GPU vector double
@@ -301,14 +309,16 @@ extern "C" void kernelc_update_pc(const double *r_d, const double *v_d, double _
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    p_update_cmplx<<< grids, blocks >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
+    p_update_cmplx<<< grids, blocks, 0, cstream >>>( r_d, v_d, br, bi, wr, wi, p_d, N);
 
     return;
 }
 
 // function called from main fortran program
 // update x complex version
-extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double _Complex alpha, double _Complex omega, double *x_d, int Np)
+extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, 
+		double _Complex alpha, double _Complex omega, double *x_d, 
+		int Np, hipStream_t cstream)
 {
     //double  *ph_d;  // declare GPU vector double 
     //double  *sh_d;  // declare GPU vector double
@@ -330,8 +340,178 @@ extern "C" void kernelc_update_xc(const double *ph_d, const double *sh_d, double
     // get lower 64 bit
     double wi = cimag(omega);
     // call function on GPU
-    x_update_cmplx<<< grids, blocks >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
+    x_update_cmplx<<< grids, blocks, 0, cstream >>>( ph_d, sh_d, ar, ai, wr, wi, x_d, N);
     return;
+}
+
+#if defined(FG) 
+// This function is copied from rccl
+static __inline__ int rcclTypeSize(rcclDataType_t type) {
+  switch (type) {
+    case rcclInt8:
+    case rcclUint8:
+      return 1;
+    case rcclFloat16:
+      return 2;
+    case rcclInt32:
+    case rcclUint32:
+    case rcclFloat32:
+      return 4;
+    case rcclInt64:
+    case rcclUint64:
+    case rcclFloat64:
+      return 8;
+    default:
+      return -1;
+  }
+}
+// a homebrew allgatherv method by stitching the basic rccl apis togather  
+extern "C" rcclResult_t rcclAllGatherV0(void *sendbuff, size_t sendcount,
+	rcclDataType_t senddatatype, void *recvbuff,
+	size_t recvcounts[], size_t recvdispls[], 
+	int root, int n, rcclComm_t comm, hipStream_t stream)
+{
+    int rank_rccl;
+    int size_rccl;
+    hipError_t hipErr;
+    rcclResult_t Err;
+    // need to check the rccl interface here
+    rcclCommUserRank(comm, &rank_rccl);
+    rcclCommCount(comm, &size_rccl);
+    // for debug
+    // printf("#C rank = %i, size = %i \n", rank_rccl, size_rccl);
+    // for debug
+    // printf("#C rank = %i, sizes = %ld \n", rank_rccl, recvcounts[rank_rccl]);
+    // for debug
+    // printf("#C rank = %i, displs = %ld \n",rank_rccl, recvdispls[rank_rccl]);
+    // firstly gather to root
+    // send to root (if you are not)
+    if(rank_rccl!=root) {
+	// non-root send the data
+        // printf("#C sending data to %i @ %i\n", 0, rank_rccl);
+        Err = rcclSend(sendbuff, sendcount, senddatatype,
+        	root, comm, stream);
+        if(Err){
+            return Err;
+	}
+    }
+    else {
+        // root firstly copy sendbuff to recvbuff 
+        size_t self_displ = recvdispls[rank_rccl];
+        hipErr = hipMemcpyAsync(static_cast<std::byte*>(recvbuff) + 
+	    rcclTypeSize(senddatatype) * self_displ,
+            sendbuff, sendcount * rcclTypeSize(senddatatype),
+            hipMemcpyDeviceToDevice, stream);
+	if (hipErr != hipSuccess) return rcclSystemError;
+	// then recieve the data from other processes
+        for(int i=0;i<size_rccl;++i){
+            if(i == root) continue; //skip the root
+            // printf("#C waiting for data from %i @ %i\n", i, rank_rccl);
+            Err=rcclRecv(static_cast<std::byte*>(recvbuff)+
+	        rcclTypeSize(senddatatype)*recvdispls[i],
+                recvcounts[i], senddatatype, i, comm, stream);
+            if(Err){
+        	 return Err;
+	    }
+	}
+    }
+    // now broadcast to all
+    size_t total = 0;
+    for (int i = 0; i < size_rccl; i++){
+        total += recvcounts[i];
+    }
+    // for debug
+    // now broadcast the full vector
+    // printf("#C now broadcasting @ %i\n", rank_rccl);
+    Err=rcclBcast(recvbuff, total, senddatatype, 0, comm, stream);
+    if(Err){
+        return Err;
+    }
+    return rcclSuccess;
+}
+#endif
+#
+// a homebrew allgatherv method by stitching the basic rccl apis togather  
+extern "C" rcclResult_t rcclAllGatherV(void *sendbuff, size_t sendcount,
+	rcclDataType_t senddatatype, void *recvbuff,
+        size_t recvcounts[], size_t recvdispls[],
+        int root, int n, rcclComm_t comm, hipStream_t stream)
+{
+    int rank_rccl;
+    int size_rccl;
+    hipError_t hipErr;
+    rcclResult_t Err;
+
+    // Get the rank and size of the communicator
+    Err = rcclCommUserRank(comm, &rank_rccl);
+    if (Err != rcclSuccess) return Err;
+    Err = rcclCommCount(comm, &size_rccl);
+    if (Err != rcclSuccess) return Err;
+
+    // for debug
+    // printf("#C rank = %i, size = %i \n", rank_rccl, size_rccl);
+    // for debug
+    // printf("#C rank = %i, sizes = %ld \n", rank_rccl, recvcounts[rank_rccl]);
+    // for debug
+    // printf("#C rank = %i, displs = %ld \n",rank_rccl, recvdispls[rank_rccl]);
+
+    // firstly everyone copies the local sendbuff to recvbuff
+    size_t size_byte  = sendcount * rcclTypeSize(senddatatype);
+    size_t displ_byte = recvdispls[rank_rccl] * rcclTypeSize(senddatatype);
+    // printf("Base: %p, Offset: %zu bytes, Final: %p\n", recvbuff, displ_byte, 
+    // 	    static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
+    hipErr = hipMemcpyAsync(static_cast<std::byte*>(recvbuff) + displ_byte,
+            sendbuff, size_byte, hipMemcpyDeviceToDevice,stream);
+    if (hipErr != hipSuccess) { 
+        printf("Failed to copy the device Mem: %s\n",  
+           hipGetErrorString(hipErr));
+        return rcclSystemError;
+    }
+
+    // Perform the allgather operation using a ring communication pattern
+    // find the right and left neighbour
+    int left = (rank_rccl - 1 + size_rccl) % size_rccl;
+    int right = (rank_rccl + 1) % size_rccl;
+
+    // we perform an in-place send and recv to avoid frequent alloc/dealloc
+    // operations
+    // For each rank, we'll send and receive data
+    // except the local one (as we already have that) 
+    for (int i = 1; i < size_rccl; ++i) {
+        // Synchronize the gather operation
+        Err = rcclGroupStart();
+        if (Err != rcclSuccess) return Err;
+	int crnt = (rank_rccl  - i + 1 + size_rccl) % size_rccl;
+        // always Send data to the right neighbor, use the size 
+	// and displs from the last iteration
+        Err = rcclSend(static_cast<std::byte*>(recvbuff) + displ_byte,
+                      recvcounts[crnt], senddatatype, right, comm, stream);
+        if (Err) {
+            return Err;
+        }
+        // printf("Send to right:  %i, from Rank: %i\n", right, rank_rccl);
+        // printf("Send: %p, Offset: %zu bytes, Final: %p\n",
+        //	recvbuff, displ_byte,  
+        //	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
+	// size and displs to receive from the rank to the left
+	int next = (rank_rccl  - i + size_rccl) % size_rccl;
+	displ_byte = recvdispls[next] * rcclTypeSize(senddatatype);
+        // always Receive data from the left neighbor
+        Err = rcclRecv(static_cast<std::byte*>(recvbuff) + displ_byte,
+                      recvcounts[next], senddatatype, left, comm, stream);
+        if (Err) {
+            return Err;
+        }
+        // printf("Recv from left:  %i, to Rank: %i\n", left, rank_rccl);
+        // printf("Recv: %p, Offset: %zu bytes, Final: %p\n",
+	// 	recvbuff, displ_byte, 
+	//	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
+        // Synchronize the gather operation
+        Err = rcclGroupEnd();
+        if (Err != rcclSuccess) return Err;
+    }
+
+    return rcclSuccess;
 }
 
 // function called from main fortran program 
@@ -424,12 +604,6 @@ extern "C" int cf_hookDev(int dev_idx)
         printf("Failed to set device %i: %u \n", dev_idx, err);
         goto Error;
     }
-    err = hipGetDeviceFlags(&flag);
-    if (err != hipSuccess)
-    {
-        printf("Failed to get the device flags %i: %s\n", dev_idx, 
-            hipGetErrorString(err));
-    }
     // now try to get affiliated device
     while(true)
     {
@@ -452,7 +626,7 @@ extern "C" int cf_hookDev(int dev_idx)
         }
         // printf("Dev = %i, flag = %i \n", dev_idx, flag);
         if (flag != hipDeviceScheduleYield && memusage < 50)
-        // if (memusage < 45)
+        // if (memusage < 50)
         // if (flag != hipDeviceScheduleYield)
         {
             // If the number of HIP contexts is greater than the number of 
