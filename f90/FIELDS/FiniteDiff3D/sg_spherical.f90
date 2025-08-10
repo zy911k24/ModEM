@@ -50,9 +50,8 @@ Contains
 
 
     if(.not.E%allocated) then
-       ! output an error and exit
-		 write(0,*) 'Error: (validate_cvector) E not allocated'
-		 stop
+        ! output an error and exit
+        call errStop('Error: (validate_cvector) E not allocated')
     end if
 
     ! Grid dimensions
@@ -205,9 +204,8 @@ Contains
 
 
     if(.not.E%allocated) then
-       ! output an error and exit
-		 write(0,*) 'Error: (validate_cvector) E not allocated'
-		 stop
+        ! output an error and exit
+        call errStop('Error: (validate_cvector) E not allocated')
     end if
 
     ! Grid dimensions

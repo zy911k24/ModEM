@@ -10,7 +10,7 @@
 module solver
 
    use math_constants   ! math/ physics constants
-   use utilities, only: isnan
+   use utilities 
    use spoptools        ! for sparse-matrix operations
 #if defined(FG) 
    use mpi
@@ -109,8 +109,7 @@ subroutine PCG(b,x,PCGiter)
   bnorm = sqrt(dot_product(b,b))
   if (isnan(bnorm)) then
   ! this usually means an inadequate model, in which case Maxwell's fails
-      write(0,*) 'Error: b in PCG contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in PCG contains NaNs; exiting...')
   endif
   rnorm = sqrt(dot_product(r,r))
   i = 1
@@ -134,8 +133,7 @@ subroutine PCG(b,x,PCGiter)
      i = i + 1
      rnorm = sqrt(dot_product(r,r))
      if (isnan(rnorm)) then
-         write(0,*) 'Error: residual in PCG contains NaNs; exiting...'
-         stop
+         call errStop('Error: residual in PCG contains NaNs; exiting...')
      endif
      PCGiter%rerr(i) = real(rnorm/bnorm)
   end do loop
@@ -226,8 +224,7 @@ subroutine QMR(b,x,QMRiter)
 
   ! this usually means an inadequate model, in which case Maxwell's fails
   if (isnan(abs(bnorm))) then
-      write(0,*) 'Error: b in QMR contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in QMR contains NaNs; exiting...')
   endif
 
   !  iter is iteration counter
@@ -258,7 +255,7 @@ subroutine QMR(b,x,QMRiter)
         QMRiter%failed = .true.
         write(0,*) 'QMR FAILED TO CONVERGE : RHO'
         write(0,*) 'QMR FAILED TO CONVERGE : PSI'
-        stop
+        call ModEM_abort()
       endif
 
       rhoInv = (1/RHO)*cmplx(1.0, 0.0, 8)
@@ -470,8 +467,7 @@ subroutine TFQMR(b,x,KSPiter,adjt)
   ! Norm of rhs
   bnorm = SQRT(dot_product(b, b))
   if (isnan(bnorm)) then
-      write(0,*) 'Error: b in TFQMR contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in TFQMR contains NaNs; exiting...')
   else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
       write(0,*) 'Warning: b in TFQMR has all zeros, returning zero solution'
       x = b 
@@ -789,8 +785,7 @@ subroutine BiCG(b,x,KSPiter,adjt)
   bnorm = SQRT(dot_product(b, b))
   if (isnan(bnorm)) then
   ! this usually means an inadequate model, in which case Maxwell's fails
-      write(0,*) 'Error: b in BICG contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in BICG contains NaNs; exiting...')
   else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
       write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
       x = b 
@@ -1037,8 +1032,7 @@ subroutine BiCGfg(b,x,KSPiter,comm_local,adjt)
   bnorm = sqrt(bnorm)
   if (isnan(bnorm)) then
   ! this usually means an inadequate model, in which case Maxwell's fails
-      write(0,*) 'Error: b in BICG contains NaNs; exiting...'
-      stop
+      call errStop('Error: b in BICG contains NaNs; exiting...')
   else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
       write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
       x = b 
@@ -1434,7 +1428,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cuda initialize ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! record the event before memory manipulation
       ! ierr = cudaEventRecord(cuEvent1, cuStream)
@@ -1480,7 +1474,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during CUDA allocation: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! write(6,*) 'reset GPU memory to all zeros'
       ierr = cudaMemset(devPtrX,0,Arow_d_size)
@@ -1523,7 +1517,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during device memory reseting : ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! transfer memory over to GPU
       ! write(6,*) 'Transferring memory to GPU'
@@ -1547,7 +1541,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error assembling system matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! initialize rhs and x
       ierr = cudaMemcpyAsync(devPtrX,xPtr,Arow_d_size, &
@@ -1560,7 +1554,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during cuda memcpy ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! now deallocate temp array
       if ( c_associated(iwusPtr) ) then
@@ -1577,8 +1571,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr = cusparseCreateDnVec(vecY, n, devPtrR, CUDA_C_64F)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, *) " error creating the dense Vecs "
-          stop
+          call errStop(" error creating the dense Vecs ")
       end if
       ierr = cusparseSpMV_bufferSize_cmplx(cusparseHandle,              &
      &        TRANS, C_ONE, matA, vecX, C_ONE, vecY,                   &
@@ -1586,7 +1579,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for spMV ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ! and finally (re)allocate the buffer
       ierr = cudaMalloc(buffer, bsize)
@@ -1645,7 +1638,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error assembling L matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! now start messing up with SpSV
       ! now estimate the buffersize needed by SpSV (Lsolve)
@@ -1666,7 +1659,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
 
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for Lsolve ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ierr = cudaMalloc(bufferL, lbsize)
       ierr2 = ierr2 + ierr
@@ -1739,7 +1732,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for Usolve ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,*) 'spsv Usolve buffersize = ', ubsize
       ierr = cudaMalloc(bufferU, ubsize)
@@ -1783,15 +1776,14 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, *) " error with SpMV operation ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! bnorm = nrm2(b)
       ierr = cublasZnrm2(cublasHandle,n,devPtrRHS,1,bnormPtr)
       ierr2 = ierr2 + ierr
       if (isnan(bnorm)) then
       ! this usually means an inadequate model, in which case Maxwell's fails
-          write(6,*) 'Error: b in BICG contains NaNs; exiting...'
-          stop
+          call errStop('Error: b in BICG contains NaNs; exiting...')
       else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
           write(6,*) 'Warning: b in BICG has all zeros, returning zero &
      &        solution'
@@ -1816,7 +1808,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       rnorm0 = rnorm
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during residual estimation", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,'(A, ES12.6)') ' initial relative residual = ', rnorm/bnorm
       !================= Now start configuring the iteration ================!
@@ -1858,7 +1850,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             restart = .FALSE.
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I4)') " Error steering search direction ", ierr2
-              stop
+              call ModEM_abort()
             end if
         else
             ! current and previous RHO, RHO0 should be one
@@ -1889,7 +1881,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
        &            cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I4)') " Error steering search direction ", ierr2
-              stop
+              call ModEM_abort()
             end if
         end if
         ! record - start of two SPSVs
@@ -1912,7 +1904,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Lsolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! U solve --> U*PH = PT
         ! write(6,'(A)') ' Usolve '
@@ -1930,7 +1922,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Usolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! record - end of two SPSVs
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
@@ -1965,7 +1957,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error calculating A*PH", ierr2
-            stop
+            call ModEM_abort()
         end if
         ! record - end of one SPMV
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
@@ -2001,7 +1993,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error estimating the first Conj res. ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! ============== second half of the conjugate iteration ============= !
         ! record - start of two SPSV
@@ -2027,7 +2019,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Lsolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         
         ! U solve --> U*SH = ST
@@ -2050,7 +2042,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Usolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
 
         ! record - end of 2 SPSVs
@@ -2086,7 +2078,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error calculating A*SH", ierr2
-            stop
+            call ModEM_abort()
         end if
 
         ! record - end of 1 SPMV 
@@ -2134,7 +2126,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error estimating the second Conj res. ", ierr2
-          stop
+          call ModEM_abort()
         end if
         KSPiter%rerr(iter) = rnorm/bnorm
         ! write(6,'(A12,I4,A10,ES12.6)') 'iteration #', iter, ' relres= ', &
@@ -2162,7 +2154,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
             ierr2 = ierr2 + ierr
             if (ierr2 .ne. 0 ) then
                 write(6,'(A,I4)') " Error calculating A*X", ierr2
-                stop
+                call ModEM_abort()
             end if
             ! R = -Ax
             ! ierr = cublasZscal(cublasHandle,n,C_MINUSONE,devPtrR,1)
@@ -2195,7 +2187,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error synchronizing after iterations ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,'(A)') ' Copy solution from GPU to CPU'
       if (.not. converged) then ! solution not found 
@@ -2209,7 +2201,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       end if
       if (ierr .ne. 0 ) then
           write(6, '(A, I4)') " cudaMemcpy back to host error: ", ierr
-          stop
+          call ModEM_abort()
       end if
       ! \activiate lightsaber
       ! clear gpu mem
@@ -2269,7 +2261,7 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cudafree: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ierr = cusparseSpSV_destroyDescr(LsolveHandle)
       ierr2 = ierr2 + ierr
@@ -2293,13 +2285,13 @@ subroutine cuBiCG(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error setting device flags: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       return
 end subroutine cuBiCG ! cuBiCG
@@ -2516,7 +2508,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cuda initialize ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! record, start allocating the device mem
       ! ierr = cudaEventRecord(cuEvent1, cuStream)
@@ -2566,7 +2558,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during CUDA allocation: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! write(6,*) 'reset GPU memory to all zeros'
       ierr = cudaMemset(devPtrX,0,Arow_d_size)
@@ -2613,7 +2605,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during device memory reseting : ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! now we need to transfer memory over to GPU
       ! initialize rhs and x
@@ -2630,7 +2622,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during cuda memcpy ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! initialize A
       ! note we should not do this before L/U as we use devPtrAval when
@@ -2657,7 +2649,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error assembling system matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! now deallocate temp array
       if ( c_associated(iwusPtr) ) then
@@ -2673,7 +2665,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, *) " error creating the dense Vecs "
-          stop
+          call ModEM_abort()
       end if
       ! now estimate the buffersize needed by SpMV
       ! y = a*A*x + b*y --> y = Ax
@@ -2683,7 +2675,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for spMV ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ! and finally (re)allocate the buffer
       ierr = cudaMalloc(buffer, bsize)
@@ -2750,7 +2742,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error assembling L matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! now start messing up with SpSV
       ! firstly we need to create two dense vectors 
@@ -2772,7 +2764,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for Lsolve ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ierr = cudaMalloc(bufferL, lbsize)
       ierr2 = ierr2 + ierr
@@ -2843,7 +2835,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error assembling U matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! now estimate the buffersize needed by SpSV (Usolve)
       ! solves y in U*y = a*x (if a=1)
@@ -2856,7 +2848,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for Usolve ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,*) 'spsv Usolve buffersize = ', ubsize
       ierr = cudaMalloc(bufferU, ubsize)
@@ -2900,15 +2892,14 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, *) " error with SpMV operation ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! bnorm = nrm2(b)
       ierr = cublasZnrm2(cublasHandle,n,devPtrRHS,1,bnormPtr)
       ierr2 = ierr2 + ierr
       if (isnan(bnorm)) then
       ! this usually means an inadequate model, in which case Maxwell's fails
-          write(0,*) 'Error: b in BICG contains NaNs; exiting...'
-          stop
+          call errStop('Error: b in BICG contains NaNs; exiting...')
       else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
           write(0,*) 'Warning: b in BICG has all zeros, returning zero solution'
           x = b 
@@ -2932,7 +2923,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       rnorm0 = rnorm
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during residual estimation", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,'(A, ES10.4)') ' initial relative residual = ', rnorm/bnorm
       !================= Now start configuring the iteration ================!
@@ -2974,7 +2965,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             restart = .FALSE.
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I4)') " Error steering search direction ", ierr2
-              stop
+              call ModEM_abort()
             end if
         else
             ! current and previous RHO, RHO0 should be one
@@ -3002,7 +2993,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       &         cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I4)') " Error steering search direction ", ierr2
-              stop
+              call ModEM_abort()
             end if
         end if
         ! ============== first half of the conjugate iteration ============= !
@@ -3027,7 +3018,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Lsolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! U solve --> U*PH = PT
         ! write(6,'(A)') ' Usolve '
@@ -3045,7 +3036,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Usolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! still need to convert PH to FP64
         call kernelc_s2d(devPtr32, devPtrPH, n, cuStream)
@@ -3082,7 +3073,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error calculating A*PH", ierr2
-            stop
+            call ModEM_abort()
         end if
         ! record - end of SPMV
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
@@ -3143,7 +3134,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Lsolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         
         ! U solve --> U*SH = ST
@@ -3162,7 +3153,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Usolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! still need to convert SH to double
         call kernelc_s2d(devPtr32, devPtrSH, n, cuStream)
@@ -3199,7 +3190,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error calculating Axpy", ierr2
-            stop
+            call ModEM_abort()
         end if
 
         ! record - end of 1 SPMV 
@@ -3248,7 +3239,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error estimating the second Conj res. ", ierr2
-          stop
+          call ModEM_abort()
         end if
 
         KSPiter%rerr(iter) = rnorm/bnorm
@@ -3277,7 +3268,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
             ierr2 = ierr2 + ierr
             if (ierr2 .ne. 0 ) then
                 write(6,'(A,I4)') " Error calculating A*X", ierr2
-                stop
+                call ModEM_abort()
             end if
             ! R = -Ax
             ! ierr = cublasZscal(cublasHandle,n,C_MINUSONE,devPtrR,1)
@@ -3310,7 +3301,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error synchronizing after iterations ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,'(A)') ' Copy solution from GPU to CPU'
       if (.not. converged) then ! solution not found 
@@ -3324,7 +3315,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       end if
       if (ierr .ne. 0 ) then
           write(6, '(A, I4)') " cudaMemcpy back to host error: ", ierr
-          stop
+          call ModEM_abort()
       end if
       ! \activiate lightsaber
       ! clear gpu mem
@@ -3386,7 +3377,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cudafree: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ierr = cusparseSpSV_destroyDescr(LsolveHandle)
       ierr2 = ierr2 + ierr
@@ -3418,13 +3409,12 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
-          stop
-      end if 
+          call ModEM_abort()
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cuda flag rest: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       return
 end subroutine cuBiCGmix ! cuBiCGmix
@@ -3684,8 +3674,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaEventCreate(cuEvent2)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I4)') 'Error during cuda initialize ',ierr2
-          stop
+          write(6,'(A, I4)') 'Error during HIP initialize ',ierr2
+          call ModEM_abort()
       end if 
       ! if (ncclIsInit.eq.0) then
       !        ! and init the NCCL communicator
@@ -3767,8 +3757,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I4)') 'Error during CUDA allocation: ',ierr2
-          stop
+          write(6,'(A, I4)') 'Error during GPU MEM allocation: ',ierr2
+          call ModEM_abort()
       end if 
       ! write(6,*) 'reset GPU memory to all zeros'
       ierr = cudaMemset(devPtrX,0,Arow_d_size)
@@ -3814,7 +3804,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during device memory reseting : ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       ! transfer memory over to GPU
       ! write(6,*) 'Transferring (local) memory to GPU'
@@ -3841,9 +3831,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
      &       CUSPARSE_INDEX_BASE_ONE, CUDA_R_64F) 
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, *) " local matrix size = ", nrow, ' * ', ncol
           write(6, '(A,I4)') " error assembling system matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! initialize rhs and x
       ierr = cudaMemcpyAsync(devPtrX,xPtr,Arow_d_size, &
@@ -3855,8 +3844,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaDeviceSynchronize()
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, '(A, I4)') " Error during cuda memcpy ", ierr2
-          stop
+          write(6, '(A, I4)') " Error during hip memcpy ", ierr2
+          call ModEM_abort()
       end if
       ! now deallocate temp array
       if ( c_associated(iwusPtr) ) then
@@ -3889,7 +3878,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, *) " error creating the dense Vecs "
-          stop
+          call ModEM_abort()
       end if
       ierr = cusparseSpMV_bufferSize_cmplx(cusparseHandle,              &
      &        TRANS, C_ONE, matA, vecX, C_ONE, vecY,                    &
@@ -3897,7 +3886,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for spMV ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ! and finally (re)allocate the buffer
       ierr = cudaMalloc(buffer, bsize)
@@ -3956,7 +3945,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error assembling L matrix ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! now start messing up with SpSV
       ! now estimate the buffersize needed by SpSV (Lsolve)
@@ -3977,7 +3966,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
 
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for Lsolve ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ierr = cudaMalloc(bufferL, lbsize)
       ierr2 = ierr2 + ierr
@@ -3985,6 +3974,10 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
      &        CUSPARSE_OPERATION_NON_TRANSPOSE, C_ONE, matL, vecXloc, vecY, &
      &        CUDA_C_64F,CUSPARSE_SPSV_ALG_DEFAULT, LsolveHandle, bufferL)
       ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I4)') " error analysing L matrix",  ierr2
+          call ModEM_abort()
+      end if
       ! write(6,*) 'spsv Lsolve buffersize = ', lbsize
       ! then U 
       if (adjoint) then
@@ -4033,6 +4026,10 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
      &       devPtrUval, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, &
      &       CUSPARSE_INDEX_BASE_ONE, CUDA_C_64F) 
       ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I4)') " error creating U matrix",  ierr2
+          call ModEM_abort()
+      end if
       ! now estimate the buffersize needed by SpSV (Usolve)
       ! solves y in U*y = a*x (if a=1)
       ierr = cusparseSpMatSetAttribute(matU, CUSPARSE_SPMAT_FILL_MODE, &
@@ -4041,6 +4038,10 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cusparseSpMatSetAttribute(matU, CUSPARSE_SPMAT_DIAG_TYPE, &
     &        Udiagtype, 4)
       ierr2 = ierr2 + ierr
+      if (ierr2 .ne. 0 ) then
+          write(6, '(A,I4)') " error setting attribute for U ",  ierr2
+          call ModEM_abort()
+      end if
       ! still need to establish a context handler for Usolve
       ierr = cusparseSpSV_createDescr(UsolveHandle)
       ierr2 = ierr2 + ierr
@@ -4050,7 +4051,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
           write(6, '(A,I4)') " error estimating buffer for Usolve ",  ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,*) 'spsv Usolve buffersize = ', ubsize
       ierr = cudaMalloc(bufferU, ubsize)
@@ -4086,8 +4087,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cublasZdot(cublasHandle,nrow,devPtrRHS,1,devPtrRHS,1,bdotLocPtr)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(0, *) " error with Zdot operation ", ierr
-          stop
+          write(6, '(A,I4)') " error with SpMV operation ", ierr2
+          call ModEM_abort()
       end if
       ! note that ALLREDUCE is equivalent to a REDUCE and a BCAST
       call MPI_ALLREDUCE(bdotLoc, bdot, 1, MPI_DOUBLE_COMPLEX, MPI_SUM,    &
@@ -4096,9 +4097,9 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ! here every process stores a copy of bnorm
       bnorm = sqrt(abs(bdot))
       if (isnan(bnorm)) then
-      ! this usually means an inadequate model, in which case Maxwell's failed
-          write(0,*) 'Error: b in BICG contains NaNs; exiting...'
-          stop
+      ! this usually means an inadequate model, in which case Maxwell's fails
+          write(6,*) 'Error: b in BICG contains NaNs; exiting...'
+          call ModEM_abort()
       else if ( bnorm .eq. 0.0) then ! zero rhs -> zero solution
           write(0,*) 'Warning: b in BICG has all zeros, returning zero &
      &        solution'
@@ -4154,7 +4155,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       rnorm0 = rnorm
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during residual estimation", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! write(6,'(A, ES12.6)') ' initial relative residual = ', rnorm/bnorm
       !================= Now start configuring the iteration ================!
@@ -4205,7 +4206,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
             restart = .FALSE.
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I4)') " Error steering search direction ", ierr2
-              stop
+              call ModEM_abort()
             end if
         else
             ! save the previous RHO
@@ -4240,7 +4241,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       &         cuStream)
             if (ierr2 .ne. 0 ) then
               write(6, '(A, I4)') " Error steering search direction ", ierr2
-              stop
+              call ModEM_abort()
             end if
         end if
         ! record - start of two SPSVs
@@ -4263,7 +4264,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Lsolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! U solve --> U*PH = PT
         ! write(6,'(A)') ' Usolve '
@@ -4281,7 +4282,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error during Usolve ", ierr2
-          stop
+          call ModEM_abort()
         end if
         ! record - end of two SPSVs
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
@@ -4327,7 +4328,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error calculating A*PH", ierr2
-            stop
+            call ModEM_abort()
         end if
         ! record - end of one SPMV
         ! ierr = cudaEventRecord(cuEvent2, cuStream)
@@ -4374,8 +4375,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cublasZaxpy(cublasHandle,nrow,-(ALPHA),devPtrV,1,devPtrS,1)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-            write(6, '(A, I4)') " Error estimating the first Conj res. ", ierr2
-            stop
+          write(6, '(A, I4)') " Error estimating the first Conj res. ", ierr2
+          call ModEM_abort()
         end if
         ! ============== second half of the conjugate iteration ============= !
         ! record - start of two SPSV
@@ -4400,8 +4401,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrST)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-            write(6, '(A, I4)') " Error during Lsolve ", ierr2
-            stop
+          write(6, '(A, I4)') " Error during Lsolve ", ierr2
+          call ModEM_abort()
         end if
         ! U solve --> U*SH = ST
         ! write(6,'(A)') ' Usolve '
@@ -4422,8 +4423,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr = cusparseDnVecGetValues(vecY, devPtrSH)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
-            write(6, '(A, I4)') " Error during Usolve ", ierr2
-            stop
+          write(6, '(A, I2)') " Error during Usolve ", ierr2
+          call ModEM_abort()
         end if
 
         ! record - end of 2 SPSVs
@@ -4465,7 +4466,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         ierr2 = ierr2 + ierr
         if (ierr2 .ne. 0 ) then
             write(6,'(A,I4)') " Error calculating A*SH", ierr2
-            stop
+            call ModEM_abort()
         end if
 
         ! record - end of 1 SPMV 
@@ -4527,7 +4528,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
         rnorm = sqrt(bdot)
         if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error estimating the second Conj res. ", ierr2
-          stop
+          call ModEM_abort()
         end if
         KSPiter%rerr(iter) = rnorm/bnorm
         ! for debug
@@ -4555,7 +4556,7 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
  9527 continue
       if (ierr2 .ne. 0 ) then
           write(6, '(A, I4)') " Error synchronizing after iterations ", ierr2
-          stop
+          call ModEM_abort()
       end if
       ! for debug
       ! write(6,'(A)') ' Copy solution from GPU to CPU'
@@ -4569,8 +4570,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
           ierr = cudaMemcpy(xPtr,devPtrX,Arow_d_size,cudaMemcpyDeviceToHost)
       end if
       if (ierr .ne. 0 ) then
-          write(6, '(A, I4)') " cudaMemcpy back to host error: ", ierr
-          stop
+          write(6, '(A, I4)') " hipMemcpy back to host error: ", ierr
+          call ModEM_abort()
       end if
       ! ierr = cudaHostUnregister(bdotLocPtr)
       ! ierr2 = ierr2 + ierr
@@ -4639,8 +4640,8 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaFree(devPtrXbuff)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I4)') 'Error during cudafree: ',ierr2
-          stop
+          write(6,'(A, I4)') 'Error during hip free: ',ierr2
+          call ModEM_abort()
       end if 
       ierr = cusparseSpSV_destroyDescr(LsolveHandle)
       ierr2 = ierr2 + ierr
@@ -4665,14 +4666,14 @@ subroutine cuBiCGfg(b,x,KSPiter,comm_local,device_idx,adjt)
       ierr = cudaStreamDestroy(cuStream)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
-          write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
-          stop
+          write(6,'(A, I4)') 'Error during hip handle destruction: ',ierr2
+          call ModEM_abort()
       end if 
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error setting device flags: ',ierr2
-          stop
+          call ModEM_abort()
       end if 
       return
 end subroutine cuBiCGfg ! cuBiCGfg

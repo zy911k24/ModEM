@@ -390,7 +390,7 @@
         WRITE(6,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : XDiff',info
         WRITE(12,*) '!!! ATTENTION, ERROR IN DECOMPOSING MATRIX'
         WRITE(12,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : XDiff',info
-        STOP
+        call ModEM_abort()
       ENDIF
 
       RETURN
@@ -451,7 +451,7 @@
         WRITE(6,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : YDiff',info
         WRITE(12,*) '!!! ATTENTION, ERROR IN DECOMPOSING MATRIX'
         WRITE(12,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : YDiff',info
-        STOP
+        call ModEM_abort()
       ENDIF
 
       RETURN
@@ -515,7 +515,7 @@ ZDF=D0
       IF (info.NE.0) THEN
         WRITE(6,*) '!!! ATTENTION, ERROR IN DECOMPOSING MATRIX'
         WRITE(6,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : ZDiff',info
-        STOP
+        call ModEM_abort()
       ENDIF
 
 !     DO iz = 1,Nz
@@ -603,7 +603,7 @@ ZDF=D0
           IF (info.NE.0) THEN
             WRITE(6,*) '!!! ATTENTION, ERROR IN DECOMPOSING MATRIX'
             WRITE(6,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : XDiff',info
-            STOP
+            call ModEM_abort()
           ENDIF
 
           DO ix = 1,Nx
@@ -647,7 +647,7 @@ ZDF=D0
           IF (info.NE.0) THEN
             WRITE(6,*) '!!! ATTENTION, ERROR IN DECOMPOSING MATRIX'
             WRITE(6,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : YDiff',info
-            STOP
+            call ModEM_abort()
           ENDIF
 
           DO iy = 1,Ny
@@ -692,7 +692,7 @@ ZDF=D0
           IF (info.NE.0) THEN
             WRITE(6,*) '!!! ATTENTION, ERROR IN DECOMPOSING MATRIX'
             WRITE(6,*) 'ERROR DECOMPOSE DIFFUSION MATRIX : ZDiff',info
-            STOP
+            call ModEM_abort()
           ENDIF
 
           DO iz = 1,NzEarth

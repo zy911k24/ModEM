@@ -11,6 +11,7 @@ module EMsolve3D
   use modelOperator3d                   ! quasi-static Maxwell operator module
   use solver				! generic solvers
   use solnspace
+  use utilities
 
   implicit none
   public	:: FWDSolve3D ,ModelOperatorSetup, ModelOperatorCleanup
@@ -155,8 +156,7 @@ Contains
     trans = (bRHS%adj .eq. TRN)
 
     if (.not.eSol%allocated) then
-       write(0,*) 'eSol in EMsolve not allocated yet'
-       stop
+       call errStop('eSol in EMsolve not allocated yet')
     endif
 
     ! allocate/initialize local data structures

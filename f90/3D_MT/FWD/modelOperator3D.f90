@@ -32,6 +32,8 @@ module modelOperator3D
   use ModelSpace
   use boundary_ws          ! sets the boundary conditions
   use nestedEM
+  use utilities
+
   implicit none
 
   ! * These variables are used by model equation
@@ -515,13 +517,11 @@ Contains
     ! dummy variables
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in CurlcurlE not allocated yet'
-      stop
+      call errStop('inE in CurlcurlE not allocated yet')
     end if
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in CurlcurlE not allocated yet'
-      stop
+      call errStop('outE in CurlcurlE not allocated yet')
     end if
 
     ! Check whether the bounds are the same
@@ -653,8 +653,7 @@ Contains
     integer                   :: ix, iy, iz       ! dummy variables
 
     if (.not.Adiag%allocated) then
-      write(0,*) 'Adiag in AdiagSetUp not allocated yet'
-      stop
+      call errStop('Adiag in AdiagSetUp not allocated yet')
     end if
 
     do ix = 1, mGrid%nx
@@ -703,13 +702,11 @@ Contains
     ! dummy variables
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in Maxwell not allocated yet'
-      stop
+      call errStop('inE in Maxwell not allocated yet')
     end if
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in Maxwell not allocated yet'
-      stop
+      call errStop('outE in Maxwell not allocated yet')
     end if
 
     ! Check whether the bounds are the same
@@ -819,13 +816,11 @@ Contains
     ! a complex multiplier
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in MultA_O not allocated yet'
-      stop
+      call errStop('inE in MultA_O not allocated yet')
     end if
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in MultA_O not allocated yet'
-      stop
+      call errStop('outE in MultA_O not allocated yet')
     end if
 
     Call create_cvector(mGrid, workE, EDGE)
@@ -886,13 +881,11 @@ Contains
 
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in MultA_N not allocated yet'
-      stop
+      call errStop('inE in MultA_N not allocated yet')
     end if
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in MultA_N not allocated yet'
-      stop
+      call errStop('outE in MultA_N not allocated yet')
     end if
 
     ! Check whether the bounds are the same
@@ -1187,13 +1180,11 @@ Contains
     integer                             :: ix, iy, iz
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in M1solve not allocated yet'
-      stop
+      call errStop('inE in M1solve not allocated yet')
     end if
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in M1solve not allocated yet'
-      stop
+      call errStop('outE in M1solve not allocated yet')
     end if
 
     ! Check whether all the vector nodes are of the same size
@@ -1348,13 +1339,11 @@ Contains
     integer                         :: ix, iy, iz
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in M2solve not allocated yet'
-      stop
+      call errStop('inE in M2solve not allocated yet')
     end if
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in M2solve not allocated yet'
-      stop
+      call errStop('outE in M2solve not allocated yet')
     end if
 
     ! Check whether all the vector nodes are of the same size
@@ -1547,28 +1536,23 @@ Contains
     !call create_cvector(mGrid,wE,EDGE)
 
     IF(.not.sigma_E%allocated) THEN
-        WRITE(0,*) 'sigma_E not allocated yet: DivCorrSetUp'
-        STOP
+        call errStop('sigma_E not allocated yet: DivCorrSetUp')
     ENDIF
 
     IF(.not.db1%allocated) THEN
- 	WRITE(0,*) 'db1 not allocated yet: DivCorrSetUp'
- 	STOP
+      call errStop('db1 not allocated yet: DivCorrSetUp')
     ENDIF
 
     IF(.not.db2%allocated) THEN
- 	WRITE(0,*) 'db2 not allocated yet: DivCorrSetUp'
- 	STOP
+      call errStop('db2 not allocated yet: DivCorrSetUp')
     ENDIF
 
-        IF(.not.c%allocated) THEN
- 	WRITE(0,*) 'c not allocated yet: DivCorrSetUp'
- 	STOP
+    IF(.not.c%allocated) THEN
+      call errStop('c not allocated yet: DivCorrSetUp')
     ENDIF
 
     IF(.not.d%allocated) THEN
- 	WRITE(0,*) 'd not allocated yet: DivCorrSetUp'
- 	STOP
+      call errStop('d not allocated yet: DivCorrSetUp')
     ENDIF
 
     ! conductivity of air is modified for computing divergence correction
@@ -1702,13 +1686,11 @@ Contains
     integer                                   :: ix, iy, iz
 
     IF(.not.inPhi%allocated) THEN
- 	WRITE(0,*) 'inPhi not allocated in DivCgradILU'
- 	STOP
+ 	   call errStop('inPhi not allocated in DivCgradILU')
     ENDIF
 
     IF(.not.outPhi%allocated) THEN
- 	WRITE(0,*) 'outPhi not allocated in DivCgradILU'
- 	STOP
+ 	   call errStop('outPhi not allocated in DivCgradILU')
     ENDIF
 
     if (outPhi%allocated) then
@@ -1782,13 +1764,11 @@ Contains
     integer                                   :: ix, iy, iz
 
    IF(.not.inPhi%allocated) THEN
- 	WRITE(0,*) 'inPhi not allocated in DivCgrad'
- 	STOP
-    ENDIF
+      call errStop('inPhi not allocated in DivCgrad')
+   ENDIF
 
     IF(.not.outPhi%allocated) THEN
- 	WRITE(0,*) 'outPhi not allocated in DivCgrad'
- 	STOP
+      call errStop('outPhi not allocated in DivCgrad')
     ENDIF
 
     if (outPhi%allocated) then
@@ -1852,13 +1832,11 @@ Contains
     integer                                      :: ix, iy, iz
 
     IF(.not.inE%allocated) THEN
- 	WRITE(0,*) 'inE not allocated in DivC'
- 	STOP
+ 	   call errStop('inE not allocated in DivC')
     ENDIF
 
     IF(.not.outSc%allocated) THEN
- 	WRITE(0,*) 'outSc not allocated in DivC'
- 	STOP
+      call errStop('outSc not allocated in DivC')
     ENDIF
 
     if (outSc%gridType == CORNER) then

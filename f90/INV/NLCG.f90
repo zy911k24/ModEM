@@ -4,6 +4,7 @@ module NLCG
 
 use ModEM_timers
 use invcore
+use utilities
 
 
 implicit none
@@ -610,9 +611,7 @@ Contains
    niter = niter + 1
 
    if (f_1 - f_0 >= LARGE_REAL) then
-      print *, 'Try a smaller starting value of alpha.'
-      print *, 'Exiting...'
-      stop
+      call errStop("Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file). Exiting..")
    end if
 
    f_i = f_1
@@ -801,9 +800,7 @@ Contains
    niter = niter + 1
 
 	 if (f_1 - f_0 >= LARGE_REAL) then
-		print *, 'Try a smaller starting value of alpha.'
-		print *, 'Exiting...'
-		stop
+        call errStop("Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file). Exiting..")
 	 end if
 
    ! try fitting a quadratic
@@ -1106,11 +1103,11 @@ Contains
 
    if (f_1 - f_0 >= LARGE_REAL) then
    ! oops, we are pushing too far away
-       write(ioLog,'(a40)') 'Try a smaller starting value of alpha'
-       write(*,'(a40)') 'Try a smaller starting value of alpha'
+       write(ioLog,'(a40)') "Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file)"
+       write(*,'(a40)') "Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file)"
        write(ioLog,'(a10)') 'Exiting...'
        write(*,'(a10)') 'Exiting...'
-       stop
+       call ModEM_abort()
    end if
 
 

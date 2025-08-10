@@ -28,6 +28,7 @@ module sg_boundary
   use griddef
   use sg_vector
   use sg_sparse_vector
+  use utilities
   implicit none
 
   ! Generic interfaces are done through subroutines
@@ -560,8 +561,7 @@ Contains
         if (present(grid)) then
             call create_cboundary(grid,E)
         else
-            write(0, *) 'BC vector not allocated: unable to read cboundary from file'
-            stop
+            call errStop('BC vector not allocated: unable to read cboundary from file')
         end if
       end if
 
@@ -597,8 +597,7 @@ Contains
     type (cboundary), intent(inout)                    :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for ScMult_cboundary'
-       stop
+       call errStop('RHS not allocated yet for ScMult_cboundary')
     endif
 
     ! check to see if LHS (E2) is active (allocated)
@@ -642,8 +641,7 @@ Contains
     type (cboundary)                                   :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for ScMult_cboundary_f'
-       stop
+       call errStop('RHS not allocated yet for ScMult_cboundary_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -687,8 +685,7 @@ Contains
     type (cboundary), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_cboundary'
-       stop
+       call errStop('RHS not allocated yet for add_cboundary')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -730,8 +727,7 @@ Contains
     type (cboundary)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for add_cboundary_f'
-       stop
+       call errStop('RHS not allocated yet for add_cboundary_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -775,8 +771,7 @@ Contains
     type (cboundary), intent(inout)            :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_cboundary'
-       stop
+       call errStop('RHS not allocated yet for diagMult_cboundary')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -817,8 +812,7 @@ Contains
     type (cboundary)                           :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for diagMult_cboundary_f'
-       stop
+       call errStop('RHS not allocated yet for diagMult_cboundary_f')
     endif
 
     ! In function version, appropriate data types need to be created
@@ -862,8 +856,7 @@ Contains
     c = C_ZERO
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for dotProd_cboundary'
-       stop
+       call errStop('RHS not allocated yet for dotProd_cboundary')
     endif
 
     ! Check whether both input vectors are of the same size
@@ -899,8 +892,7 @@ Contains
     type (cboundary), intent(inout)          :: E3
 
     if((.not.E1%allocated).or.(.not.E2%allocated)) then
-       write(0,*) 'RHS not allocated yet for linComb_cboundary'
-       stop
+       call errStop('RHS not allocated yet for linComb_cboundary')
     endif
 
     ! check to see if LHS (E3) is active (allocated)
@@ -943,8 +935,7 @@ Contains
     type (cboundary), intent(inout)                    :: E2
 
     if(.not.E1%allocated) then
-       write(0,*) 'RHS not allocated yet for scMultAdd_cboundary'
-       stop
+       call errStop('RHS not allocated yet for scMultAdd_cboundary')
     endif
 
     ! check to see if LHS (E2) is active (allocated)
@@ -993,13 +984,11 @@ Contains
     integer                      :: ZMin, ZMax        ! ends for BC extraction
 
     if (.not.inE%allocated) then
-      write(0,*) 'inE in copy_cbvector not allocated yet'
-      stop
+      call errStop('inE in copy_cbvector not allocated yet')
     end if
 
     if (.not.outBC%allocated) then
-      write(0,*) 'outBC in copy_cbvector not allocated yet'
-      stop
+      call errStop('outBC in copy_cbvector not allocated yet')
     end if
 
     ! Check whether the bounds are the same
@@ -1105,13 +1094,11 @@ Contains
     integer                      :: ZMin, ZMax       ! ends for BC writing
 
     if (.not.outE%allocated) then
-      write(0,*) 'outE in copy_bcvector not allocated yet'
-      stop
+      call errStop('outE in copy_bcvector not allocated yet')
     end if
 
     if (.not.inBC%allocated) then
-      write(0,*) 'inBC in copy_bcvector not allocated yet'
-      stop
+      call errStop('inBC in copy_bcvector not allocated yet')
     end if
 
     ! Check whether the bounds are the same
@@ -1218,13 +1205,11 @@ Contains
 
 
     if (.not.inSV%allocated) then
-      write(0,*) 'inSV in copy_sparseveccb not allocated yet'
-      stop
+      call errStop('inSV in copy_sparseveccb not allocated yet')
     end if
 
     if (.not.outBC%allocated) then
-      write(0,*) 'outBC in copy_sparseveccb not allocated yet'
-      stop
+      call errStop('outBC in copy_sparseveccb not allocated yet')
     else
         nx = outBC%nx
         ny = outBC%ny
@@ -1236,11 +1221,11 @@ Contains
             write(0,*) 'Error-complex sparse vector does not have complete BC info in copy_sparseveccb'
             write(0,*) 'Values in BC sparse vector: ',inSV%nCoeff
             write(0,*) 'Expected number of values : ',nCoeff,' less ',duplCoeff,' duplicate edges'
-            stop
+            call ModEM_abort()
         elseif (inSV%gridType .ne. EDGE) then
             write(0,*) 'Unable to copy sparsevecc of type ',trim(inSV%gridType),' to BC vector'
             write(0,*) 'Input BC sparse vector is not defined on grid edges'
-            stop
+            call ModEM_abort()
         end if
     end if
 
@@ -1327,8 +1312,7 @@ end subroutine copy_sparseveccb
     integer                      :: ZMin, ZMax       ! ends for BC writing
 
     if (.not.inBC%allocated) then
-      write(0,*) 'inBC in copy_bsparsevecc not allocated yet'
-      stop
+      call errStop('inBC in copy_bsparsevecc not allocated yet')
     end if
 
     nx = inBC%nx

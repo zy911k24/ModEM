@@ -12,6 +12,7 @@ module EMsolve3D
   use vectranslate     ! translate back and forth between Cvec and vec
   use solver           ! generic solvers rewrite for sp
   use solnspace
+  use utilities
 
   implicit none
   public        :: FWDSolve3D
@@ -178,8 +179,7 @@ Contains
     trans = (bRHS%adj .eq. TRN)
     iOmegaMuInv = C_ONE/cmplx(0.0,1.0d0*ISIGN*omega*MU_0,kind=prec) 
     if (.not.eSol%allocated) then
-       write(0,*) 'eSol in EMsolve not allocated yet'
-       stop
+       call errStop('eSol in EMsolve not allocated yet')
     else
     !   determine the edge numbers of the mesh
     !   need to write a interface for these
@@ -618,8 +618,7 @@ Contains
      if (rank_local.eq.0) then ! leader
          trans = (bRHS%adj .eq. TRN)
          if (.not.eSol%allocated) then
-             write(0,*) 'eSol in EMsolve not allocated yet'
-             stop
+             call errStop('eSol in EMsolve not allocated yet')
          end if 
          ! determine the edge numbers of the mesh
          ! need to write a interface for these

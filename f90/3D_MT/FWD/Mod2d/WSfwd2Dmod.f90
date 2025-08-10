@@ -16,6 +16,7 @@
 
 module WSfwd2Dmod
    use wsfwd1dmod
+   use utilities
    !use wsLAPACK
    !use sunperf
    implicit none
@@ -76,7 +77,7 @@ module WSfwd2Dmod
         WRITE(6,*) '!!! Please, check your model and restart !!!'
         WRITE(6,*)   &
        '!!! If problem persists, contact egbert@coas.oregonstate.edu !!'
-        STOP
+        call ModEM_abort()
       ENDIF
 
 100   FORMAT(7E11.3)

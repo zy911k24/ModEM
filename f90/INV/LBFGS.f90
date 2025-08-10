@@ -3,6 +3,7 @@ module LBFGS
 ! inherits SensComp, DataIO and all modules they use. Also Main_MPI and Sub_MPI
 
 use invcore
+use utilities
 
 implicit none
 
@@ -647,9 +648,7 @@ Contains
    niter = niter + 1
 
    if (f_1 - f_0 >= LARGE_REAL) then
-      print *, 'Try a smaller starting value of alpha.'
-      print *, 'Exiting...'
-      STOP
+      call errStop("Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file). Exiting..")
    end if
 
    f_i = f_1
@@ -838,11 +837,9 @@ Contains
    call printf('STARTLS',lambda,alpha,f_1,mNorm_1,rms_1,logFile)
    niter = niter + 1
 
-	 if (f_1 - f_0 >= LARGE_REAL) then
-		print *, 'Try a smaller starting value of alpha.'
-		print *, 'Exiting...'
-		STOP
-	 end if
+   if (f_1 - f_0 >= LARGE_REAL) then
+       call errStop("Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file). Exiting..")
+   end if
 
    ! try fitting a quadratic
    a = (f_1 - f_0 - g_0*alpha_1)/(alpha_1**2)
@@ -1142,11 +1139,11 @@ Contains
 
    if (f_1 - f_0 >= LARGE_REAL) then
    ! oops, we are pushing too far away
-       write(ioLog,'(a40)') 'Try a smaller starting value of alpha'
-       write(*,'(a40)') 'Try a smaller starting value of alpha'
+       write(ioLog,'(a40)') "Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file)"
+       write(*,'(a40)') "Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file)"
        write(ioLog,'(a10)') 'Exiting...'
        write(*,'(a10)') 'Exiting...'
-       STOP
+       call ModEM_abort()
    end if
 
 
@@ -1528,7 +1525,7 @@ Contains
        write(*,'(a45)') 'UNABLE TO PROCEED DUE TO A BAD GRADIENT(>0)'
        write(ioLog,'(a10)') 'Exiting...'
        write(*,'(a10)') 'Exiting...'
-       STOP
+       call ModEM_abort()
    end if
    ! ====================================================================== !
    ! evaluate the functional at the first guess
@@ -1548,11 +1545,11 @@ Contains
 
    if (f_1 - f_0 >= LARGE_REAL) then
    ! oops, we are pushing too far away
-       write(ioLog,'(a40)') 'Try a smaller starting value of alpha'
-       write(*,'(a40)') 'Try a smaller starting value of alpha'
+       write(ioLog,'(a40)') "Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file)"
+       write(*,'(a40)') "Try a smaller starting value of alpha ('Initial search step in model units' in InvCtrl file)"
        write(ioLog,'(a10)') 'Exiting...'
        write(*,'(a10)') 'Exiting...'
-       STOP
+       call ModEM_abort()
    end if
    ! calculate the gradient at the first guess
    call gradient(lambda,d,m0,mHat_1,grad,dHat_1,eAll_1)
@@ -1727,7 +1724,7 @@ Contains
    else
        write(*,'(a50)') '!=========== it is a TRAP! =============='
        write(ioLog,'(a50)') '!=========== it is a TRAP! =============='
-       stop
+       call ModEM_abort()
    endif
    nbracket = 0
    ! ====================================================================== !

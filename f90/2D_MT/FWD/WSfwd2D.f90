@@ -14,6 +14,7 @@ module wsfwd2d
 !    and WSfwd1Dmod
 
 use math_constants
+use utilities
 !use wsLAPACK
 
 implicit none
@@ -60,8 +61,7 @@ implicit none
       INTEGER ix,iy
 
       IF (y_2-y_1.NE.x_2-x_1) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY VECTOR !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY VECTOR !!!')
       ENDIF
 
       ix = x_1
@@ -81,8 +81,7 @@ implicit none
       INTEGER ix,iy
 
       IF (y_2-y_1.NE.x_2-x_1) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY VECTOR !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY VECTOR !!!')
       ENDIF
 
       ix = x_1
@@ -104,8 +103,7 @@ implicit none
       INTEGER ix1,ix2,iy1,iy2
 
       IF ((y01-y00.NE.x01-x00).or.(y11-y10.NE.x11-x10)) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY MATRIX !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY MATRIX !!!')
       ENDIF
 
       ix1 = x00
@@ -129,8 +127,7 @@ implicit none
       INTEGER i_1,i_2,ia
 
       IF ((e2-s2+1)*(e1-s1+1).NE.(ea-sa+1)) THEN
-        WRITE(6,*) '!!! ATTENTION, ERROR COPY MATRIX !!!'
-        STOP
+        call errStop('!!! ATTENTION, ERROR COPY MATRIX !!!')
       ENDIF
 
       ia = sa
@@ -443,7 +440,7 @@ implicit none
         WRITE(6,*) '!!! Please, check your model and restart !!!'
         WRITE(6,*)   &
        '!!! If problem persists, contact egbert@coas.oregonstate.edu !!'
-        STOP
+        call ModEM_abort()
       ENDIF
 
 100   FORMAT(7E11.3)

@@ -775,13 +775,13 @@ Contains
 
       if(.not. E%allocated) then
          write(0, *) 'rvector must be allocated before reading from ',trim(fname)
-         stop
+         call ModEM_abort()
       elseif (E%gridType .ne. gridType) then
          write(0, *) 'rvector must be of type ',gridType,' before reading from ',trim(fname)
-         stop
+         call ModEM_abort()
       elseif ((E%nx .ne. Nx) .or. (E%ny .ne. Ny) .or. (E%nz .ne. Nz)) then
          write(0, *) 'wrong size of rvector on input from ',trim(fname)
-         stop
+         call ModEM_abort()
       endif
 
       if (binary) then
@@ -876,13 +876,13 @@ Contains
 
       if(.not. E%allocated) then
          write(0, *) 'cvector must be allocated before reading from ',trim(fname)
-         stop
+         call ModEM_abort()
       elseif (E%gridType .ne. gridType) then
          write(0, *) 'cvector must be of type ',gridType,' before reading from ',trim(fname)
-         stop
+         call ModEM_abort()
       elseif ((E%nx .ne. Nx) .or. (E%ny .ne. Ny) .or. (E%nz .ne. Nz)) then
          write(0, *) 'wrong size of cvector on input from ',trim(fname)
-         stop
+         call ModEM_abort()
       endif
 
       if (binary) then

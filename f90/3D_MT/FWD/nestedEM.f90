@@ -4,6 +4,7 @@ Module nestedEM
   					! (between boundary conditions and
 					! complex vectors)
   use sg_sparse_vector !, only: add_scvector
+  use utilities
 
   implicit none
 
@@ -238,8 +239,7 @@ Contains
 
     if (whichFace == 'zFace') then
        if (whereAt.gt.(inGrid%nz+1)) then
-          write(0, *) 'whereAt: Out of bounds in OneSlice' 
-          stop
+          call errStop('whereAt: Out of bounds in OneSlice')
        end if
        if (whatType == 'Edge') then
           ! total number for a given slice	
@@ -297,8 +297,7 @@ Contains
 
     else if (whichFace == 'xFace') then
        if (whereAt.gt.(inGrid%nx+1)) then
-          write(0, *) 'whereAt: Out of bounds in OneSlice' 
-          stop
+          call errStop('whereAt: Out of bounds in OneSlice')
        end if
        if (whatType == 'Edge') then	
 	  ! total number for a given slice	
@@ -356,8 +355,7 @@ Contains
 
     else if (whichFace == 'yFace') then
        if (whereAt.gt.(inGrid%ny+1)) then
-          write(0, *) 'whereAt: Out of bounds in OneSlice' 
-          stop
+          call errStop('whereAt: Out of bounds in OneSlice')
        end if
        if (whatType == 'Edge') then
 	  ! total number for a given slice	
@@ -464,20 +462,20 @@ Contains
        totalSites = nSites
 
 
-       if (whichFace == 'zFace') then       
+       if (whichFace == 'zFace') then
           if (siteLocations(i)%xyz == 1) then
-	  ! sparse vector for ex measurement
-             xyz = 1 
-             Call EinterpSetUp(inGrid,siteLocations(i)%p,xyz,LC)      
+             ! sparse vector for ex measurement
+             xyz = 1
+             Call EinterpSetUp(inGrid,siteLocations(i)%p,xyz,LC)
              e_sparse_vector(i) = LC
           else if (siteLocations(i)%xyz == 2) then
           ! sparse vector for ey measurement
-             xyz = 2 
-             Call EinterpSetUp(inGrid,siteLocations(i)%p,xyz,LC)      
+             xyz = 2
+             Call EinterpSetUp(inGrid,siteLocations(i)%p,xyz,LC)
              e_sparse_vector(i)= LC
-	  else 
-	      write (0, *) 'wrong component in NestingSetUp for ', whichFace  
-	      stop
+         else
+            write (0, *) 'wrong component in NestingSetUp for ', whichFace
+            call ModEM_abort()
           end if
        end if
 
@@ -491,9 +489,9 @@ Contains
              xyz = 3
              Call EinterpSetUp(inGrid,siteLocations(i)%p,xyz,LC)      
              e_sparse_vector(i) = LC
-	  else 
-	      write (0, *) 'wrong component in NestingSetUp for ', whichFace 
-	      stop
+	       else 
+	          write (0, *) 'wrong component in NestingSetUp for ', whichFace 
+	          call ModEM_abort()
           end if
        end if
 
@@ -510,9 +508,9 @@ Contains
              xyz = 1
              Call EinterpSetUp(inGrid,siteLocations(i)%p,xyz,LC)      
              e_sparse_vector(i) = LC
-	  else 
-	      write (0, *) 'wrong component in NestingSetUp for ', whichFace  
-	      stop
+	       else 
+	          write (0, *) 'wrong component in NestingSetUp for ', whichFace  
+	          call ModEM_abort()
           end if
        end if
 
@@ -542,13 +540,11 @@ Contains
     integer						:: status
   
     if(.not.ef%allocated) then
-       write(0,*) 'input not allocated yet for NestedE_E'
-       stop
+       call errStop('input not allocated yet for NestedE_E')
     end if
 
     if(.not.eOut%allocated) then
-       write(0,*) 'input not allocated yet for NestedE_E'
-       stop
+       call errStop('input not allocated yet for NestedE_E')
     end if
 
     do i = 1, totalSites
@@ -561,16 +557,15 @@ Contains
        iz = enestDict(i)%l%iz
        xyz = enestDict(i)%l%xyz
        if (xyz == 1) then 
-       	   eOut%x(ix, iy, iz) = c
+           eOut%x(ix, iy, iz) = c
        else if (xyz == 2) then
            eOut%y(ix, iy, iz) = c
        else if (xyz == 3) then
            eOut%z(ix, iy, iz) = c
-	else
-	   write (0, *) 'xyz not provided: NestedE'
-	   stop
+        else
+            call errStop('xyz not provided: NestedE')
        end if
-    end do 
+    end do
 
     ! no baggage left behind
     deallocate(enestDict, STAT=status)
