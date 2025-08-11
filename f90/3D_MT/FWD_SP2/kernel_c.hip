@@ -429,7 +429,6 @@ extern "C" rcclResult_t rcclAllGatherV0(void *sendbuff, size_t sendcount,
     }
     return rcclSuccess;
 }
-#endif
 #
 // a homebrew allgatherv method by stitching the basic rccl apis togather  
 extern "C" rcclResult_t rcclAllGatherV(void *sendbuff, size_t sendcount,
@@ -513,6 +512,7 @@ extern "C" rcclResult_t rcclAllGatherV(void *sendbuff, size_t sendcount,
 
     return rcclSuccess;
 }
+#endif
 
 // function called from main fortran program 
 extern "C" int cf_resetFlag(int dev_idx)

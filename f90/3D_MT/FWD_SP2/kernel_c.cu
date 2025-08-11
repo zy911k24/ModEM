@@ -367,7 +367,7 @@ static __inline__ int ncclTypeSize(ncclDataType_t type) {
   }
 }
 // a homebrew allgatherv method by stitching the basic nccl apis togather  
-extern "C" ncclResult_t ncclAllGatherV0(void *sendbuff, size_t sendcount,
+extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
 	ncclDataType_t senddatatype, void *recvbuff,
 	size_t recvcounts[], size_t recvdispls[], 
 	int root, int n, ncclComm_t comm, cudaStream_t stream)
@@ -432,7 +432,7 @@ extern "C" ncclResult_t ncclAllGatherV0(void *sendbuff, size_t sendcount,
 }
 
 // a homebrew allgatherv method by stitching the basic nccl apis togather  
-extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
+extern "C" ncclResult_t ncclAllGatherV2(void *sendbuff, size_t sendcount,
 	ncclDataType_t senddatatype, void *recvbuff,
         size_t recvcounts[], size_t recvdispls[],
         int root, int n, ncclComm_t comm, cudaStream_t stream)
@@ -449,8 +449,6 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
     if (Err != ncclSuccess) return Err;
 
     // for debug
-    // printf("#C rank = %i, size = %i \n", rank_nccl, size_nccl);
-    // for debug
     // printf("#C rank = %i, sizes = %ld \n", rank_nccl, recvcounts[rank_nccl]);
     // for debug
     // printf("#C rank = %i, displs = %ld \n",rank_nccl, recvdispls[rank_nccl]);
@@ -458,8 +456,6 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
     // firstly everyone copies the local sendbuff to recvbuff
     size_t size_byte  = sendcount * ncclTypeSize(senddatatype);
     size_t displ_byte = recvdispls[rank_nccl] * ncclTypeSize(senddatatype);
-    // printf("Base: %p, Offset: %zu bytes, Final: %p\n", recvbuff, displ_byte, 
-    // 	    static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
     cuErr = cudaMemcpyAsync(static_cast<std::byte*>(recvbuff) + displ_byte,
             sendbuff, size_byte, cudaMemcpyDeviceToDevice,stream);
     if (cuErr != cudaSuccess) { 
@@ -478,10 +474,10 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
     // For each rank, we'll send and receive data
     // except the local one (as we already have that) 
     for (int i = 1; i < size_nccl; ++i) {
+	int crnt = (rank_nccl  - i + 1 + size_nccl) % size_nccl;
         // Synchronize the gather operation
         Err = ncclGroupStart();
         if (Err != ncclSuccess) return Err;
-	int crnt = (rank_nccl  - i + 1 + size_nccl) % size_nccl;
         // always Send data to the right neighbor, use the size 
 	// and displs from the last iteration
         Err = ncclSend(static_cast<std::byte*>(recvbuff) + displ_byte,
@@ -489,11 +485,6 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
         if (Err) {
             return Err;
         }
-        // printf("Send to right:  %i, from Rank: %i\n", right, rank_nccl);
-        // printf("Send: %p, Offset: %zu bytes, Final: %p\n",
-        //	recvbuff, displ_byte,  
-        //	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
-	// size and displs to receive from the rank to the left
 	int next = (rank_nccl  - i + size_nccl) % size_nccl;
 	displ_byte = recvdispls[next] * ncclTypeSize(senddatatype);
         // always Receive data from the left neighbor
@@ -502,11 +493,6 @@ extern "C" ncclResult_t ncclAllGatherV(void *sendbuff, size_t sendcount,
         if (Err) {
             return Err;
         }
-        // printf("Recv from left:  %i, to Rank: %i\n", left, rank_nccl);
-        // printf("Recv: %p, Offset: %zu bytes, Final: %p\n",
-	// 	recvbuff, displ_byte, 
-	//	static_cast<void*>(static_cast<std::byte*>(recvbuff) + displ_byte));
-        // Synchronize the gather operation
         Err = ncclGroupEnd();
         if (Err != ncclSuccess) return Err;
     }

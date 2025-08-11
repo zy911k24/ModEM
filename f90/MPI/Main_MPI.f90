@@ -322,11 +322,10 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  workload=workload/sum(log(2.0+group_sizes(2:nG))/log(3.0))
              endif
          endif
-         !if (def .eq. 0) then
-         !    ! just put each one in its own group, default
-         !    nG = number_of_workers+1
-         !elseif (def .eq. 1) then
-         if (def .le. 1) then
+         if (def .eq. 0) then
+             ! just put each one in its own group, default
+             nG = number_of_workers+1
+         elseif (def .eq. 1) then
              ! group according to topography - put all procs from one host in 
              ! a group, useful for GPU 
              nG = size(host_sizes)
@@ -338,9 +337,17 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  nG = nTask+1
              else
                  ! we don't have that many workers
+#if defined(CUDA)||defined(HIP)
+                 ! k = 2, hard coded here
+                 nG = number_of_workers / 2 + 1
+                 if (nG .le. 1) then
+                     nG = 2
+                 endif
+#else
                  nG = number_of_workers+1
                  ! fall back
                  def = 0
+#endif
              endif
          elseif (def .eq. 3) then
              ! dynamic - give more procs to harder jobs
@@ -362,10 +369,9 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
      allocate(group_sizes(nG))
      ! now determine the detailed grouping
      if (rank_world.eq.0) then ! the root process determine the grouping
-         !if (def.eq.0) then ! 1 group for everyone
-         !    group_sizes = 1
-         !elseif (def .eq. 1) then ! 1 group for each (physical) machine
-         if (def.le.1) then ! 1 group for each (physical) machine
+         if (def.eq.0) then ! 1 group for everyone
+             group_sizes = 1
+         elseif (def .eq. 1) then ! 1 group for each (physical) machine
              group_sizes = 1 
              group_sizes(2:nG) = host_sizes(2:nG)
          elseif (def .eq. 2) then ! equally distribute the workers

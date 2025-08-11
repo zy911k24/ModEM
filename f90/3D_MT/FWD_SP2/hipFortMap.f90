@@ -130,11 +130,11 @@ module hipFortMap
        character(c_char) :: internal(NCCL_UNIQUE_ID_BYTES)
    end type
    ! rcclComm
-   type, bind(c) :: rcclComm
+   type, bind(c) :: ncclComm
        type(c_ptr) :: member
    end type
    ! rcclResult
-   type, bind(c) :: rcclResult
+   type, bind(c) :: ncclResult
        integer(c_int) :: member
    end type
 #endif
@@ -318,6 +318,17 @@ module hipFortMap
      ! cudaStreamNonBlocking
    end function cudaStreamCreateWithFlags
 
+   ! cudaStreamWaitEvent
+   integer(c_int) function cudaStreamWaitEvent(cstream,event,flag) &
+    &            bind(C,name="hipStreamWaitEvent")
+    ! this let the stream to wait for a event to finish  
+    use iso_c_binding
+    implicit none
+    type(c_ptr), value    :: cstream ! streamid, in
+    type(c_ptr), value    :: event   ! event ID, in
+    integer(c_int),value  :: flag    ! in
+   end function cudaStreamWaitEvent
+
    ! hipStreamDestroy
    integer(c_int) function cudaStreamDestroy(stream) & 
     &            bind(C,name="hipStreamDestroy")
@@ -356,12 +367,12 @@ module hipFortMap
     &              bind (C, name="rcclCommInitRank" )
      ! initialize the Communicator for a certain rank
      use iso_c_binding
-     import rcclUniqueId
-     import rcclComm
+     import ncclUniqueId
+     import ncclComm
      implicit none
-     type(rcclComm)         :: comm ! address of
+     type(ncclComm)         :: comm ! address of
      ! type(c_ptr)                :: commPtr ! address of
-     type(rcclUniqueId),value   :: uid
+     type(ncclUniqueId),value   :: uid
      integer(c_int), value  :: nDevice
      integer(c_int), value  :: rank
    end function ncclCommInitRank
@@ -371,9 +382,9 @@ module hipFortMap
     &              bind (C, name="rcclCommInitAll" )
      ! initialize the Communicator for all devices
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm)         :: comm
+     type(ncclComm)         :: comm
      integer(c_int), value  :: nDevice
      integer(c_int)         :: devs(nDevice)
    end function ncclCommInitAll
@@ -383,9 +394,9 @@ module hipFortMap
     &              bind (C, name="rcclCommUserRank" )
      ! initialize the Communicator for a certain rank
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm), value  :: comm
+     type(ncclComm), value  :: comm
      type(c_ptr)            :: rank
    end function ncclCommUserRank
 
@@ -394,18 +405,18 @@ module hipFortMap
     &              bind (C, name="rcclCommCount" )
      ! initialize the Communicator for a certain rank
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm), value  :: comm
+     type(ncclComm), value  :: comm
      type(c_ptr)            :: count
    end function ncclCommCount
 
    integer(c_int) function ncclSend(sendbuff, count, datatype, &
     &              peer, comm, stream)  bind (C, name="rcclSend" )
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm),value      :: comm
+     type(ncclComm),value      :: comm
      ! type(c_ptr),value   :: comm
      ! return the device assoicated with the come
      type (c_ptr), value       :: sendbuff,  stream! pointer
@@ -417,9 +428,9 @@ module hipFortMap
    integer(c_int) function ncclRecv(recvbuff, count, datatype, &
     &              peer, comm, stream)  bind (C, name="rcclRecv" )
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm),value      :: comm
+     type(ncclComm),value      :: comm
      ! type(c_ptr),value   :: comm
      ! return the device assoicated with the come
      type (c_ptr), value       :: recvbuff,  stream! pointer
@@ -432,9 +443,9 @@ module hipFortMap
    integer(c_int) function ncclAllReduce(sendbuff, recvbuff, count, datatype, &
     &              comm, stream)  bind (C, name="rcclAllReduce" )
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm), value     :: comm
+     type(ncclComm), value     :: comm
      ! type(c_ptr),value   :: comm
      ! return the device assoicated with the comm
      type (c_ptr), value       :: sendbuff, recvbuff, stream! pointer
@@ -446,10 +457,10 @@ module hipFortMap
    integer(c_int) function ncclAllGather(sendbuff, recvbuff, count, datatype, &
     &              comm, stream)  bind (C, name="rcclAllGather" )
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
      ! return the device assoicated with the comm
-     type(rcclComm),value      :: comm
+     type(ncclComm),value      :: comm
      type (c_ptr), value       :: sendbuff, recvbuff
      type (c_ptr), value       :: stream! pointer
      integer (c_size_t), value :: count
@@ -461,14 +472,14 @@ module hipFortMap
     &              recvbuff, recvcounts, displs, root, n, comm, stream)  &
     &              bind (C, name="rcclAllGatherV" )
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
      ! return the device assoicated with the comm
      type (c_ptr), value       :: sendbuff, recvbuff
      integer (c_size_t), value :: sendcount
      integer (c_int), value    :: datatype, root, n
      integer (c_size_t)        :: recvcounts(n), displs(n)
-     type(rcclComm),value      :: comm
+     type(ncclComm),value      :: comm
      type (c_ptr), value       :: stream! pointer
    end function ncclAllGatherV
 
@@ -477,9 +488,9 @@ module hipFortMap
     &              bind (C, name="rcclCommFinalize" )
      ! destroy the Communicator
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm),value      :: comm
+     type(ncclComm),value      :: comm
      ! type(c_ptr),value          :: comm
    end function ncclCommFinalize
 
@@ -488,9 +499,9 @@ module hipFortMap
     &              bind (C, name="rcclCommDestroy" )
      ! destroy the Communicator
      use iso_c_binding
-     import rcclComm
+     import ncclComm
      implicit none
-     type(rcclComm),value      :: comm
+     type(ncclComm),value      :: comm
    end function ncclCommDestroy
 #endif
 
