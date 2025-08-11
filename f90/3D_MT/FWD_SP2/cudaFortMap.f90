@@ -297,6 +297,17 @@ module cudaFortMap
      ! cudaStreamNonBlocking
    end function cudaStreamCreateWithFlags
 
+   ! cudaStreamWaitEvent
+   integer(c_int) function cudaStreamWaitEvent(cstream,event,flag) &
+    &            bind(C,name="cudaStreamWaitEvent")
+    ! this let the stream to wait for a event to finish  
+    use iso_c_binding
+    implicit none
+    type(c_ptr), value    :: cstream ! streamid, in
+    type(c_ptr), value    :: event   ! event ID, in
+    integer(c_int),value  :: flag    ! in
+   end function cudaStreamWaitEvent
+
    ! cudaStreamDestroy
    integer(c_int) function cudaStreamDestroy(stream) & 
     &            bind(C,name="cudaStreamDestroy")

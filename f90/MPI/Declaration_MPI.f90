@@ -38,7 +38,7 @@ integer        :: hostname_len, ngroup
 ! 3 : dynamic grouping, variable number of procs per each fwd/trn task, 
 !     for load-balancing
 #if defined(FG) && (defined(CUDA) || defined(HIP))
-integer        :: para_method = 1 ! use 1 for debug only
+integer        :: para_method = 2 ! use 1 for debug only
 #elif defined(FG)
 integer        :: para_method = 2
 #elif defined(PETSC) 

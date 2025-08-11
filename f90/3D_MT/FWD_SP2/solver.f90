@@ -2664,7 +2664,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       ierr = cusparseCreateDnVec(vecY, n, devPtrR, CUDA_C_64F)
       ierr2 = ierr2 + ierr
       if (ierr2 .ne. 0 ) then
-          write(6, *) " error creating the dense Vecs "
+          write(6, '(A,I4)') " error creating the dense Vecs ", ierr2
           call ModEM_abort()
       end if
       ! now estimate the buffersize needed by SpMV
@@ -2908,7 +2908,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
           KSPiter%rerr(1)=0.0
           converged = .true.
           goto 9527 
-      endif
+      end if
       ! R = -Ax 
       ! ierr = cublasZscal(cublasHandle,n,C_MINUSONE,devPtrR,1)
       ! ierr2 = ierr2 + ierr
@@ -3410,6 +3410,7 @@ subroutine cuBiCGmix(b,x,KSPiter,device_idx,adjt)
       if (ierr2.ne.0) then
           write(6,'(A, I4)') 'Error during cuda handle destruction: ',ierr2
           call ModEM_abort()
+      end if
       ierr = cf_resetFlag(device_idx)
       ierr2 = ierr2 + ierr
       if (ierr2.ne.0) then
