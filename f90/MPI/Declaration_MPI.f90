@@ -288,7 +288,11 @@ subroutine get_host_topology(nTx, nPol, host_sizes)
              exit
          endif
      end do
-     rank_node = rank_world - SUM(host_sizes(1:iHost-1))
+     if (iHost == 1) then
+         rank_node = rank_world
+     else
+         rank_node = rank_world - SUM(host_sizes(1:iHost-1))
+     end if
      if (output_level .gt. 3) then
          write(6,*) 'rank_world = ', rank_world, ' size_node = ', size_node, &
             ' rank_node = ', rank_node, ' nHost = ', nHost
