@@ -20,8 +20,8 @@ parameter         (MASTER=0,FROM_MASTER=1,FROM_WORKER=2,Tag=1)
 ! additional parameters needed by two-layered parallelization
 !********************************************************************
 integer        :: comm_world, comm_leader, comm_local
-integer        :: rank_world, rank_leader, rank_local
-integer        :: size_world, size_leader, size_local
+integer        :: rank_world, rank_leader, rank_local, rank_node
+integer        :: size_world, size_leader, size_local, size_node
 integer        :: info_world, info_leader, info_local
 integer        :: group_world, group_leader
 ! this is used to store the name of proc/cpu for current rank and identify 
@@ -63,7 +63,7 @@ integer        :: para_method = 0
    integer                :: size_nccl        ! nccl/rccl size
    integer                :: ncclIsInit=0     ! flag
    type(ncclUniqueId)     :: uid              ! nccl id
-   integer                :: cpus_per_gpu = 1 ! override for GPU+FG
+   integer                :: cpus_per_gpu = 3 ! override for GPU+FG
 #else
    integer                :: cpus_per_gpu = 3 ! hard coded here 
 #endif
@@ -235,7 +235,7 @@ subroutine get_host_topology(nTx, nPol, host_sizes)
      integer, intent(out),pointer,dimension(:)  :: host_sizes
     ! local variables 
      integer                                 :: temp_sizes(nTx*nPol+1)
-     integer                                 :: iProc, ierr, nHost
+     integer                                 :: iProc, ierr, nHost, iHost
      integer                                 :: current_host, procs_in_host
      character *(40)                         :: crnt_hostname, prev_hostname
 
@@ -277,6 +277,22 @@ subroutine get_host_topology(nTx, nPol, host_sizes)
          allocate(host_sizes(nHost))
      endif
      call MPI_BCAST(host_sizes,nHost,MPI_INTEGER, 0,comm_world,ierr)
+     ! now try to determine the rank of current proc in
+     ! current machine node
+     ! rank_node is the rank of the process in the entire node
+     ! size_node is the number of processes in that node
+     size_node = 1
+     do iHost = 1, nHost
+         if (rank_world .lt. SUM(host_sizes(1:iHost))) then
+             size_node = host_sizes(iHost)
+             exit
+         endif
+     end do
+     rank_node = rank_world - SUM(host_sizes(1:iHost-1))
+     if (output_level .gt. 3) then
+         write(6,*) 'rank_world = ', rank_world, ' size_node = ', size_node, &
+            ' rank_node = ', rank_node, ' nHost = ', nHost
+     endif
 end subroutine get_host_topology
 
 ! stub, reserved for multi-gpu
