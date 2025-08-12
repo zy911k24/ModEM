@@ -187,11 +187,11 @@ Subroutine split_MPI_groups(nTx,nPol,group_sizes)
      call MPI_COMM_SIZE(comm_local, size_local, ierr)
      call MPI_BARRIER(MPI_COMM_WORLD,ierr)
 !    for debug
-     !if (output_level .ge. 3) then 
+     if (output_level .ge. 3) then 
          write(6,100) rank_world, rank_local, igroup, size_local
 100      format("Global rank: ",i4," local rank: ",i4,                      &
     &          " size of group #"  i4, " is ",i4)
-     !endif
+     endif
      call reset_MPI_leader_group(comm_world, group_world, Ngroup,   &
     &       leaders, comm_leader, group_leader)
      if (rank_local .eq. 0) then
@@ -345,7 +345,7 @@ Subroutine set_group_sizes(nTx,nPol,comm_current,group_sizes,walltime)
                  endif
 #else
                  nG = number_of_workers+1
-                 ! fall back
+                 ! fall back to para_method = 0
                  def = 0
 #endif
              endif
@@ -1917,7 +1917,7 @@ Subroutine Worker_job(sigma,d)
              ! forward modelling
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -1980,7 +1980,7 @@ Subroutine Worker_job(sigma,d)
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'COMPUTE_J') then
              ! compute (explicit) J
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -2150,7 +2150,7 @@ Subroutine Worker_job(sigma,d)
              ! calculate JmultT (a.k.a. adjoint)
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -2234,7 +2234,7 @@ Subroutine Worker_job(sigma,d)
              per_index=worker_job_task%per_index
              pol_index=worker_job_task%pol_index
              worker_job_task%taskid=rank_current
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -2307,7 +2307,7 @@ Subroutine Worker_job(sigma,d)
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'Distribute nTx')&
     &            then
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -2317,7 +2317,7 @@ Subroutine Worker_job(sigma,d)
              end if
              ! get the nTx from master
              call MPI_BCAST(nTx, 1, MPI_INTEGER, 0, comm_current, ierr)
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! now broadcast nTx to the fellow workers
                  call MPI_BCAST(nTx, 1, MPI_INTEGER, 0, comm_local, ierr)
@@ -2325,7 +2325,7 @@ Subroutine Worker_job(sigma,d)
              d%nTx=nTx
          elseif (trim(worker_job_task%what_to_do) .eq. 'Distribute Data')&
     &            then
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -2337,7 +2337,7 @@ Subroutine Worker_job(sigma,d)
              ! get the vector from master
              call MPI_BCAST(data_para_vec, Nbytes, MPI_PACKED, 0,     &
     &             comm_current,ierr)
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! now broadcast data to the fellow workers
                  call MPI_BCAST(data_para_vec, Nbytes, MPI_PACKED, 0,     &
@@ -2366,7 +2366,7 @@ Subroutine Worker_job(sigma,d)
 
          elseif (trim(worker_job_task%what_to_do) .eq. 'Distribute Model')&
     &            then
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
@@ -2379,7 +2379,7 @@ Subroutine Worker_job(sigma,d)
              ! get the vector from master
              call MPI_BCAST(sigma_para_vec, Nbytes, MPI_PACKED, 0,     &
     &            comm_current,ierr)
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! now broadcast data to the fellow workers
                  call MPI_BCAST(sigma_para_vec, Nbytes, MPI_PACKED, 0,     &
@@ -2393,7 +2393,7 @@ Subroutine Worker_job(sigma,d)
          elseif (trim(worker_job_task%what_to_do).eq.'Distribute delSigma')&
     &            then
              ! distribute the conductivity pertubation to all procs
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  !passing the command to workers
                  do des_index=1, size_local-1
@@ -2406,7 +2406,7 @@ Subroutine Worker_job(sigma,d)
              ! get the vector from master
              call MPI_BCAST(sigma_para_vec, Nbytes, MPI_PACKED, 0,     &
     &            comm_current,ierr)
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! now broadcast data to the fellow workers
                  call MPI_BCAST(sigma_para_vec, Nbytes, MPI_PACKED, 0, &
@@ -2432,7 +2432,7 @@ Subroutine Worker_job(sigma,d)
          elseif (trim(worker_job_task%what_to_do) .eq. 'Clean memory' ) then
              ! clean memory before exiting, but wait - it didn't do anything
              ! useful (except telling the master so)
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  if (size_local.gt.1) then !passing the command to workers
@@ -2454,7 +2454,7 @@ Subroutine Worker_job(sigma,d)
     &             FROM_WORKER, comm_current, ierr)
          elseif (trim(worker_job_task%what_to_do) .eq. 'REGROUP') then
              ! calculate the time between two regroup events
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  if (size_local.gt.1) then !passing the command to workers
@@ -2490,17 +2490,17 @@ Subroutine Worker_job(sigma,d)
              ! physical nodes 
              size_gpuPtr = c_loc(size_gpu) ! kind of crude here
              ierr = cudaGetDeviceCount(size_gpuPtr)
-             if ((ctrl%output_level .gt. 3).and. (rank_local .eq. 0)) then
+             if ((output_level .gt. 3).and. (rank_local .eq. 0)) then
                  write(6,*) 'number of available GPU devices = ', size_gpu
              end if
              ! see if we have at least one GPU to spare in this group
              ! note this could be problematic, if the grouping is 
              ! not based on topology
-             if (size_gpu*cpus_per_gpu .ge. size_local) then
+             if (size_gpu*cpus_per_gpu .ge. size_node) then
                  ! everyone can get GPU acceleration
                  cpu_only_ranks = 0
              else
-                 cpu_only_ranks = size_local-size_gpu*cpus_per_gpu
+                 cpu_only_ranks = size_node-size_gpu*cpus_per_gpu
              end if
              ! currently use cpus_per_gpu cpus for one GPU 
              ! (hard coded in Declaritiion_MPI.f90)
@@ -2508,11 +2508,11 @@ Subroutine Worker_job(sigma,d)
              ! the last m*cpus_per_gpu cpus will get accelerated by GPU
 #else
              size_gpu = 0
-             cpu_only_ranks = size_local
+             cpu_only_ranks = size_node
 #endif
-             if (rank_local.ge.cpu_only_ranks) then
+             if (rank_node.ge.cpu_only_ranks) then
                  ! assign the GPU(s) to the last leaders
-                 device_id = mod((rank_local - cpu_only_ranks),&
+                 device_id = mod((rank_node - cpu_only_ranks),&
      &               size_gpu)
              else
                  ! no gpu left, use CPU to calculate
@@ -2521,7 +2521,7 @@ Subroutine Worker_job(sigma,d)
 #if defined(CUDA) || defined(HIP)
              ! if we have a device to use...
              if (device_id .ge. 0) then
-                 if ((ctrl%output_level .gt. 3).and. (rank_local .eq. 0)) then
+                 if ((output_level .gt. 3).and. (rank_local .eq. 0)) then
                      write(6,*) ' hooking up the device #', device_id
                  end if
                  ierr = cudaSetDevice(device_id);
@@ -2540,8 +2540,8 @@ Subroutine Worker_job(sigma,d)
                  endif
                endif
                ! distribute the ID to all workers, using MPI
-               call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, 0, &
-           &           comm_local, ierr)
+               call MPI_BCAST(uid%internal, NCCL_UNIQUE_ID_BYTES, MPI_CHAR, & 
+   &                0, comm_local, ierr)
                rank_nccl = rank_local
                size_nccl = size_local
                ! for debug
@@ -2575,7 +2575,7 @@ Subroutine Worker_job(sigma,d)
              if (associated(eAll_para_vec)) then
                  deallocate(eAll_para_vec)
              end if
-             if ((size_local.gt.0).and.(para_method.gt.0).and.          &
+             if ((size_local.gt.1).and.(para_method.gt.0).and.          &
     &            (rank_local.eq.0)) then 
                  ! group leader passing the command to workers
                  do des_index=1, size_local-1
