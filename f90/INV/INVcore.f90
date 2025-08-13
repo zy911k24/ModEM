@@ -251,7 +251,7 @@ Contains
    ! to minimize changes.
 
    type(modelParam_t), intent(in)              :: m_in
-   type(modelParam_t), intent(out)             :: m_out
+   type(modelParam_t), intent(inout)             :: m_out
 
 	! apply the operator Cm^(1/2) here
 	! m_out = m_in
