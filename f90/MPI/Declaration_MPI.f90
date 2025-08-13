@@ -1,5 +1,6 @@
 
 Module Declaration_MPI
+     use file_units
      use math_constants
 #ifdef MPI
      use mpi
