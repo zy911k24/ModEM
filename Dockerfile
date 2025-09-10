@@ -11,11 +11,14 @@ RUN apt-get -y install gcc
 RUN apt-get -y install g++
 RUN apt-get -y install gfortran
 RUN apt-get -y install gdb
+RUN apt-get -y install valgrind
 RUN apt-get -y install libblas-dev
 RUN apt-get -y install liblapack-dev
 RUN apt-get -y install make
 RUN apt-get -y install wget
 RUN apt-get -y install python3
+RUN apt-get -y install python3-pip
+RUN apt-get -y install pipx
 RUN apt-get -y install vim
 RUN apt-get -y install git
 
