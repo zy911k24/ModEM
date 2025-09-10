@@ -37,5 +37,7 @@ ENV PATH="$PATH:/root/.local/bin"
 
 WORKDIR /root/
 
+RUN git clone https://github.com/magnetotellurics/ModEM.git ModEM-main
+
 # Clean up
 RUN rm -rf mpich-4.3.1.tar.gz mpich-4.3.1
