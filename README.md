@@ -266,7 +266,7 @@ After you install Docker, you will need to build the docker container. Inside
 the `ModEM` directory (where the `Dockerfile` resides), run the following:
 
 ```bash
-$ docker build . -t modem:latest --build-args ncpus=2
+$ docker build . -t modem:latest --build-arg ncpus=2
 ```
 
 You can specify different numbers of arguments in the `ncpus` build argument if
@@ -304,7 +304,7 @@ be helpful to mount a work directory, such as the ModEM-Examples repository:
 `
 ```bash
 $ docker run --mount=type=bind,source=/abosolute/path/to/ModEM,target=/root/ModEM \
-             --mount=type=bind,soucr=/home/users/uname/ModEM-Examples,target=/root/ModEM-Examples \
+             --mount=type=bind,source=/home/users/uname/ModEM-Examples,target=/root/ModEM-Examples \
              -it modem
 ```
 
