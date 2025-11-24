@@ -108,7 +108,7 @@ Where `type` is either: `MPI, release, debug`:
  with `-O0` (no optimizations) and debug symbols (`-g`, bounds checking ,etc)
 
 Of course, any generated makefile can be altered as you see fit. For instance,
-it is often helpful to add the `-g` to copmile with debug symbols when working
+it is often helpful to add the `-g` to compile with debug symbols when working
 with an MPI makefile.
 
 ## Compiling
@@ -151,7 +151,7 @@ and passing it `MPI` as the type.
 
 While the [User's Guide][Users-Guide] is the best resource for information on
 running ModEM, information can also be found by running the `Mod2DMT` or
-`Mod3DMT` executables with no arguments. Furthurmore, specifying the job flag
+`Mod3DMT` executables with no arguments. Furthermore, specifying the job flag
 with no other arguments will produce a detailed usage description for that job
 type.  For example: `./Mod3DMT -F` will produce a detailed description of
 options for forward modeling.
@@ -196,7 +196,7 @@ When running ModEM with MPI, you **must** use at least **two** MPI tasks. For
 all versions of ModEM, except SP2 compiled with `-DFG`, the max number of MPI
 tasks you can use is `(2 x nTransmitters) + 1`. Where the number of transmitters
 is the number of periods/frequencies. Thus you can run with 9 tasks: 4
-transmitters multipled by 2 polarizations + 1 main task:
+transmitters multiplied by 2 polarizations + 1 main task:
 
 ```bash
 $ mpiexec -n 9 ./Mod3DMT -F m1.ws Templdate_de.dat fwd.BLOCK2.dat esoln.BLOCK2.dat
@@ -304,7 +304,7 @@ sections above.
 It might be helpful to specify additional mount points, for instance it might
 be helpful to mount a work directory, such as the ModEM-Examples repository:
 
-`
+
 ```bash
 $ docker run --mount=type=bind,source=/abosolute/path/to/ModEM,target=/root/ModEM \
              --mount=type=bind,source=/home/users/uname/ModEM-Examples,target=/root/ModEM-Examples \
@@ -347,28 +347,57 @@ included as branches in this repository under the following names:
 
 # Citations
 
-If you use ModEM in your work, please cite the following two sources:
+**If you use ModEM in your work, please cite the following two sources:**
 
-Anna Kelbert, Naser Meqbel, Gary D. Egbert, Kush Tandon, ModEM: A modular system
+_Anna Kelbert, Naser Meqbel, Gary D. Egbert, Kush Tandon, ModEM: A modular system
 for inversion of electromagnetic geophysical data, Computers & Geosciences,
 Volume 66, 2014, Pages 40-53, ISSN 0098-3004,
-https://doi.org/10.1016/j.cageo.2014.01.010.
+https://doi.org/10.1016/j.cageo.2014.01.010._ \[[PDF][Kelbert-2014-PDF]\]
 
-Egbert, Gary & Kelbert, Anna. (2012). Computational recipes for electromagnetic
+[Kelbert-2014-PDF]: https://github.com/magnetotellurics/ModEM/blob/main/doc/Kelbert_et_al_2014_ModEM.pdf
+
+_Egbert, Gary & Kelbert, Anna. (2012). Computational recipes for electromagnetic
 inverse problems. Geophysical Journal International. 189. 251-267.
-10.1111/j.1365-246X.2011.05347.x. 
+https://doi.org/10.1111/j.1365-246X.2011.05347.x._ 
 
-If you use the SP versions (divergence-free forward method) in your work, please 
-cite this source  as well: 
+**If you use the SP/SP2 versions (divergence-free forward method) in your work, please 
+cite this source  as well:**
 
-Hao Dong,  Gary D. Egbert. Divergence-free solutions to electromagnetic forward 
+_Hao Dong,  Gary D. Egbert. Divergence-free solutions to electromagnetic forward 
 and adjoint problems: a regularization approach, Geophysical Journal International,
-Volume 216(2), 2019, Pages 906–918, https://doi.org/10.1093/gji/ggy462
+Volume 216(2), 2019, Pages 906–918, https://doi.org/10.1093/gji/ggy462_
 
-If you use the CUDA/HIP interfaces of ModEM in your work, please also
-cite the following source:
+**If you use the CUDA/HIP interfaces of ModEM in your work, please also
+cite the following source as well:**
 
-Hao Dong, Kai Sun, Gary Egbert, Anna Kelbert, Naser Meqbel, Hybrid CPU-GPU
+_Hao Dong, Kai Sun, Gary Egbert, Anna Kelbert, Naser Meqbel, Hybrid CPU-GPU
 solution to regularized divergence-free curl-curl equations for electromagnetic
 inversion problems, Computers & Geosciences, Volume 184, 2024, 105518, ISSN
-0098-3004, https://doi.org/10.1016/j.cageo.2024.105518.
+0098-3004, https://doi.org/10.1016/j.cageo.2024.105518._
+
+**If you invert MT transfer function that are not co-aligned with the model grid,
+please cite this paper as well:**
+
+_Liu, Z., Kelbert, A., & Chen, X. (2024) 3D magnetotelluric inversion with
+arbitrary data orientation angles Computers and Geosciences, 188, 105596,
+Elsevier. https://doi.org/10.1016/j.cageo.2024.105596_
+
+## Spherical Coordinates
+
+<font color='red'>**WARNING**:</font>
+**MT inversion in spherical coordinates is not yet fully developed. MT forward modeling
+in spherical coordinates relies on an external 1D forward model and the
+secondary field formulation option in ModEM to be physically correct.**
+
+**Using spherical coordinates with the traditional MT source setup has not been
+shown to be physically accurate.**
+
+# Support
+
+Support for ModEM may be limited at times, but we will do our best to respond to
+issues/bugs/questions and pull requests.
+
+For bugs, issues and questions, please open a GitHub Issue on this Repository.
+
+Please feel free to open a pull request with any changes. We do not guarantee
+changes will be merged in, but we welcome all contributions.

@@ -194,7 +194,7 @@
                 "isPartOf" : {
                     "@id" : "#periodical",
                     "@type" : [
-                        "PublicationVolumne",
+                        "PublicationVolume",
                         "Periodical"
                     ],
                     "name" : "Geophysical Journal International",
@@ -229,7 +229,7 @@
                 "isPartOf" : {
                     "@id" : "#periodical",
                     "@type" : [
-                        "PublicationVolumne",
+                        "PublicationVolume",
                         "Periodical"
                     ],
                     "name" : "Geophysical Journal International",
@@ -256,7 +256,7 @@
                 "isPartOf" : {
                     "@id" : "#periodical",
                     "@type" : [
-                        "PublicationVolumne",
+                        "PublicationVolume",
                         "Periodical"
                     ],
                     "name" : "Geophysical Journal International",
@@ -267,6 +267,46 @@
             },
             "pageStart" : "906",
             "pageEnd" : "918"
+        },
+        {
+            "@type" : "ScholarylyArticle",
+            "Name": "3D magnetotelluric inversion with arbitrary data orientation angles",
+            "datePublished" : "2024",
+            "sameAs" : "https://doi.org/10.1016/j.cageo.2024.105596",
+            "author" : [
+                { 
+                    "@id" : "https://orcid.org/0000-0002-4019-5354",
+                    "@type" : "Person",
+                    "familyName" : "Liu",
+                    "givenName" : "Zhongyin",
+                    "affiliation" : { "type" : "Organization", "name": "Institute of Geology, China Earthquake Administration" }
+                },
+                "https://orcid.org/0000-0003-4395-398X",
+                { 
+                    "@id: " : "https://orcid.org/0000-0003-2584-0551",
+                    "@type" : "Person",
+                    "familyName" : "Chen",
+                    "givenName" : "Xiaobin",
+                    "affiliation" : { "type" : "Organization", "name": "National Institute of Natural Hazards" }
+                }
+            ],
+            "isPartOf" : {
+                "@type": "PublicationIssue",
+                "issueNumber" : "1",
+                "datePublished" : "2024",
+                "isPartOf" : {
+                    "@id" : "#periodical",
+                    "@type" : [
+                        "PublicationVolume",
+                        "Periodical"
+                    ],
+                    "name" : "Computers & Geosciences",
+                    "issn:" : "0098-3004",
+                    "datePublished" : "2024-06",
+                    "volumeNumber" : "188"
+                }
+            },
+            "pagination" : "105596"
         }
     ],
     "referencePublication" : [

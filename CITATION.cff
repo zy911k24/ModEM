@@ -133,4 +133,26 @@ references:
     volume: 184
     ISSN: 0098-3004
     doi: 10.1016/j.cageo.2024.105518
+  - type: article
+    title: 3D magnetotelluric inversion with arbitrary data orientation angles
+    scope: If you invert MT transfer function that are not co-aligned with the model grid, please cite this paper
+    authors:
+      - given-names: Zhongyin
+        family-names: Liu
+        orcid: 'https://orcid.org/0000-0002-4019-5354'
+        affiliation: Institute of Geology, China Earthquake Administration
+      - given-names: Anna
+        family-names: Kelbert
+        orcid: 'https://orcid.org/0000-0003-4395-398X'
+        affiliation: Harvard & Smithsonian
+      - given-names: Xiaobin
+        family-names: Chen
+        orcid: 'https://orcid.org/0000-0003-2584-0551'
+        affiliation: National Institute of Natural Hazards
+    journal: Computers & Geosciences
+    year: 2024
+    month: 6
+    volume: 188
+    ISSN: 0098-3004
+    doi: 10.1016/j.cageo.2024.105596
 
