@@ -1,0 +1,74 @@
+.. ModEM documentation master file, created by
+   sphinx-quickstart on Fri Nov 28 12:31:29 2025.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+:tocdepth: 4
+
+ModEM Documentation
+===================
+
+Welcome to the ModEM's documentation! ModEM is a modular system for inversion of
+electromagnetic geophysical data.
+
+ModEM was designed as a flexible electromagnetic modeling and inversion system,
+written in Fortran 95. Although the code can be (and has been) extended for
+inversion of more general types of EM data (e.g., controlled source, DC; see
+Meqbel and Ritter, 2015), the User's Guide below explains the core system
+developed for 2D and 3D magnetotelluric (MT) problems.
+
+While a primary design goal of the system was to allow simplified extension with
+regard to data types, modeling codes, parameterization and regularization, and
+inversion search algorithms (see Egbert and Kelbert, 2012; Kelbert et al.
+2014). The stable MT program has a command-line interface, which controls
+available program options, and specifies required and optional input and output
+files.
+
+User's Guide
+------------
+
+This documentation contains information about compiling, running and using
+ModEM, including information about the file formats, options for forward
+modeling, options for inversion, etc.
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Contents:
+
+   obtaining_modem
+   getting_started
+   file_formats
+   forward_and_inversion
+   beyond_the_basics
+   installing_deps
+   contributing
+   release_log
+   citations
+
+
+CSEM Version of ModEM
+----------------------
+
+.. warning::
+
+   The CSEM version of ModEM is not fully validated and has only been used in
+   some instances. We cannot guarantee correct or accurate results with it.
+
+For more information see :ref:`csem_modem`.
+
+Spherical Version of ModEM
+---------------------------
+
+.. warning::
+
+   The Spherical Version of ModEM is not yet fully developed and we cannot
+   guarantee correct or accurate results!
+
+Support
+-------
+
+Support for ModEM may be limited at times due to resources or developer
+availability. If you have issues, questions or encounter a bug, please open
+a `GitHub Issue <_GitHub-Issue>`_  at: https://github.com/magnetotellurics/ModEM/issues/new.
+
+.. _GitHub-Issue: https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/creating-an-issue
