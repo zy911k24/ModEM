@@ -1,12 +1,6 @@
 FROM ubuntu:latest
 
-ARG ncpus=1
-
-WORKDIR /root/
-
 RUN apt-get update
-RUN echo "Building with ${ncpus} processes"
-
 RUN apt-get -y install gcc
 RUN apt-get -y install g++
 RUN apt-get -y install gfortran
@@ -21,23 +15,23 @@ RUN apt-get -y install python3-pip
 RUN apt-get -y install pipx
 RUN apt-get -y install vim
 RUN apt-get -y install git
-
-RUN wget https://www.mpich.org/static/downloads/4.3.1/mpich-4.3.1.tar.gz
-RUN tar -xzvf mpich-4.3.1.tar.gz
-
-# Install MPICH Manually as the apt-get install uses pmix and 
-# that will mess with things
-WORKDIR mpich-4.3.1
-RUN CC=gcc CXX=g++ FC=gfortran ./configure --with-pm=hydra
-RUN make -j${ncpus} && make -j${ncpus} install
+RUN apt-get -y install openmpi-bin openmpi-common libopenmpi-dev
+RUN useradd -m -r -g users -s /bin/bash modem
 
 ENV LD_LIBRARY_PATH=/usr/local/lib/
 # For Python Installs
 ENV PATH="$PATH:/root/.local/bin"
 
-WORKDIR /root/
+COPY . /home/modem/ModEM
+RUN chown -R modem /home/modem/ModEM
+RUN chgrp -R users /home/modem/ModEM
 
-RUN git clone https://github.com/magnetotellurics/ModEM.git ModEM-main
+USER modem
+WORKDIR /home/modem/ModEM/f90
 
-# Clean up
-RUN rm -rf mpich-4.3.1.tar.gz mpich-4.3.1
+# Make SP2 MPI
+RUN ./CONFIG/configure -m mpi -l MF -g release Makefile gfortran && make && mv Mod3DMT Mod3DMT_MF && make clean
+RUN ./CONFIG/configure -m mpi -l SP -g release Makefile gfortran && make && mv Mod3DMT Mod3DMT_SP && make clean
+RUN ./CONFIG/configure -m mpi -l SP2 -g release Makefile gfortran && make && mv Mod3DMT Mod3DMT_SP2 && make clean
+
+WORKDIR /home/modem/
