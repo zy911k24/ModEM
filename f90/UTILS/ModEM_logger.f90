@@ -1,3 +1,24 @@
+!
+! ModEM_logger
+! 
+!  This logger, along with `expand_message` in the utilities modular, offer
+!  some very helpful mechanisms for logging messages in Fortran. It offers:
+!
+!  1. Easily allow each MPI task the ability to open and log to its own seperate
+!   logging file.
+!   * Very Helpful in debugging MPI Issues
+!  2. The ability to use printf-like string formatting.
+!   * Reduces the need to use Fortran's ... unique string formatting mechanism
+! 
+!  To use, ensure you call ModEM_log_init() first before doing calling ModEM_log().
+!  For examples, please see the code comments in ModEM_log below.
+!
+! By default, only the main task will log out tasks. Likewise, you might not see
+! messages immediate during execution, so you might want to use flush_log=.true. when
+! calling ModEM_log.
+!
+! Note: The code in the section was adapted from MPAS-Model code: see the
+! license disclosure below.
 module ModEM_logger
 
     use utilities
@@ -94,8 +115,39 @@ end Subroutine ModEM_log_init
 !>    mainOnly: flag indicating only the master task should write this message,
 !>                regardless of if all tasks have open log files.
 !>    flush_log: flag indicating that the log should be flushed after writing
-!>                
-!
+!>
+!>  For more information see the expand_string subroutine in the utilities module
+!>
+!> | examples
+!>    
+!>    ```Fortran
+!>      real :: a, b, c         ! Of course you can also use other real kinds
+!>      integer :: int1, int2,
+!>      logical :: bool_false, bool_true
+!>
+!>      ! Ensure you call ModEM_log_init() first!
+!>      call ModEM_log_init()
+!>      
+!>      ! Printing several real numbers:
+!>      call ModEM_log("Reals: a: $r b: $r c: $r", realArgs=(/a, b, c/)))
+!>
+!>      ! Printing several integer numbers
+!>      call ModEM_log("Integers: ($i, $i)", intArgs=(/int1, int2/)))
+!> 
+!>      ! Printing logicals
+!>      bool_false = .false. 
+!>      bool_true = .true.
+!>      call ModEM_log("Logical: $l $l", logicArgs=(/bool_false, bool_true/))
+!>
+!>      ! Mix and match as you see fit!
+!>      ! Note: You don't need to have the arguments (intArgs, logicArgs etc.) in any particular order!
+!>      call ModEM_log("Bool: $l - Int: $i - Reals: $r $r $r", intArgs=(/int1/), logicArgs=(/bool_true/), &
+!>                          realArgs=(/a, b, c/))
+!>
+!>      ! Appending Strings
+!>      myString = "JOB_NAME"
+!>      call ModEM_log("We are in the: '"//trim(myString)//"' function with args: $i, $i", intArgs=(/int1, int2/))
+!>    ```
 !-----------------------------------------------------------------------
 subroutine ModEM_log(msg, intArgs, realArgs, logicArgs, fid, mainOnly, flush_log)
 
@@ -127,7 +179,6 @@ subroutine ModEM_log(msg, intArgs, realArgs, logicArgs, fid, mainOnly, flush_log
    else
         fid_lcl = log_fid
    end if
-
 
    if (present(flush_log)) then
        flush_lcl = flush_log
