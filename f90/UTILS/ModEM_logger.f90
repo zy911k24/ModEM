@@ -189,7 +189,6 @@ subroutine ModEM_log(msg, intArgs, realArgs, logicArgs, fid, mainOnly, flush_log
    call expand_string(msg, messageExpanded, intArgs, logicArgs, realArgs)
 
    if ((mainOnly_lcl .and. taskid == 0) .or. (.not. mainOnly_lcl)) then
-       write(0,*) fid_lcl
        write(fid_lcl,*) trim(messageExpanded)
 
        if (flush_lcl) then
