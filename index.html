@@ -74,21 +74,20 @@
         <div class="bodywrapper">
           <div class="body" role="main">
             
-  <div class="section" id="modem-documentation">
+  <img alt="ModEM Logo" class="align-center" src="_images/ModEM_logo_wide_on_white_simple.png" />
+<div class="section" id="modem-documentation">
 <h1>ModEM Documentation<a class="headerlink" href="#modem-documentation" title="Permalink to this headline">¶</a></h1>
 <p>Welcome to the ModEM’s documentation! ModEM is a modular system for inversion of
 electromagnetic geophysical data.</p>
 <p>ModEM was designed as a flexible electromagnetic modeling and inversion system,
-written in Fortran 95. Although the code can be (and has been) extended for
-inversion of more general types of EM data (e.g., controlled source, DC; see
-Meqbel and Ritter, 2015), here we describe the stable, core system developed for
-2D and 3D magnetotelluric (MT) problems.</p>
-<p>While a primary design goal of the system was to allow simplified extension with
-regard to data types, modeling codes, parameterization and regularization, and
-inversion search algorithms (see Egbert and Kelbert, 2012; Kelbert et al.
-2014). The stable MT program has a command-line interface, which controls
-available program options, and specifies required and optional input and output
-files.</p>
+written in Fortran 95. A primary design goal of the system was to allow simplified
+extension with regard to data types, modeling codes, parameterization and regularization,
+and inversion search algorithms (see Egbert and Kelbert, 2012; Kelbert et al., 2014).
+Although the code can be (and has been) extended for inversion of more general types
+of EM data (e.g., controlled source, DC; see Meqbel and Ritter, 2015), here we describe
+the stable, core system developed for 2D and 3D magnetotelluric (MT) problems.
+The stable MT program has a command-line interface, which controls available program
+options, and specifies required and optional input and output files.</p>
 <div class="section" id="user-s-guide">
 <h2>User’s Guide<a class="headerlink" href="#user-s-guide" title="Permalink to this headline">¶</a></h2>
 <p>This documentation contains information about compiling, running and using
@@ -97,7 +96,10 @@ options for inversion, etc.</p>
 <div class="toctree-wrapper compound">
 <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="obtaining_modem.html">Obtaining ModEM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="obtaining_modem.html">Obtaining ModEM</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="obtaining_modem.html#modem-branches">ModEM Branches</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started.html">Getting Started</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="getting_started.html#directory-structure">Directory Structure</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started.html#compiling-modem">Compiling ModEM</a></li>
@@ -117,6 +119,7 @@ options for inversion, etc.</p>
 <li class="toctree-l2"><a class="reference internal" href="building_with_cmake.html#specifying-intel-instruction-set">Specifying Intel Instruction Set</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="building_with_cmake.html#building-modem-spherical-version">Building ModEM Spherical Version</a></li>
 <li class="toctree-l1"><a class="reference internal" href="building_with_cmake.html#building-gpu-capable-modem-with-cmake">Building GPU capable ModEM with CMake</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="building_with_cmake.html#compiling-modem-gpu-code-with-cuda">Compiling ModEM GPU Code with CUDA</a></li>
 <li class="toctree-l2"><a class="reference internal" href="building_with_cmake.html#compiling-modem-gpu-code-with-hip">Compiling ModEM GPU Code with HIP</a></li>
